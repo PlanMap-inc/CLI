@@ -2,8 +2,8 @@
 
 These self-contained HTML mockups are the **initial ideation-phase UX** for PlanMap — clickable prototypes with **hardcoded sample data**. Open them in a browser.
 
-- **`planmap-v5-mockup.html` — canonical.** The agreed visual/interaction baseline.
-- `planmap-v3-mockup.html`, `planmap-v2-mockup.html` — earlier iterations, kept for history.
+- **`planmap-v6-mockup.html` — canonical.** The latest, agreed visual/interaction baseline (refines v5). The M1 web UI ports this to React Flow.
+- `planmap-v5-mockup.html`, `planmap-v3-mockup.html`, `planmap-v2-mockup.html` — earlier iterations, kept for history.
 
 ## What v5 demonstrates (the UX baseline we're keeping)
 
