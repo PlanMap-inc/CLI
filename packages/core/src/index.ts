@@ -13,3 +13,5 @@ export * from './impact';
 export * from './entitlements';
 export * from './depgraph';
 export * from './drift';
+export * from './project';
+export * from './handoff';
