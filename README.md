@@ -4,13 +4,13 @@
 
 PlanMap is a planning + governance + comprehension layer that sits **one layer above** coding agents (Claude Code, Copilot, Cursor). It never writes code itself: it decides what the code _should_ be, hands a precise scoped instruction to whatever agent you already use, and then tracks intent-versus-reality afterward by reading the real system.
 
-> **Status: Planning phase (pre-build).** This repository currently holds the planning-phase documents, the three market-research reports, and the Milestone-1 design spec. Product code is not yet scaffolded — that begins once the plan is reviewed.
+> **Status: Milestone 1 built (Solo edition).** The engine, the TypeScript/JavaScript connector, the local `.planmap` store, and two surfaces — a **CLI** and a **local-first web app** — are implemented and tested (green on Linux, Windows, and macOS). Point it at a repo and it auto-maps → shows parser-grounded impact → catches drift. The planning-phase documents and market research remain below.
 
 ---
 
 ## The four pillars
 
-1. **Plan Graph** — the intended architecture, editable and zoomable (Constellation → Feature Space; Business/Backend/Security lenses). AI drafts, human edits, human wins.
+1. **Plan Graph** — the intended architecture, zoomable (Constellation → Feature Space; Business / Backend / Security / Frontend lenses). AI drafts, human edits, human wins.
 2. **Impact Analysis** (the hero) — edit a node, see what breaks and why. A static parser (ts-morph) decides _what_ is affected; the LLM only explains _why_. Uncertainty is always visible.
 3. **Evolution Graph + Drift** — what actually exists, read from real code/infra; nodes flag `drifted`/`error` when code diverges from _approved_ intent, and the annotation preserves the _why_.
 4. **Learn/Guide mode** — a pedagogical view of the same live map that cannot rot, because drift re-verifies it.
@@ -24,6 +24,25 @@ PlanMap is a planning + governance + comprehension layer that sits **one layer a
 | Price | $0 (BYO LLM key, never metered)         | ~$19/seat/mo (directional)   | Custom                                      |
 
 Built platform-ready from day one via a **storage adapter** (Local ⇄ Cloud, one schema), a pluggable **connector interface**, and tier **entitlements** — shipped **Solo-first, bottom-up**.
+
+## Quickstart
+
+Prerequisites: Node ≥ 22 and pnpm (this repo pins pnpm 11 via `packageManager`).
+
+```bash
+pnpm install
+
+# Web app — opens on the bundled example org, auto-mapped on first load:
+pnpm --filter @planmap/web dev          # then open http://localhost:5173
+
+# CLI — the same engine, headless (run inside any TS/JS repo):
+pnpm --filter @planmap/cli exec planmap map        # auto-populate the .planmap graph
+pnpm --filter @planmap/cli exec planmap impact <nodeId>   # what a change affects, and why
+pnpm --filter @planmap/cli exec planmap drift             # CI-friendly: non-zero on drift
+```
+
+Everything runs locally and offline; the LLM is BYO-key and only ever narrates the
+_why_ of an impact/drift finding — it never decides the _what_, and tokens are never metered.
 
 ## Milestone 1 (frozen scope)
 
@@ -45,16 +64,26 @@ The planning phase lives in [`planning-phase/`](./planning-phase/). Begin with t
 - [07 — Risks & Open Questions](./planning-phase/07-risks-and-open-questions.md)
 - Research inputs: [`planning-phase/research/`](./planning-phase/research/) (three cited market-research reports)
 
-**Milestone-1 implementation spec:** [`docs/superpowers/specs/2026-07-17-planmap-design.md`](./docs/superpowers/specs/2026-07-17-planmap-design.md)
+**Milestone-1 implementation specs:** the engine spec
+[`docs/superpowers/specs/2026-07-17-planmap-design.md`](./docs/superpowers/specs/2026-07-17-planmap-design.md)
+and the web UI spec
+[`docs/superpowers/specs/2026-07-17-m1-web-ui-design.md`](./docs/superpowers/specs/2026-07-17-m1-web-ui-design.md).
 
-## Planned repository layout (once code lands)
+## Repository layout
 
 ```
-packages/{core, connectors, db, ui}   # the engine — core is pure TS, zero editor deps
-apps/{api, web, cli, vscode}          # thin surfaces over core
-examples/sample-org                   # fixture + impact/drift regression corpus
-planning-phase/                       # these documents
-docs/                                 # spec + generated docs
+packages/
+  core         the engine — pure TS, zero I/O: model, impact, drift, projection, handoff
+  connectors   language analysis (ts-morph) → the language-agnostic RepoStructure
+  db           the local-first .planmap store + versioned migrations
+  engine       the orchestration facade over core + connectors + db (one brain, many surfaces)
+  ui           presentation-only React components (view-model in, callbacks out)
+apps/
+  cli          the headless, CI-scriptable surface
+  web          the local-first web app (Vite SPA + a tiny local API over the engine)
+examples/sample-org   a fixture repo with a known dependency oracle
+planning-phase/       vision, market research, architecture, roadmap
+docs/                 specs + design reference
 ```
 
 ---
