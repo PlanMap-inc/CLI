@@ -1,0 +1,21 @@
+{
+  "name": "@planmap/connectors",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PlanMap connectors — turn external reality into normalized facts. M1: the git/TypeScript LanguageAnalyzer (ts-morph) + whitespace-normalized fingerprinting.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --max-warnings 0"
+  },
+  "dependencies": {
+    "@planmap/core": "workspace:*",
+    "ts-morph": "^28.0.0"
+  }
+}
