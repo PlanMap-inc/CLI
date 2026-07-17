@@ -1,0 +1,21 @@
+{
+  "name": "@planmap/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PlanMap engine — pure TypeScript, zero I/O dependencies. Domain model, seam interfaces, and the impact/drift analysis logic.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts",
+    "./model": "./src/model/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "zod": "^3"
+  }
+}
