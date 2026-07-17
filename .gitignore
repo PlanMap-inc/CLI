@@ -40,3 +40,6 @@ Thumbs.db
 # Local scratch
 /tmp/
 scratch/
+
+# Session / agent artifacts (not part of the product)
+.remember/
