@@ -1,0 +1,14 @@
+# Cross-platform line-ending normalization: the repo stores LF everywhere,
+# regardless of the contributor's OS. Keeps the codebase OS-agnostic and
+# avoids CRLF/LF churn in diffs.
+* text=auto eol=lf
+
+# Binary assets — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
