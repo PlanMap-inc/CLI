@@ -74,7 +74,7 @@ export function autoMap(structure: RepoStructure, now: string): { nodes: Node[];
       to,
       graph: 'evolution',
       provenance: 'static_analysis',
-      confidence: 'certain',
+      confidence: fact.confidence ?? 'certain',
     });
     const fromNode = nodeById.get(from);
     const toNode = nodeById.get(to);
