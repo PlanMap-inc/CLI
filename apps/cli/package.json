@@ -1,0 +1,19 @@
+{
+  "name": "@planmap/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PlanMap CLI — the headless, agent- and CI-scriptable surface over the engine. Local-first, BYO-key, never metered.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --max-warnings 0"
+  },
+  "dependencies": {
+    "@planmap/connectors": "workspace:*",
+    "@planmap/core": "workspace:*",
+    "@planmap/db": "workspace:*"
+  }
+}
