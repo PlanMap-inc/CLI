@@ -10,6 +10,7 @@ import {
   graphToMarkdown,
   verify,
   type DriftReport,
+  type Edge,
   type ImpactResult,
   type ImpactTarget,
   type LinkedCode,
@@ -21,6 +22,17 @@ import { LocalStore, projectionsDir } from '@planmap/db';
 export interface MapResult {
   nodes: number;
   edges: number;
+}
+
+export interface GraphSnapshot {
+  nodes: Node[];
+  edges: Edge[];
+}
+
+/** Read the whole stored graph (nodes + edges) — the read counterpart to `mapRepo`. */
+export async function loadGraph(storeRoot: string): Promise<GraphSnapshot> {
+  const store = await LocalStore.open(storeRoot);
+  return { nodes: await store.queryNodes(), edges: await store.getEdges() };
 }
 
 /** Initialize a `.planmap` store (idempotent). */
