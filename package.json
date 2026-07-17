@@ -1,0 +1,24 @@
+{
+  "name": "planmap",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The self-populating map of how your software actually works — across code, data, and cloud — that catches drift from what you approved, and lets AI agents act on it.",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.13.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "dev": "turbo run dev",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "volta": {
+    "node": "24.18.0"
+  }
+}
