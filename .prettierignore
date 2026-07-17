@@ -1,0 +1,9 @@
+dist/
+node_modules/
+.turbo/
+coverage/
+pnpm-lock.yaml
+Files/
+planning-phase/
+docs/
+examples/
