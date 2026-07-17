@@ -1,0 +1,22 @@
+{
+  "name": "@planmap/engine",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PlanMap engine facade — the single orchestration brain over @planmap/core, @planmap/connectors, and @planmap/db. Every surface (CLI, web, later VS Code) calls these functions, so their results cannot diverge.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --max-warnings 0"
+  },
+  "dependencies": {
+    "@planmap/connectors": "workspace:*",
+    "@planmap/core": "workspace:*",
+    "@planmap/db": "workspace:*"
+  }
+}
