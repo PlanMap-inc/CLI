@@ -59,4 +59,10 @@ docs/                                 # spec + generated docs
 
 ---
 
+## License
+
+Apache-2.0 — see [LICENSE](./LICENSE). Copyright 2026 PlanMap authors.
+
+---
+
 *This is a living plan. The same discipline PlanMap is built around — keep the plan honest, update it when reality changes — applies to this repository too.*
