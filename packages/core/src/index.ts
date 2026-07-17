@@ -6,3 +6,8 @@
  * are thin transports over this package.
  */
 export * from './model';
+export * from './store';
+export * from './connector';
+export * from './llm';
+export * from './impact';
+export * from './entitlements';
