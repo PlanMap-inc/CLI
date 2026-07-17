@@ -2,5 +2,10 @@ packages:
   - 'packages/*'
   - 'apps/*'
 
+# esbuild ships prebuilt platform binaries via optional deps, so its install script
+# is not required for correctness; approve it explicitly to satisfy pnpm v11's
+# build-script gate (used transitively by vitest and vite).
 onlyBuiltDependencies:
   - esbuild
+allowBuilds:
+  esbuild: true
