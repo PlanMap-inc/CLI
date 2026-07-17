@@ -1,0 +1,843 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root{
+  --void:#0a0c11;
+  --surface:#12151c;
+  --surface-2:#181c25;
+  --surface-3:#1f2430;
+  --border:#272d3a;
+  --border-soft:#1c212b;
+  --text-hi:#eceef3;
+  --text-mid:#8d96a8;
+  --text-low:#565f70;
+
+  --c-browse:#6fa8ff;
+  --c-auth:#ff9f6f;
+  --c-cart:#7fe0b0;
+  --c-checkout:#ffd873;
+  --c-payments:#c89bff;
+  --c-tracking:#6fe0e0;
+  --c-ratings:#ff7fb0;
+
+  --lens-business:#7fe0b0;
+  --lens-backend:#6fa8ff;
+  --lens-security:#ff9f6f;
+  --tag-frontend:#c89bff;
+
+  --danger:#ff5c5c;
+  --edge:#3a4152;
+}
+
+*{box-sizing:border-box; user-select:none;}
+.planmap-root{
+  font-family:'Inter',sans-serif;
+  background:var(--void);
+  color:var(--text-hi);
+  border-radius:14px;
+  overflow:hidden;
+  border:1px solid var(--border);
+  box-shadow:0 40px 80px -30px rgba(0,0,0,0.6);
+  width:100%;
+  max-width:1360px;
+  margin:0 auto;
+  position:relative;
+  display:flex;
+  flex-direction:row;
+  height:698px;
+}
+
+/* ---------- icon-only left rail ---------- */
+.app-rail{
+  width:52px; flex-shrink:0;
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  padding:12px 0; gap:8px;
+}
+.rail-mark{width:16px;height:16px;border-radius:5px;background:linear-gradient(135deg,var(--lens-business),var(--lens-backend));margin-bottom:6px;}
+.nav-icon-btn{
+  width:34px;height:34px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--text-mid);cursor:pointer;font-size:15px;background:transparent;
+  position:relative;
+}
+.nav-icon-btn:hover{background:var(--surface-2); color:var(--text-hi);}
+.nav-icon-btn.active{background:var(--surface-3); color:var(--text-hi);}
+.nav-icon-btn.active::after{content:'';position:absolute;left:-9px;top:50%;transform:translateY(-50%);width:2px;height:16px;border-radius:2px;background:var(--lens-business);}
+
+.content-row{flex:1; min-width:0; display:flex; flex-direction:row;}
+
+/* ---------- chat side panel (30%) ---------- */
+.chat-panel{
+  width:0; overflow:hidden; flex-shrink:0;
+  background:var(--surface); border-right:1px solid var(--border);
+  transition:width .25s ease;
+  display:flex; flex-direction:column;
+}
+.chat-panel.open{width:32%; min-width:300px;}
+.chat-panel-inner{width:100%; min-width:300px; height:100%; display:flex; flex-direction:column;}
+.chat-panel-header{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border);flex-shrink:0;height:36px;}
+.chat-panel-header .title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;}
+.chat-panel-header .title .dot{width:6px;height:6px;border-radius:50%;background:var(--tag-frontend);}
+.chat-panel-header .close-btn{cursor:pointer;color:var(--text-low);font-size:14px;}
+.chat-panel-header .close-btn:hover{color:var(--text-hi);}
+
+.chat-thread{flex:1;min-height:0;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:14px;}
+.chat-msg{max-width:92%;display:flex;flex-direction:column;gap:5px;}
+.chat-msg.user{align-self:flex-end;align-items:flex-end;}
+.chat-msg.assistant{align-self:flex-start;align-items:flex-start;}
+.chat-role{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-low);text-transform:uppercase;letter-spacing:.05em;padding:0 3px;}
+.chat-bubble{padding:10px 13px;border-radius:12px;font-size:12.5px;line-height:1.55;}
+.chat-msg.user .chat-bubble{background:var(--surface-3);color:var(--text-hi);border-bottom-right-radius:3px;}
+.chat-msg.assistant .chat-bubble{background:var(--surface-2);border:1px solid var(--border-soft);color:var(--text-hi);border-bottom-left-radius:3px;}
+.chat-msg.system{align-self:center;max-width:100%;}
+.chat-msg.system .chat-bubble{background:rgba(127,224,176,.06);border:1px dashed rgba(127,224,176,.35);color:var(--lens-business);font-family:'JetBrains Mono',monospace;font-size:10.5px;text-align:center;}
+.chat-cta{margin-top:8px;align-self:flex-start;}
+.chat-cta button{font-family:'JetBrains Mono',monospace;font-size:10px;padding:6px 11px;border-radius:7px;background:var(--lens-business);color:var(--void);border:none;font-weight:600;cursor:pointer;}
+.chat-input-row{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border);background:var(--surface);flex-shrink:0;}
+.chat-input{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:9px 12px;color:var(--text-hi);font-family:'Inter',sans-serif;font-size:12.5px;outline:none;min-width:0;}
+.chat-input:focus{border-color:var(--text-low);}
+.chat-input::placeholder{color:var(--text-low);}
+.chat-send{width:34px;height:34px;border-radius:9px;background:var(--text-hi);color:var(--void);border:none;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.chat-send:hover{opacity:.9;}
+
+.main-panel{flex:1; min-width:0; display:flex; flex-direction:column;}
+.view{display:flex; flex-direction:column; flex:1; min-height:0;}
+.view.hidden{display:none;}
+
+.editor-tabs{display:flex;align-items:center;background:var(--surface);border-bottom:1px solid var(--border);padding:0 8px;height:36px;gap:2px;flex-shrink:0;}
+.editor-tab{display:flex;align-items:center;gap:8px;padding:0 14px;height:36px;font-size:12.5px;color:var(--text-low);border-right:1px solid var(--border-soft);}
+.editor-tab.active{color:var(--text-hi);background:var(--void);border-top:2px solid var(--lens-business);margin-top:-1px;}
+.editor-tab .dot{width:6px;height:6px;border-radius:50%;background:var(--lens-business);}
+
+.toolbar{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--border);gap:16px;flex-wrap:wrap;flex-shrink:0;}
+.breadcrumb{display:flex;align-items:center;gap:6px;font-family:'Space Grotesk',sans-serif;font-size:14px;}
+.crumb{color:var(--text-mid);cursor:pointer;padding:4px 8px;border-radius:6px;transition:.15s;}
+.crumb:hover{background:var(--surface-3);color:var(--text-hi);}
+.crumb.current{color:var(--text-hi);font-weight:600;}
+.crumb-sep{color:var(--text-low);font-size:12px;}
+
+.lens-switch{display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:999px;padding:3px;gap:2px;}
+.lens-switch.plan{visibility:hidden;opacity:0;transition:.2s;}
+.lens-switch.plan.show{visibility:visible;opacity:1;}
+.lens-btn{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.03em;text-transform:uppercase;padding:6px 14px;border-radius:999px;color:var(--text-mid);cursor:pointer;border:none;background:transparent;display:flex;align-items:center;gap:6px;transition:.15s;}
+.lens-btn .swatch{width:7px;height:7px;border-radius:50%;}
+.lens-btn[data-lens="business"] .swatch{background:var(--lens-business);}
+.lens-btn[data-lens="backend"] .swatch, .lens-btn[data-tag="backend"] .swatch{background:var(--lens-backend);}
+.lens-btn[data-lens="security"] .swatch, .lens-btn[data-tag="security"] .swatch{background:var(--lens-security);}
+.lens-btn[data-tag="frontend"] .swatch{background:var(--tag-frontend);}
+.lens-btn[data-tag="all"] .swatch{background:var(--text-low);}
+.lens-btn.active{background:var(--surface-3);color:var(--text-hi);}
+
+.view-controls{display:flex;gap:10px;align-items:center;}
+.icon-btn{height:28px;padding:0 10px;border-radius:7px;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text-mid);background:var(--surface-2);border:1px solid var(--border);cursor:pointer;font-size:12px;font-family:'JetBrains Mono',monospace;}
+.icon-btn:hover{color:var(--text-hi);border-color:var(--text-low);}
+
+.zoom-controls{display:flex;align-items:center;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.zoom-controls button{width:26px;height:28px;border:none;background:transparent;color:var(--text-mid);cursor:pointer;font-size:13px;font-family:'JetBrains Mono',monospace;}
+.zoom-controls button:hover{color:var(--text-hi);background:var(--surface-3);}
+.zoom-controls .zoom-label{width:42px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-mid);border-left:1px solid var(--border);border-right:1px solid var(--border);height:28px;line-height:28px;}
+.zoom-controls .reset-btn{border-left:1px solid var(--border);}
+
+.workspace{position:relative;flex:1;min-height:0;display:flex;background:var(--void);}
+.canvas-area{flex:1;position:relative;overflow:hidden;}
+
+.graph-canvas{position:absolute;inset:0;overflow:hidden;cursor:grab;}
+.graph-canvas.hidden{opacity:0;pointer-events:none;position:absolute;}
+.graph-canvas.panning{cursor:grabbing;}
+.canvas-content{position:absolute; left:0; top:0; width:2600px; height:2600px; transform-origin:0 0; background-image: radial-gradient(var(--border-soft) 1px, transparent 1px); background-size: 24px 24px;}
+svg.edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;}
+.edge-path{fill:none;stroke:var(--edge);stroke-width:1.6;}
+.temp-edge{fill:none;stroke:var(--text-low);stroke-width:1.4;stroke-dasharray:4 3;}
+
+.gnode{position:absolute;width:172px;padding:12px 13px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:grab;transition:border-color .15s, box-shadow .15s;}
+.gnode:active{cursor:grabbing;}
+.gnode.selected{border-color:var(--text-hi); box-shadow:0 0 0 3px rgba(236,238,243,0.08);}
+.gnode .bar{width:22px;height:3px;border-radius:2px;margin-bottom:8px;}
+.gnode .title{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;line-height:1.25;outline:none;}
+.gnode .title[contenteditable="true"]{border-bottom:1px dashed var(--text-low);}
+.gnode .sub{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-low);margin-top:4px;}
+.gnode .status-pill{margin-top:8px;display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-mid);}
+.gnode .status-pill .dot{width:5px;height:5px;border-radius:50%;}
+
+.handle{position:absolute;left:50%;transform:translateX(-50%);width:9px;height:9px;border-radius:50%;background:var(--void);border:1.6px solid var(--text-low);cursor:crosshair; opacity:0; transition:opacity .15s;}
+.gnode:hover .handle, .gnode.selected .handle{opacity:1;}
+.handle.top{top:-5px;}
+.handle.bottom{bottom:-5px;}
+.handle:hover{border-color:var(--text-hi); background:var(--surface-3);}
+
+.node-toolbar{position:absolute;display:flex;gap:3px;background:var(--surface-3);border:1px solid var(--border);border-radius:7px;padding:3px;box-shadow:0 8px 18px -8px rgba(0,0,0,.6);}
+.node-toolbar button{width:24px;height:24px;border:none;background:transparent;border-radius:5px;color:var(--text-mid);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;}
+.node-toolbar button:hover{background:var(--surface-2);color:var(--text-hi);}
+.node-toolbar button.danger:hover{color:var(--danger);}
+
+.impact-panel{width:0;overflow:hidden;background:var(--surface);border-left:1px solid var(--border);transition:width .28s ease;flex-shrink:0;}
+.impact-panel.open{width:300px;}
+.impact-inner{width:300px;padding:18px;height:100%;overflow-y:auto;}
+.impact-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+.impact-head h3{font-family:'Space Grotesk',sans-serif;font-size:15px;margin:0;}
+.impact-close{cursor:pointer;color:var(--text-low);font-size:16px;}
+.impact-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-low);margin-bottom:16px;}
+.impact-section{margin-bottom:16px;}
+.impact-section .h{font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:.06em;font-size:10px;color:var(--text-mid);margin-bottom:7px;}
+.impact-section p{font-size:12.5px;line-height:1.55;color:var(--text-hi);margin:0;}
+.file-chip{display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;background:var(--surface-2);border:1px solid var(--border-soft);border-radius:7px;padding:7px 9px;margin-bottom:6px;}
+.file-chip .range{color:var(--text-low);margin-left:auto;}
+.badge-row{display:flex;gap:8px;flex-wrap:wrap;}
+.badge{font-family:'JetBrains Mono',monospace;font-size:10.5px;padding:5px 10px;border-radius:6px;border:1px solid var(--border);display:flex;align-items:center;gap:6px;}
+.badge.risk-med{color:var(--lens-security);border-color:rgba(255,159,111,.35);background:rgba(255,159,111,.08);}
+.badge.conf-high{color:var(--lens-business);border-color:rgba(127,224,176,.35);background:rgba(127,224,176,.08);}
+.badge.tag-security{color:var(--lens-security);border-color:rgba(255,159,111,.35);background:rgba(255,159,111,.08);}
+.badge.tag-backend{color:var(--lens-backend);border-color:rgba(111,168,255,.35);background:rgba(111,168,255,.08);}
+.badge.tag-frontend{color:var(--tag-frontend);border-color:rgba(200,155,255,.35);background:rgba(200,155,255,.08);}
+.drift-callout{background:rgba(255,92,92,.08); border:1px solid rgba(255,92,92,.3); border-radius:8px; padding:11px 12px; font-size:12px; line-height:1.55; color:var(--text-hi);}
+.drift-callout .h{color:var(--danger);font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
+
+.statusbar{display:flex;align-items:center;gap:22px;padding:9px 18px;background:var(--surface);border-top:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-mid);flex-shrink:0;}
+.legend-item{display:flex;align-items:center;gap:6px;}
+.legend-dot{width:7px;height:7px;border-radius:50%;}
+.legend-dot.intended{border:1.3px dashed var(--text-low);}
+.legend-dot.approved{border:1.3px solid var(--text-hi);}
+.legend-dot.implemented{background:var(--lens-business);}
+.legend-dot.drifted{background:var(--danger);box-shadow:0 0 0 3px rgba(255,92,92,.18);}
+.legend-dot.error{background:var(--danger);}
+.statusbar .spacer{flex:1;}
+
+.flow-tag{position:absolute;left:16px;bottom:14px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);display:flex;align-items:center;gap:6px;z-index:2;pointer-events:none;}
+.flow-tag .arrow-up{color:var(--text-mid);}
+
+/* ---------- evolution graph tree ---------- */
+.evo-tree-panel{flex:1;overflow:auto;padding:16px 10px 24px 14px;}
+.evo-root-label{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:var(--text-hi);padding:6px 10px 10px;}
+.evo-node{position:relative;}
+.evo-children{margin-left:15px;padding-left:14px;border-left:1px solid var(--border-soft);}
+.evo-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;}
+.evo-row:hover{background:var(--surface-2);}
+.evo-row.selected{background:var(--surface-3);}
+.evo-toggle{width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-low);font-size:9px;cursor:pointer;}
+.evo-toggle.leaf{visibility:hidden;}
+.evo-status-icon{width:14px;flex-shrink:0;text-align:center;font-size:10.5px;font-family:'JetBrains Mono',monospace;}
+.evo-status-icon.intended{color:var(--text-low);}
+.evo-status-icon.approved{color:var(--text-hi);}
+.evo-status-icon.implemented{color:var(--lens-business);}
+.evo-status-icon.drifted, .evo-status-icon.error{color:var(--danger);}
+.evo-title{font-size:12.5px;color:var(--text-hi);flex-shrink:0;}
+.evo-tags{display:flex;gap:4px;margin-left:4px;}
+.evo-tag-dot{width:6px;height:6px;border-radius:50%;}
+.evo-tag-dot.security{background:var(--lens-security);}
+.evo-tag-dot.backend{background:var(--lens-backend);}
+.evo-tag-dot.frontend{background:var(--tag-frontend);}
+</style>
+
+<div class="planmap-root">
+
+  <div class="app-rail">
+    <div class="rail-mark"></div>
+    <div class="nav-icon-btn active" data-nav="planmap" title="PlanMap">▦</div>
+    <div class="nav-icon-btn" data-nav="evolution" title="Project Evolution Graph">⑂</div>
+    <div class="nav-icon-btn" data-nav="chat" title="Chat">💬</div>
+  </div>
+
+  <div class="content-row">
+
+    <!-- ============ CHAT SIDE PANEL (30%) ============ -->
+    <div class="chat-panel" id="chatPanel">
+      <div class="chat-panel-inner">
+        <div class="chat-panel-header">
+          <div class="title"><span class="dot"></span>Chat</div>
+          <div class="close-btn" id="chatCloseBtn">✕</div>
+        </div>
+        <div class="chat-thread" id="chatThread">
+          <div class="chat-msg user"><div class="chat-role">You</div><div class="chat-bubble">Add a password reset feature</div></div>
+          <div class="chat-msg system"><div class="chat-bubble">Triage: touches auth, email, database → structured path</div></div>
+          <div class="chat-msg assistant">
+            <div class="chat-role">PlanMap</div>
+            <div class="chat-bubble">Read the existing login code and how you're already sending emails. Drafted a Plan Graph — business goal, design decision, security considerations, and task nodes underneath. Nothing's built yet.</div>
+            <div class="chat-cta"><button id="openPlanFromChat">Open Plan Graph →</button></div>
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <input class="chat-input" id="chatInput" type="text" placeholder="Describe a feature…" />
+          <button class="chat-send" id="chatSend">↑</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-panel">
+
+      <div class="editor-tabs">
+        <div class="editor-tab active"><span class="dot" id="tabDot"></span><span id="tabLabel">Plan Graph — Food Ordering App</span></div>
+        <div class="editor-tab">reset.ts</div>
+        <div class="editor-tab">auth.controller.ts</div>
+      </div>
+
+      <!-- ============ PLAN GRAPH VIEW ============ -->
+      <div class="view" id="viewPlanmap">
+        <div class="toolbar">
+          <div class="breadcrumb" id="breadcrumb"><span class="crumb current" id="crumbConstellation">Constellation</span></div>
+          <div class="lens-switch plan" id="lensSwitch">
+            <button class="lens-btn active" data-lens="business"><span class="swatch"></span>Business</button>
+            <button class="lens-btn" data-lens="backend"><span class="swatch"></span>Backend</button>
+            <button class="lens-btn" data-lens="security"><span class="swatch"></span>Security</button>
+          </div>
+          <div class="view-controls">
+            <div class="icon-btn" id="addNodeBtn">+ Add node</div>
+            <div class="zoom-controls">
+              <button id="zoomOutBtn" title="Zoom out">−</button>
+              <div class="zoom-label" id="zoomLabel">100%</div>
+              <button id="zoomInBtn" title="Zoom in">+</button>
+              <button id="zoomResetBtn" class="reset-btn" title="Reset view">⤢</button>
+            </div>
+          </div>
+        </div>
+        <div class="workspace">
+          <div class="canvas-area">
+            <div class="graph-canvas" id="constellationCanvas">
+              <div class="canvas-content" id="constellationContent"><svg class="edges" id="constellationEdges"></svg></div>
+              <div class="flow-tag"><span class="arrow-up">↑</span> user workflow</div>
+            </div>
+            <div class="graph-canvas hidden" id="featureCanvas">
+              <div class="canvas-content" id="featureContent"><svg class="edges" id="featureEdges"></svg></div>
+              <div class="flow-tag"><span class="arrow-up">↑</span> step order</div>
+            </div>
+          </div>
+          <aside class="impact-panel" id="impactPanel"><div class="impact-inner" id="impactInner"></div></aside>
+        </div>
+        <div class="statusbar">
+          <div class="legend-item"><span class="legend-dot intended"></span>intended</div>
+          <div class="legend-item"><span class="legend-dot approved"></span>approved</div>
+          <div class="legend-item"><span class="legend-dot implemented"></span>implemented</div>
+          <div class="legend-item"><span class="legend-dot drifted"></span>drifted</div>
+          <div class="spacer"></div>
+          <div id="statusHint">Constellation · 7 features · scroll to zoom, drag empty space to pan</div>
+        </div>
+      </div>
+
+      <!-- ============ EVOLUTION GRAPH VIEW ============ -->
+      <div class="view hidden" id="viewEvolution">
+        <div class="toolbar">
+          <div class="breadcrumb"><span class="crumb current">Food Ordering App</span></div>
+          <div class="lens-switch" id="tagSwitch">
+            <button class="lens-btn active" data-tag="all"><span class="swatch"></span>All</button>
+            <button class="lens-btn" data-tag="security"><span class="swatch"></span>Security</button>
+            <button class="lens-btn" data-tag="backend"><span class="swatch"></span>Backend</button>
+            <button class="lens-btn" data-tag="frontend"><span class="swatch"></span>Frontend</button>
+          </div>
+          <div class="view-controls">
+            <div class="icon-btn" id="evoExpandBtn">Expand all</div>
+            <div class="icon-btn" id="evoCollapseBtn">Collapse all</div>
+          </div>
+        </div>
+        <div class="workspace">
+          <div class="canvas-area evo-tree-panel" id="evoTreePanel"></div>
+          <aside class="impact-panel" id="evoDetailPanel"><div class="impact-inner" id="evoDetailInner"></div></aside>
+        </div>
+        <div class="statusbar">
+          <div class="legend-item"><span class="legend-dot intended"></span>intended</div>
+          <div class="legend-item"><span class="legend-dot approved"></span>approved</div>
+          <div class="legend-item"><span class="legend-dot implemented"></span>implemented</div>
+          <div class="legend-item"><span class="legend-dot drifted"></span>drifted</div>
+          <div class="legend-item"><span class="legend-dot error"></span>error</div>
+          <div class="spacer"></div>
+          <div id="evoHint">Derived from code · read-only · click a node for detail</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const GRID = 24;
+  const NODE_W = 172;
+  const NODE_H_EST = 78;
+  const CONTENT_SIZE = 2600;
+  const MIN_SCALE = 0.4, MAX_SCALE = 2.2;
+
+  function snap(v){ return Math.round(v / GRID) * GRID; }
+  function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+  function statusDotStyle(status, lensColor){
+    if (status==='intended') return 'border:1.3px dashed var(--text-low)';
+    if (status==='approved') return 'border:1.3px solid var(--text-hi);background:transparent';
+    if (status==='implemented') return `background:${lensColor}`;
+    if (status==='drifted') return 'background:var(--danger);box-shadow:0 0 0 3px rgba(255,92,92,.18)';
+    return '';
+  }
+
+  let syncZoomLabel = function(){};
+
+  // ================= PLAN GRAPH (unchanged core) =================
+  function createGraph(canvasEl, contentEl, svgEl, nodes, edges, opts){
+    let selectedId = null, dragNode = null, dragOffX=0, dragOffY=0, connecting = null;
+    let panX = 0, panY = 0, scale = 1, panning = false, panStart=null, panOrigin=null;
+    opts = opts || {};
+
+    function applyTransform(){ contentEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
+    function toLocal(clientX, clientY){
+      const rect = canvasEl.getBoundingClientRect();
+      return { x:(clientX-rect.left-panX)/scale, y:(clientY-rect.top-panY)/scale };
+    }
+    function nodeEl(id){ return contentEl.querySelector(`.gnode[data-id="${id}"]`); }
+
+    function render(){
+      contentEl.querySelectorAll('.gnode, .node-toolbar').forEach(n=>n.remove());
+      nodes.forEach(n => renderNode(n));
+      drawEdges();
+    }
+    function renderNode(n){
+      const el = document.createElement('div');
+      el.className = 'gnode' + (n.id===selectedId ? ' selected' : '');
+      el.dataset.id = n.id; el.style.left = n.x+'px'; el.style.top = n.y+'px';
+      el.innerHTML = `
+        <div class="handle top" data-role="handle-top"></div>
+        <div class="bar" style="background:${n.color || 'var(--text-low)'}"></div>
+        <div class="title" spellcheck="false">${n.title}</div>
+        ${n.sub ? `<div class="sub">${n.sub}</div>` : ''}
+        <div class="status-pill"><span class="dot" style="${statusDotStyle(n.status, opts.lensColor || 'var(--lens-business)')}"></span>${n.status}</div>
+        <div class="handle bottom" data-role="handle-bottom"></div>`;
+      contentEl.appendChild(el);
+      el.addEventListener('mousedown', (e)=>{
+        if (e.target.classList.contains('handle') || e.target.isContentEditable) return;
+        e.stopPropagation(); select(n.id); dragNode = n;
+        const p = toLocal(e.clientX, e.clientY); dragOffX = p.x-n.x; dragOffY = p.y-n.y;
+        e.preventDefault();
+      });
+      el.addEventListener('dblclick', ()=>{
+        const t = el.querySelector('.title'); t.contentEditable='true'; t.focus(); document.getSelection().selectAllChildren(t);
+      });
+      el.querySelector('.title').addEventListener('blur', (e)=>{ n.title = e.target.textContent.trim()||n.title; e.target.contentEditable='false'; });
+      ['handle-top','handle-bottom'].forEach(role=>{
+        el.querySelector(`[data-role="${role}"]`).addEventListener('mousedown', (e)=>{ e.stopPropagation(); e.preventDefault(); connecting = { fromId:n.id }; });
+      });
+    }
+    function select(id){
+      selectedId = id;
+      contentEl.querySelectorAll('.gnode').forEach(el=> el.classList.toggle('selected', el.dataset.id===id));
+      renderToolbar();
+    }
+    function deselect(){ selectedId=null; contentEl.querySelectorAll('.gnode').forEach(el=>el.classList.remove('selected')); const tb=contentEl.querySelector('.node-toolbar'); if(tb) tb.remove(); }
+    function renderToolbar(){
+      const old = contentEl.querySelector('.node-toolbar'); if (old) old.remove();
+      const n = nodes.find(x=>x.id===selectedId); if (!n) return;
+      const tb = document.createElement('div'); tb.className='node-toolbar';
+      tb.style.left=(n.x+NODE_W-70)+'px'; tb.style.top=(n.y-34)+'px';
+      tb.innerHTML = `<button data-act="edit" title="Rename">✎</button>${opts.showImpact?'<button data-act="impact" title="Impact analysis">ⓘ</button>':''}<button data-act="delete" title="Delete node" class="danger">🗑</button>`;
+      tb.addEventListener('mousedown', e=>e.stopPropagation());
+      tb.addEventListener('click', (e)=>{
+        const act = e.target.closest('button')?.dataset.act;
+        if (act==='edit'){ const t=nodeEl(n.id).querySelector('.title'); t.contentEditable='true'; t.focus(); document.getSelection().selectAllChildren(t); }
+        else if (act==='delete'){ removeNode(n.id); }
+        else if (act==='impact'){ if (opts.onImpact) opts.onImpact(n); }
+      });
+      contentEl.appendChild(tb);
+    }
+    function removeNode(id){
+      const idx = nodes.findIndex(n=>n.id===id); if (idx>-1) nodes.splice(idx,1);
+      for (let i=edges.length-1;i>=0;i--){ if (edges[i].from===id||edges[i].to===id) edges.splice(i,1); }
+      deselect(); render();
+    }
+    function addNode(){
+      const id='n'+Math.random().toString(36).slice(2,8);
+      const maxY = nodes.length? Math.max(...nodes.map(n=>n.y)):400;
+      const n = { id, title:'New step', sub:'', status:'intended', x:snap(180), y:snap(maxY+90), color:opts.lensColor||'var(--text-low)' };
+      nodes.push(n); render(); select(id);
+      const t = nodeEl(id).querySelector('.title'); t.contentEditable='true'; t.focus(); document.getSelection().selectAllChildren(t);
+    }
+    function elbowPath(x1,y1,x2,y2){ const midY=(y1+y2)/2; return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`; }
+    function drawEdges(){
+      let markup = `<defs><marker id="arrow-${opts.id}" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="${opts.edgeColor||'var(--edge)'}"/></marker></defs>`;
+      edges.forEach(e=>{
+        const a=nodes.find(n=>n.id===e.from), b=nodes.find(n=>n.id===e.to); if(!a||!b) return;
+        const x1=a.x+NODE_W/2, y1=a.y, x2=b.x+NODE_W/2, y2=b.y+NODE_H_EST;
+        markup += `<path class="edge-path" d="${elbowPath(x1,y1,x2,y2)}" style="stroke:${opts.edgeColor||'var(--edge)'}" marker-end="url(#arrow-${opts.id})"/>`;
+      });
+      svgEl.innerHTML = markup;
+    }
+    canvasEl.addEventListener('mousedown', (e)=>{
+      if (e.target.closest('.gnode')||e.target.closest('.node-toolbar')) return;
+      deselect(); panning=true; panStart={x:e.clientX,y:e.clientY}; panOrigin={x:panX,y:panY}; canvasEl.classList.add('panning');
+    });
+    canvasEl.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      const rect = canvasEl.getBoundingClientRect(); const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+      const factor = e.deltaY<0 ? 1.1 : 0.9; const newScale = clamp(scale*factor, MIN_SCALE, MAX_SCALE);
+      const lx=(mx-panX)/scale, ly=(my-panY)/scale; panX=mx-lx*newScale; panY=my-ly*newScale; scale=newScale;
+      applyTransform(); syncZoomLabel();
+    }, { passive:false });
+    function zoomBy(factor){
+      const rect = canvasEl.getBoundingClientRect(); const mx=rect.width/2, my=rect.height/2;
+      const newScale = clamp(scale*factor, MIN_SCALE, MAX_SCALE);
+      const lx=(mx-panX)/scale, ly=(my-panY)/scale; panX=mx-lx*newScale; panY=my-ly*newScale; scale=newScale;
+      applyTransform(); syncZoomLabel();
+    }
+    function zoomReset(){ scale=1; panX=0; panY=0; applyTransform(); syncZoomLabel(); }
+    document.addEventListener('mousemove', (e)=>{
+      if (dragNode){
+        const p = toLocal(e.clientX, e.clientY);
+        dragNode.x = clamp(p.x-dragOffX, 0, CONTENT_SIZE-NODE_W);
+        dragNode.y = clamp(p.y-dragOffY, 0, CONTENT_SIZE-NODE_H_EST);
+        const el = nodeEl(dragNode.id); if (el){ el.style.left=dragNode.x+'px'; el.style.top=dragNode.y+'px'; }
+        drawEdges();
+        const tb = contentEl.querySelector('.node-toolbar'); if (tb){ tb.style.left=(dragNode.x+NODE_W-70)+'px'; tb.style.top=(dragNode.y-34)+'px'; }
+      }
+      if (connecting){
+        const a = nodes.find(n=>n.id===connecting.fromId); const p = toLocal(e.clientX, e.clientY);
+        const x1=a.x+NODE_W/2, y1=a.y;
+        let extra = svgEl.querySelector('.temp-edge');
+        if (!extra){ extra=document.createElementNS('http://www.w3.org/2000/svg','path'); extra.setAttribute('class','temp-edge'); svgEl.appendChild(extra); }
+        extra.setAttribute('d', elbowPath(x1,y1,p.x,p.y));
+      }
+      if (panning){ panX=panOrigin.x+(e.clientX-panStart.x); panY=panOrigin.y+(e.clientY-panStart.y); applyTransform(); }
+    });
+    document.addEventListener('mouseup', (e)=>{
+      if (dragNode){
+        dragNode.x=snap(dragNode.x); dragNode.y=snap(dragNode.y);
+        const el = nodeEl(dragNode.id); if (el){ el.style.left=dragNode.x+'px'; el.style.top=dragNode.y+'px'; }
+        drawEdges();
+        const tb = contentEl.querySelector('.node-toolbar'); if (tb){ tb.style.left=(dragNode.x+NODE_W-70)+'px'; tb.style.top=(dragNode.y-34)+'px'; }
+        dragNode = null;
+      }
+      if (connecting){
+        const target = e.target.closest('.gnode'); const temp = svgEl.querySelector('.temp-edge'); if (temp) temp.remove();
+        if (target && target.dataset.id !== connecting.fromId){ edges.push({from:connecting.fromId, to:target.dataset.id}); drawEdges(); }
+        connecting = null;
+      }
+      if (panning){ panning=false; canvasEl.classList.remove('panning'); }
+    });
+    applyTransform(); render();
+    return { render, addNode, zoomIn:()=>zoomBy(1.25), zoomOut:()=>zoomBy(0.8), zoomReset, get scale(){return scale;}, get nodes(){return nodes;}, get edges(){return edges;} };
+  }
+
+  const constellationNodes = [
+    { id:'login', title:'Register / Login', sub:'8 nodes', status:'implemented', color:'var(--c-auth)', x:snap(280), y:snap(508) },
+    { id:'browse', title:'Browse Restaurants', sub:'12 nodes', status:'implemented', color:'var(--c-browse)', x:snap(280), y:snap(428) },
+    { id:'cart', title:'Cart', sub:'6 nodes', status:'approved', color:'var(--c-cart)', x:snap(280), y:snap(348) },
+    { id:'checkout', title:'Checkout', sub:'10 nodes', status:'intended', color:'var(--c-checkout)', x:snap(280), y:snap(268) },
+    { id:'payments', title:'Payments', sub:'9 nodes', status:'drifted', color:'var(--c-payments)', x:snap(280), y:snap(188) },
+    { id:'tracking', title:'Order Tracking', sub:'5 nodes', status:'intended', color:'var(--c-tracking)', x:snap(280), y:snap(108) },
+    { id:'ratings', title:'Ratings', sub:'4 nodes', status:'intended', color:'var(--c-ratings)', x:snap(280), y:snap(28) },
+  ];
+  const constellationEdges = [
+    {from:'login',to:'browse'},{from:'browse',to:'cart'},{from:'cart',to:'checkout'},
+    {from:'checkout',to:'payments'},{from:'payments',to:'tracking'},{from:'tracking',to:'ratings'},
+  ];
+  const constellationGraph = createGraph(
+    document.getElementById('constellationCanvas'), document.getElementById('constellationContent'), document.getElementById('constellationEdges'),
+    constellationNodes, constellationEdges, { id:'const', edgeColor:'var(--text-low)', showImpact:false }
+  );
+
+  const lensColor = { business:'var(--lens-business)', backend:'var(--lens-backend)', security:'var(--lens-security)' };
+  const lensSteps = {
+    business: [['Land on domain','implemented'],['Home page','implemented'],['Click Register','implemented'],['Enter email','implemented'],['Enter password','implemented'],['Complete reCAPTCHA','approved'],['Press submit','approved'],['Dashboard opens','intended']],
+    backend: [['API request','implemented'],['Route matched','implemented'],['Middleware','implemented'],['Controller','implemented'],['Auth service','drifted'],['DB query','implemented'],['Response sent','approved']],
+    security: [['Credentials received','implemented'],['Input validation','implemented'],['Password hash check','drifted'],['JWT issued','implemented'],['Authorization','approved'],['Access granted','intended']]
+  };
+  const impactData = {
+    'Complete reCAPTCHA':{file:[{path:'src/auth/RegisterForm.tsx',range:'118–142'}],why:'RegisterForm calls verifyCaptcha() before enabling submit. Changing this step changes the payload verifyCaptcha() expects.',deps:'Depends on: reCAPTCHA SDK load. Needed by: submit handler, rate-limit check.',risk:'medium',confidence:'high'},
+    'Enter password':{file:[{path:'src/auth/RegisterForm.tsx',range:'80–104'},{path:'src/auth/validators.ts',range:'12–30'}],why:'Password field feeds validatePasswordStrength(), which the submit handler blocks on.',deps:'Depends on: validators.ts. Needed by: submit handler, hash step.',risk:'medium',confidence:'high'},
+    'Password hash check':{file:[{path:'src/auth/reset.ts',range:'42–78'},{path:'src/auth/hash.ts',range:'8–24'}],why:'reset.ts calls verifyToken(), whose signature changes if hashing changes here — every caller is affected.',deps:'Depends on: hash.ts, bcrypt config. Needed by: JWT issuance, login controller.',risk:'high',confidence:'high'},
+    'JWT issued':{file:[{path:'src/auth/session.ts',range:'20–55'}],why:'Token shape here is read by session middleware on every request. A field rename cascades to all protected routes.',deps:'Depends on: hash check. Needed by: authorization step, all protected endpoints.',risk:'high',confidence:'medium'},
+    'Auth service':{file:[{path:'src/services/authService.ts',range:'1–64'}],why:'Central point every login-related controller imports. Static analysis found 6 call sites.',deps:'Depends on: DB query layer. Needed by: controller, session.ts.',risk:'medium',confidence:'high'},
+  };
+  function defaultImpact(){ return {file:[{path:'—',range:'—'}],why:'No static callers found — this step has no linked code yet.',deps:'No dependency edges recorded.',risk:'low',confidence:'inferred'}; }
+
+  let currentLens = 'business', featureGraph = null;
+  function buildFeatureNodes(lens){
+    const steps = lensSteps[lens]; const n = steps.length; const topY=28, bottomY=508;
+    const stepY = n>1 ? (bottomY-topY)/(n-1) : 0;
+    return steps.map((s,i)=>({id:'f'+i,title:s[0],sub:`step ${i+1} of ${n}`,status:s[1],color:lensColor[lens],x:snap(280),y:snap(bottomY-i*stepY)}));
+  }
+  function buildFeatureEdges(nodes){ const e=[]; for(let i=0;i<nodes.length-1;i++) e.push({from:nodes[i].id,to:nodes[i+1].id}); return e; }
+  function mountFeatureGraph(){
+    const nodes = buildFeatureNodes(currentLens); const edges = buildFeatureEdges(nodes);
+    document.getElementById('featureContent').innerHTML = '<svg class="edges" id="featureEdges"></svg>';
+    featureGraph = createGraph(document.getElementById('featureCanvas'), document.getElementById('featureContent'), document.getElementById('featureEdges'),
+      nodes, edges, { id:'feat', edgeColor:lensColor[currentLens], lensColor:lensColor[currentLens], showImpact:true, onImpact:(n)=>openImpact(n) });
+    syncZoomLabel();
+  }
+  function openImpact(n){
+    const data = impactData[n.title] || defaultImpact();
+    const panel = document.getElementById('impactPanel'); const inner = document.getElementById('impactInner');
+    panel.classList.add('open');
+    inner.innerHTML = `
+      <div class="impact-head"><h3>${n.title}</h3><div class="impact-close" id="impactCloseBtn">✕</div></div>
+      <div class="impact-sub">IMPACT ANALYSIS</div>
+      <div class="impact-section"><div class="h">Affected</div>${data.file.map(f=>`<div class="file-chip">${f.path}<span class="range">${f.range}</span></div>`).join('')}</div>
+      <div class="impact-section"><div class="h">Why</div><p>${data.why}</p></div>
+      <div class="impact-section"><div class="h">Dependencies</div><p>${data.deps}</p></div>
+      <div class="impact-section"><div class="h">Risk · Confidence</div><div class="badge-row"><div class="badge risk-med">⬤ ${data.risk} risk</div><div class="badge conf-high">◈ ${data.confidence} confidence</div></div></div>`;
+    document.getElementById('impactCloseBtn').addEventListener('click', ()=>panel.classList.remove('open'));
+  }
+
+  const breadcrumb = document.getElementById('breadcrumb');
+  const lensSwitch = document.getElementById('lensSwitch');
+  const constellationCanvas = document.getElementById('constellationCanvas');
+  const featureCanvas = document.getElementById('featureCanvas');
+  const statusHint = document.getElementById('statusHint');
+  const zoomLabel = document.getElementById('zoomLabel');
+  let inFeature = false, downPos = null;
+
+  constellationCanvas.addEventListener('mousedown', (e)=>{ const g=e.target.closest('.gnode'); downPos = g?{x:e.clientX,y:e.clientY,id:g.dataset.id}:null; });
+  constellationCanvas.addEventListener('mouseup', (e)=>{
+    if (!downPos) return;
+    const moved = Math.abs(e.clientX-downPos.x)+Math.abs(e.clientY-downPos.y);
+    if (moved<4 && e.target.closest('.gnode')) enterFeature(downPos.id);
+    downPos = null;
+  });
+  function enterFeature(featureId){
+    const feat = constellationNodes.find(n=>n.id===featureId);
+    inFeature = true; constellationCanvas.classList.add('hidden'); featureCanvas.classList.remove('hidden'); lensSwitch.classList.add('show');
+    breadcrumb.innerHTML = `<span class="crumb" id="crumbConstellation">Constellation</span><span class="crumb-sep">›</span><span class="crumb current">${feat.title}</span>`;
+    document.getElementById('crumbConstellation').addEventListener('click', exitFeature);
+    document.getElementById('impactPanel').classList.remove('open');
+    mountFeatureGraph(); updateHint();
+  }
+  function exitFeature(){
+    inFeature = false; constellationCanvas.classList.remove('hidden'); featureCanvas.classList.add('hidden'); lensSwitch.classList.remove('show');
+    breadcrumb.innerHTML = `<span class="crumb current" id="crumbConstellation">Constellation</span>`;
+    document.getElementById('impactPanel').classList.remove('open'); updateHint(); syncZoomLabel();
+  }
+  lensSwitch.querySelectorAll('.lens-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      lensSwitch.querySelectorAll('.lens-btn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+      currentLens = btn.dataset.lens; document.getElementById('impactPanel').classList.remove('open'); mountFeatureGraph(); updateHint();
+    });
+  });
+  document.getElementById('addNodeBtn').addEventListener('click', ()=>{ (inFeature?featureGraph:constellationGraph).addNode(); });
+  document.getElementById('zoomInBtn').addEventListener('click', ()=>(inFeature?featureGraph:constellationGraph).zoomIn());
+  document.getElementById('zoomOutBtn').addEventListener('click', ()=>(inFeature?featureGraph:constellationGraph).zoomOut());
+  document.getElementById('zoomResetBtn').addEventListener('click', ()=>(inFeature?featureGraph:constellationGraph).zoomReset());
+  syncZoomLabel = function(){ const g = inFeature?featureGraph:constellationGraph; if (g) zoomLabel.textContent = Math.round(g.scale*100)+'%'; };
+  function updateHint(){
+    if (inFeature){ const ln = currentLens.charAt(0).toUpperCase()+currentLens.slice(1); statusHint.textContent = `Feature Space · ${ln} lens · scroll to zoom, drag empty space to pan`; }
+    else statusHint.textContent = `Constellation · ${constellationNodes.length} features · scroll to zoom, drag empty space to pan`;
+  }
+  syncZoomLabel();
+
+  // ================= EVOLUTION GRAPH =================
+  const evoIcon = { intended:'◌', approved:'○', implemented:'●', drifted:'⚠', error:'✕' };
+
+  const evoData = {
+    id:'root', title:'Food Ordering App', status:'implemented', tags:[], children:[
+      { id:'browse', title:'Browse Restaurants', status:'implemented', tags:[], children:[
+        { id:'cuisine', title:'Added cuisine search', status:'implemented', tags:[], children:[
+          { id:'debounce', title:'Added debounce', status:'implemented', tags:[], children:[] }
+        ]},
+        { id:'distance', title:'Added distance sorting', status:'implemented', tags:[], children:[] },
+        { id:'card', title:'Restaurant card', status:'implemented', tags:[], children:[
+          { id:'rating-badge', title:'Added rating badge', status:'implemented', tags:[], children:[] },
+          { id:'delivery-est', title:'Added delivery-time estimate', status:'implemented', tags:[], children:[] }
+        ]}
+      ]},
+      { id:'login', title:'Login', status:'implemented', tags:[], children:[
+        { id:'jwt', title:'Added JWT auth', status:'implemented', tags:['security'], children:[
+          { id:'expiry', title:'Fixed expiry bug', status:'implemented', tags:['security'], children:[] },
+          { id:'refresh', title:'Added refresh tokens', status:'implemented', tags:['security','backend'], children:[],
+            detail:{ prompt:'Add refresh token support so users stay logged in',
+              summary:'Issues a long-lived refresh token alongside the JWT; /auth/refresh exchanges it for a new access token without re-authentication.',
+              files:[{path:'src/auth/jwt.ts',range:'88–141'},{path:'src/auth/refresh.ts',range:'1–62'}],
+              annotation:'7-day refresh window — matches the food-delivery session pattern where users order weekly, not daily.' } }
+        ]},
+        { id:'email-val', title:'Added email validation', status:'implemented', tags:['security'], children:[] },
+        { id:'resp-time', title:'Improved response time', status:'implemented', tags:['backend'], children:[] },
+        { id:'header', title:'Login header', status:'implemented', tags:['frontend'], children:[
+          { id:'height', title:'Increased height', status:'implemented', tags:[], children:[] },
+          { id:'search-bar', title:'Added search bar', status:'implemented', tags:[], children:[
+            { id:'autocomplete', title:'Added autocomplete', status:'implemented', tags:[], children:[] }
+          ]}
+        ]},
+        { id:'remember', title:'Added remember me', status:'drifted', tags:['frontend'], children:[],
+          detail:{ prompt:'Add a remember me checkbox to login',
+            summary:'Checkbox on the login form; when checked, extends session lifetime to 30 days.',
+            files:[{path:'src/auth/login.ts',range:'42–78'},{path:'src/ui/LoginForm.tsx',range:'15–34'}],
+            annotation:'30-day window chosen deliberately — repeat-order behaviour is weekly.',
+            drift:{ issue:'Session lifetime is now hardcoded to 24h. The 30-day extension this node describes no longer exists in the code.',
+              cause:'Modified outside PlanMap — no approved plan node corresponds to this change.' } } }
+      ]},
+      { id:'cart', title:'Cart', status:'implemented', tags:[], children:[
+        { id:'cart-items', title:'Add / remove items', status:'implemented', tags:[], children:[] },
+        { id:'qty', title:'Quantity stepper', status:'implemented', tags:[], children:[] },
+        { id:'promo', title:'Added promo code field', status:'intended', tags:[], children:[] }
+      ]},
+      { id:'checkout', title:'Checkout', status:'implemented', tags:[], children:[
+        { id:'stripe', title:'Stripe integration', status:'implemented', tags:['backend'], children:[
+          { id:'saved-cards', title:'Added saved cards', status:'implemented', tags:['security'], children:[] }
+        ]},
+        { id:'address', title:'Address selection', status:'implemented', tags:[], children:[] },
+        { id:'confirm-email', title:'Order confirmation email', status:'error', tags:['backend'], children:[],
+          detail:{ summary:'Sends order confirmation via the transactional email service after payment succeeds.',
+            files:[{path:'src/checkout/confirmEmail.ts',range:'1–40'}],
+            drift:{ issue:'The email template ID this node references was deleted from the provider dashboard. Sends are failing silently.', cause:'Linked code is broken or missing.' } } }
+      ]},
+      { id:'tracking', title:'Order Tracking', status:'implemented', tags:[], children:[
+        { id:'live-status', title:'Live status updates', status:'implemented', tags:['backend'], children:[] },
+        { id:'driver-map', title:'Driver map view', status:'implemented', tags:['frontend'], children:[] }
+      ]}
+    ]
+  };
+
+  let evoSelectedId = null, evoActiveTag = 'all';
+  const evoCollapsed = new Set();
+
+  function pruneByTag(node, tag){
+    if (tag==='all') return node;
+    const kids = (node.children||[]).map(c=>pruneByTag(c,tag)).filter(Boolean);
+    const matches = (node.tags||[]).includes(tag);
+    if (matches || kids.length) return Object.assign({}, node, { children:kids });
+    return null;
+  }
+
+  function evoRenderTree(){
+    const panel = document.getElementById('evoTreePanel');
+    panel.innerHTML = '';
+    const label = document.createElement('div');
+    label.className = 'evo-root-label';
+    label.textContent = evoData.title;
+    panel.appendChild(label);
+    const filtered = evoActiveTag==='all' ? evoData.children : evoData.children.map(c=>pruneByTag(c, evoActiveTag)).filter(Boolean);
+    filtered.forEach(child => panel.appendChild(evoBuildRow(child, 0)));
+  }
+
+  function evoBuildRow(node, depth){
+    const wrap = document.createElement('div');
+    wrap.className = 'evo-node';
+    const row = document.createElement('div');
+    row.className = 'evo-row' + (node.id===evoSelectedId ? ' selected' : '');
+    const hasKids = node.children && node.children.length>0;
+    const forcedOpen = evoActiveTag !== 'all';
+    const defaultCollapsed = depth>=2 && !forcedOpen;
+    const resolvedCollapsed = forcedOpen ? false : (evoCollapsed.has(node.id) || defaultCollapsed);
+    const tagsHtml = (node.tags||[]).map(t=>`<span class="evo-tag-dot ${t}" title="${t}"></span>`).join('');
+    row.innerHTML = `
+      <span class="evo-toggle ${hasKids?'':'leaf'}">${hasKids ? (resolvedCollapsed?'▸':'▾') : ''}</span>
+      <span class="evo-status-icon ${node.status}">${evoIcon[node.status]||''}</span>
+      <span class="evo-title">${node.title}</span>
+      <span class="evo-tags">${tagsHtml}</span>`;
+    wrap.appendChild(row);
+
+    const childrenWrap = document.createElement('div');
+    childrenWrap.className = 'evo-children';
+    if (resolvedCollapsed) childrenWrap.style.display = 'none';
+    if (hasKids){ node.children.forEach(c => childrenWrap.appendChild(evoBuildRow(c, depth+1))); wrap.appendChild(childrenWrap); }
+
+    row.querySelector('.evo-toggle').addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if (!hasKids) return;
+      const nowHidden = childrenWrap.style.display !== 'none';
+      childrenWrap.style.display = nowHidden ? 'none' : '';
+      e.target.textContent = nowHidden ? '▸' : '▾';
+      if (nowHidden) evoCollapsed.add(node.id); else evoCollapsed.delete(node.id);
+    });
+    row.addEventListener('click', ()=>{
+      evoSelectedId = node.id;
+      document.querySelectorAll('.evo-row').forEach(r=>r.classList.remove('selected'));
+      row.classList.add('selected');
+      evoOpenDetail(node);
+    });
+    return wrap;
+  }
+
+  function evoOpenDetail(node){
+    const panel = document.getElementById('evoDetailPanel');
+    const inner = document.getElementById('evoDetailInner');
+    panel.classList.add('open');
+    const d = node.detail || {};
+    const tagBadges = (node.tags||[]).map(t=>`<div class="badge tag-${t}">${t}</div>`).join('') || '<div class="badge">untagged</div>';
+    let driftBlock = '';
+    if (d.drift){
+      driftBlock = `<div class="impact-section"><div class="h">Drift</div><div class="drift-callout"><div class="h">${node.status==='error'?'Error':'Drifted'}</div>${d.drift.issue}<br/><br/><span style="color:var(--text-mid)">${d.drift.cause||''}</span></div></div>`;
+    }
+    inner.innerHTML = `
+      <div class="impact-head"><h3>${node.title}</h3><div class="impact-close" id="evoDetailClose">✕</div></div>
+      <div class="impact-sub">EVOLUTION NODE · ${node.status.toUpperCase()}</div>
+      <div class="impact-section"><div class="h">Tags</div><div class="badge-row">${tagBadges}</div></div>
+      ${d.prompt ? `<div class="impact-section"><div class="h">Original prompt</div><p>“${d.prompt}”</p></div>` : ''}
+      <div class="impact-section"><div class="h">Summary</div><p>${d.summary || 'Implemented as part of this feature. No further detail recorded yet.'}</p></div>
+      ${(d.files && d.files.length) ? `<div class="impact-section"><div class="h">Linked code</div>${d.files.map(f=>`<div class="file-chip">${f.path}<span class="range">${f.range}</span></div>`).join('')}</div>` : ''}
+      ${driftBlock}
+      ${d.annotation ? `<div class="impact-section"><div class="h">Annotation — the why</div><p>${d.annotation}</p></div>` : ''}
+    `;
+    document.getElementById('evoDetailClose').addEventListener('click', ()=>panel.classList.remove('open'));
+  }
+
+  document.getElementById('tagSwitch').querySelectorAll('.lens-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.getElementById('tagSwitch').querySelectorAll('.lens-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      evoActiveTag = btn.dataset.tag;
+      document.getElementById('evoDetailPanel').classList.remove('open');
+      evoRenderTree();
+    });
+  });
+  document.getElementById('evoExpandBtn').addEventListener('click', ()=>{
+    evoCollapsed.clear();
+    document.querySelectorAll('.evo-children').forEach(c=>c.style.display='');
+    document.querySelectorAll('.evo-toggle').forEach(t=>{ if(t.textContent) t.textContent='▾'; });
+  });
+  document.getElementById('evoCollapseBtn').addEventListener('click', ()=>{
+    function markDeep(n, depth){
+      if (depth>=2 && n.children && n.children.length) evoCollapsed.add(n.id);
+      if (n.children) n.children.forEach(c=>markDeep(c, depth+1));
+    }
+    evoData.children.forEach(n=>markDeep(n, 0));
+    evoRenderTree();
+  });
+  evoRenderTree();
+
+  // ================= NAV RAIL: PlanMap / Evolution (radio) + Chat (toggle) =================
+  const views = { planmap: document.getElementById('viewPlanmap'), evolution: document.getElementById('viewEvolution') };
+  const tabLabel = document.getElementById('tabLabel');
+  const tabDot = document.getElementById('tabDot');
+  const labels = { planmap:'Plan Graph — Food Ordering App', evolution:'Evolution Graph — Food Ordering App' };
+  const dotColors = { planmap:'var(--lens-business)', evolution:'var(--lens-backend)' };
+  const chatPanel = document.getElementById('chatPanel');
+  const chatNavBtn = document.querySelector('.nav-icon-btn[data-nav="chat"]');
+  let chatOpen = false;
+
+  function setMainView(key){
+    document.querySelectorAll('.nav-icon-btn[data-nav="planmap"], .nav-icon-btn[data-nav="evolution"]').forEach(i=>i.classList.remove('active'));
+    document.querySelector(`.nav-icon-btn[data-nav="${key}"]`).classList.add('active');
+    Object.keys(views).forEach(k=> views[k].classList.toggle('hidden', k!==key));
+    tabLabel.textContent = labels[key];
+    tabDot.style.background = dotColors[key];
+  }
+  function setChatOpen(open){
+    chatOpen = open;
+    chatPanel.classList.toggle('open', chatOpen);
+    chatNavBtn.classList.toggle('active', chatOpen);
+  }
+
+  document.querySelector('.nav-icon-btn[data-nav="planmap"]').addEventListener('click', ()=> setMainView('planmap'));
+  document.querySelector('.nav-icon-btn[data-nav="evolution"]').addEventListener('click', ()=> setMainView('evolution'));
+  chatNavBtn.addEventListener('click', ()=> setChatOpen(!chatOpen));
+  document.getElementById('chatCloseBtn').addEventListener('click', ()=> setChatOpen(false));
+
+  // ================= CHAT =================
+  const chatThread = document.getElementById('chatThread');
+  const chatInput = document.getElementById('chatInput');
+  function addChatMsg(role, text){
+    const div = document.createElement('div');
+    div.className = 'chat-msg ' + role;
+    div.innerHTML = role==='system'
+      ? `<div class="chat-bubble">${text}</div>`
+      : `<div class="chat-role">${role==='user'?'You':'PlanMap'}</div><div class="chat-bubble">${text}</div>`;
+    chatThread.appendChild(div);
+    chatThread.scrollTop = chatThread.scrollHeight;
+  }
+  function sendChat(){
+    const val = chatInput.value.trim();
+    if (!val) return;
+    addChatMsg('user', val);
+    chatInput.value = '';
+    setTimeout(()=>{
+      addChatMsg('system', 'Triage running…');
+      setTimeout(()=> addChatMsg('assistant', `Got it — reading the related code now. I'll open a Plan Graph once I have a grounded draft.`), 500);
+    }, 300);
+  }
+  document.getElementById('chatSend').addEventListener('click', sendChat);
+  chatInput.addEventListener('keydown', (e)=>{ if (e.key==='Enter') sendChat(); });
+  document.getElementById('openPlanFromChat').addEventListener('click', ()=>{ setMainView('planmap'); });
+})();
+</script>

@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+out/
+.turbo/
+*.tsbuildinfo
+
+# Framework caches
+.next/
+.vite/
+.cache/
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Env & secrets (BYO LLM keys must never be committed)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# NOTE: .planmap/ is intentionally NOT ignored — the plan graph is committed to git by design.
+
+# Local scratch
+/tmp/
+scratch/
