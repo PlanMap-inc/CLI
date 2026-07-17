@@ -610,8 +610,8 @@
 .planmap-root .pm-lens-swatch[data-lens='security'] {
   background: var(--pm-lens-security);
 }
-.planmap-root .pm-lens-swatch[data-lens='database'] {
-  background: var(--pm-lens-database);
+.planmap-root .pm-lens-swatch[data-lens='frontend'] {
+  background: var(--pm-tag-frontend);
 }
 
 /* ================================ status bar ================================ */

@@ -16,8 +16,13 @@ export const PLAN_STATUSES: readonly PlanStatus[] = [
   'error',
 ] as const;
 
-/** The Feature-Space lenses — each reframes the same feature in a different register. */
-export type Lens = 'business' | 'backend' | 'security' | 'database';
+/**
+ * The Feature-Space lenses — each reframes the same feature in a different register.
+ * These mirror the engine's lens tags exactly so a lens can filter on real data;
+ * `business` is the unfiltered default. (A `database` lens returns with the DB
+ * connector in a later milestone.)
+ */
+export type Lens = 'business' | 'backend' | 'security' | 'frontend';
 
 /**
  * Where a claim came from. This is surfaced in the UI because "parser-grounded,
