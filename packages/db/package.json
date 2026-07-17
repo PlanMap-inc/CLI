@@ -1,0 +1,20 @@
+{
+  "name": "@planmap/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PlanMap storage adapter. M1: LocalStore (JSON-canonical .planmap store) + a versioned store and forward-migration runner.",
+  "license": "Apache-2.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src --max-warnings 0"
+  },
+  "dependencies": {
+    "@planmap/core": "workspace:*"
+  }
+}
