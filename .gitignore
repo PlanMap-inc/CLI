@@ -36,6 +36,8 @@ Thumbs.db
 *.swp
 
 # NOTE: .planmap/ is intentionally NOT ignored — the plan graph is committed to git by design.
+# Exception: the example repos' stores are generated on demo startup, so keep them out.
+examples/**/.planmap/
 
 # Local scratch
 /tmp/
