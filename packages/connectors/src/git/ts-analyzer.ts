@@ -3,7 +3,7 @@ import { basename, relative } from 'node:path';
 import type { DepEdge, LensTag, RepoStructure, RepoUnit } from '@planmap/core';
 import { type Identifier, Node, Project } from 'ts-morph';
 
-import { normalizeAndHash } from '../fingerprint';
+import { fingerprintRange } from '../fingerprint';
 
 function toRel(dir: string, abs: string): string {
   return relative(dir, abs).replaceAll('\\', '/');
@@ -116,7 +116,12 @@ export function analyzeTypeScriptRepo(dir: string): RepoStructure {
         file: rel,
         range: [decl.getStartLineNumber(), decl.getEndLineNumber()],
         symbol: name,
-        hash: normalizeAndHash(decl.getText()),
+        // Fingerprint the line range exactly as drift verification will, so an
+        // unchanged file never false-positives as drift.
+        hash: fingerprintRange(sf.getFullText(), [
+          decl.getStartLineNumber(),
+          decl.getEndLineNumber(),
+        ]),
         lensTags: lensTagsFor(rel),
       });
     }
