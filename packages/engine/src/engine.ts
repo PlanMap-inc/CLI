@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { analyzeTypeScriptRepo, fingerprintRange } from '@planmap/connectors';
+import { analyzeRepo, fingerprintRange } from '@planmap/connectors';
 import {
   analyzeImpact,
   autoMap,
@@ -46,7 +46,7 @@ export async function mapRepo(
   storeRoot: string = repoRoot,
   now: string = new Date().toISOString(),
 ): Promise<MapResult> {
-  const structure = analyzeTypeScriptRepo(repoRoot);
+  const structure = await analyzeRepo(repoRoot);
   const { nodes, edges } = autoMap(structure, now);
   const store = await LocalStore.open(storeRoot);
   await store.transaction(async (tx) => {
@@ -79,7 +79,7 @@ export async function impactForNode(
   const store = await LocalStore.open(storeRoot);
   const node = await store.getNode(nodeId);
   if (!node) throw new Error(`Node not found: ${nodeId}`);
-  const structure = analyzeTypeScriptRepo(repoRoot);
+  const structure = await analyzeRepo(repoRoot);
   const depgraph = buildDepGraph(structure.facts);
   const targets: ImpactTarget[] = node.linked_code.map((link) => ({
     file: link.path,
