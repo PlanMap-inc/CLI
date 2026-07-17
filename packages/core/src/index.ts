@@ -11,3 +11,4 @@ export * from './connector';
 export * from './llm';
 export * from './impact';
 export * from './entitlements';
+export * from './depgraph';
