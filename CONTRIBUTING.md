@@ -50,4 +50,4 @@ Monorepo (pnpm workspaces + Turborepo). Full rules in [`docs/CONVENTIONS.md`](do
 
 ## Testing philosophy
 
-Vitest. Engine logic is unit-tested against `examples/sample-org` (a fixture with a *known* dependency structure), so impact-analysis accuracy and drift detection are measured on every commit. **Say "unsure", never guess** — a confidently-wrong result is a test failure, not an acceptable approximation.
+Vitest. Engine logic is unit-tested against `examples/sample-org` (a fixture with a _known_ dependency structure), so impact-analysis accuracy and drift detection are measured on every commit. **Say "unsure", never guess** — a confidently-wrong result is a test failure, not an acceptable approximation.
