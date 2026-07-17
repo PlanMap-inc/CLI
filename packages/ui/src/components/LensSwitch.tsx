@@ -10,7 +10,7 @@ export const LENSES: readonly LensDef[] = [
   { key: 'business', label: 'Business' },
   { key: 'backend', label: 'Backend' },
   { key: 'security', label: 'Security' },
-  { key: 'database', label: 'Database' },
+  { key: 'frontend', label: 'Frontend' },
 ] as const;
 
 interface LensSwitchProps {
