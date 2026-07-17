@@ -17,7 +17,14 @@ function unitToNode(unit: RepoUnit, now: string): Node {
     edges_out: [],
     lens_tags: unit.lensTags ?? [],
     linked_code: unit.file
-      ? [{ path: unit.file, range: unit.range ?? [1, 1], hash: unit.hash ?? '' }]
+      ? [
+          {
+            path: unit.file,
+            range: unit.range ?? [1, 1],
+            hash: unit.hash ?? '',
+            symbol: unit.symbol,
+          },
+        ]
       : [],
     depends_on: [],
     depended_on_by: [],

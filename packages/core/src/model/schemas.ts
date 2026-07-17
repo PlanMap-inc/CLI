@@ -20,6 +20,8 @@ export const LinkedCodeSchema = z.object({
   path: z.string(),
   range: z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]),
   hash: z.string(),
+  /** The symbol this range defines, when known — enables symbol-precise impact. */
+  symbol: z.string().optional(),
   /** Recomputed on re-read; present once a verification has run. */
   current_hash: z.string().optional(),
 });
