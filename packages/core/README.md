@@ -1,6 +1,6 @@
 # @planmap/core
 
-The PlanMap **engine**. Pure TypeScript, **zero I/O dependencies** (no filesystem, network, database, DOM, or editor). Everything that decides *what the code should be*, *what a change breaks*, and *whether reality has drifted from approved intent* lives here. Surfaces (`apps/cli`, `apps/web`, the VS Code extension) are thin transports over this package.
+The PlanMap **engine**. Pure TypeScript, **zero I/O dependencies** (no filesystem, network, database, DOM, or editor). Everything that decides _what the code should be_, _what a change breaks_, and _whether reality has drifted from approved intent_ lives here. Surfaces (`apps/cli`, `apps/web`, the VS Code extension) are thin transports over this package.
 
 ## What it contains
 

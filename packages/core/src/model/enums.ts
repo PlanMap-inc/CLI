@@ -46,7 +46,14 @@ export type Origin = z.infer<typeof OriginSchema>;
 export const ORIGINS = OriginSchema.options;
 
 /** Semantic relationship kinds. Decided by a parser/connector, never by the LLM. */
-export const EdgeTypeSchema = z.enum(['imports', 'calls', 'depends_on', 'deploys', 'reads', 'writes']);
+export const EdgeTypeSchema = z.enum([
+  'imports',
+  'calls',
+  'depends_on',
+  'deploys',
+  'reads',
+  'writes',
+]);
 export type EdgeType = z.infer<typeof EdgeTypeSchema>;
 export const EDGE_TYPES = EdgeTypeSchema.options;
 
