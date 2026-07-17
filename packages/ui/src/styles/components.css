@@ -1,0 +1,369 @@
+/* PlanMap component styles. All selectors are scoped under .planmap-root so the
+ * library never leaks into a host page. Class names are prefixed `pm-`. */
+
+/* ============================ status vocabulary ============================ */
+.planmap-root .pm-status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.planmap-root .pm-status-dot[data-status='intended'] {
+  border: 1.3px dashed var(--pm-text-low);
+}
+.planmap-root .pm-status-dot[data-status='approved'] {
+  border: 1.3px solid var(--pm-text-hi);
+  background: transparent;
+}
+.planmap-root .pm-status-dot[data-status='implemented'] {
+  background: var(--pm-lens-business);
+}
+.planmap-root .pm-status-dot[data-status='drifted'] {
+  background: var(--pm-danger);
+  box-shadow: 0 0 0 3px var(--pm-danger-soft);
+}
+.planmap-root .pm-status-dot[data-status='error'] {
+  background: var(--pm-danger);
+  box-shadow: 0 0 0 1px var(--pm-danger);
+}
+
+.planmap-root .pm-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  color: var(--pm-text-mid);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.planmap-root .pm-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-sp-5);
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  color: var(--pm-text-mid);
+}
+.planmap-root .pm-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+}
+
+/* ================================ panels ================================ */
+.planmap-root .pm-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-sp-4);
+  padding: var(--pm-sp-5);
+  width: 320px;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--pm-surface);
+  border-left: 1px solid var(--pm-border);
+}
+.planmap-root .pm-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--pm-sp-3);
+}
+.planmap-root .pm-panel-title {
+  font-family: var(--pm-font-display);
+  font-size: var(--pm-fs-xl);
+  font-weight: 600;
+  line-height: var(--pm-lh-tight);
+  margin: 0;
+}
+.planmap-root .pm-panel-close {
+  background: transparent;
+  border: none;
+  color: var(--pm-text-low);
+  font-size: var(--pm-fs-lg);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--pm-r-sm);
+  line-height: 1;
+}
+.planmap-root .pm-panel-close:hover {
+  color: var(--pm-text-hi);
+  background: var(--pm-surface-3);
+}
+.planmap-root .pm-panel-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+  margin-top: calc(-1 * var(--pm-sp-2));
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--pm-text-low);
+}
+
+.planmap-root .pm-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-sp-2);
+}
+.planmap-root .pm-section-h {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+  font-family: var(--pm-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: var(--pm-fs-xs);
+  color: var(--pm-text-mid);
+}
+.planmap-root .pm-count {
+  font-size: var(--pm-fs-2xs);
+  color: var(--pm-text-low);
+  background: var(--pm-surface-3);
+  border-radius: var(--pm-r-pill);
+  padding: 1px 7px;
+}
+.planmap-root .pm-prose {
+  font-size: var(--pm-fs-sm);
+  line-height: var(--pm-lh-normal);
+  color: var(--pm-text-hi);
+  margin: 0;
+}
+.planmap-root .pm-empty {
+  font-size: var(--pm-fs-sm);
+  line-height: var(--pm-lh-normal);
+  color: var(--pm-text-mid);
+  margin: 0;
+}
+
+/* ============================ impact: affected ============================ */
+.planmap-root .pm-affected-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pm-sp-2);
+}
+.planmap-root .pm-affected {
+  background: var(--pm-surface-2);
+  border: 1px solid var(--pm-border-soft);
+  border-radius: var(--pm-r-md);
+  padding: var(--pm-sp-2) var(--pm-sp-3);
+}
+.planmap-root .pm-affected-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+}
+.planmap-root .pm-path {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  color: var(--pm-text-hi);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.planmap-root .pm-range {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-2xs);
+  color: var(--pm-text-low);
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.planmap-root .pm-prov {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: var(--pm-r-sm);
+  border: 1px solid var(--pm-border);
+  flex-shrink: 0;
+}
+.planmap-root .pm-prov[data-prov='parser'] {
+  color: var(--pm-ok);
+  border-color: rgba(127, 224, 176, 0.35);
+  background: rgba(127, 224, 176, 0.08);
+}
+.planmap-root .pm-prov[data-prov='llm'] {
+  color: var(--pm-lens-backend);
+  border-color: rgba(111, 168, 255, 0.35);
+  background: rgba(111, 168, 255, 0.08);
+}
+.planmap-root .pm-prov[data-prov='unsure'] {
+  color: var(--pm-warn);
+  border-color: rgba(255, 216, 115, 0.35);
+  background: rgba(255, 216, 115, 0.08);
+}
+.planmap-root .pm-why {
+  font-size: var(--pm-fs-sm);
+  line-height: var(--pm-lh-normal);
+  color: var(--pm-text-hi);
+  margin: var(--pm-sp-2) 0 0;
+}
+.planmap-root .pm-why-absent {
+  color: var(--pm-text-low);
+  font-style: italic;
+}
+
+/* ================================ badges ================================ */
+.planmap-root .pm-badge-row {
+  display: flex;
+  gap: var(--pm-sp-2);
+  flex-wrap: wrap;
+}
+.planmap-root .pm-badge {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  padding: 4px 10px;
+  border-radius: var(--pm-r-sm);
+  border: 1px solid var(--pm-border);
+  color: var(--pm-text-mid);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+}
+.planmap-root .pm-badge[data-risk='high'],
+.planmap-root .pm-badge[data-risk='medium'] {
+  color: var(--pm-lens-security);
+  border-color: rgba(255, 159, 111, 0.35);
+  background: rgba(255, 159, 111, 0.08);
+}
+.planmap-root .pm-badge[data-risk='low'] {
+  color: var(--pm-text-mid);
+}
+.planmap-root .pm-badge[data-confidence='high'] {
+  color: var(--pm-ok);
+  border-color: rgba(127, 224, 176, 0.35);
+  background: rgba(127, 224, 176, 0.08);
+}
+.planmap-root .pm-badge[data-confidence='inferred'],
+.planmap-root .pm-badge[data-confidence='unsure'],
+.planmap-root .pm-badge[data-confidence='low'] {
+  color: var(--pm-warn);
+  border-color: rgba(255, 216, 115, 0.35);
+  background: rgba(255, 216, 115, 0.08);
+}
+.planmap-root .pm-flag[data-flag='security'],
+.planmap-root .pm-flag[data-flag='auth'] {
+  color: var(--pm-lens-security);
+  border-color: rgba(255, 159, 111, 0.35);
+  background: rgba(255, 159, 111, 0.08);
+}
+.planmap-root .pm-flag[data-flag='backend'] {
+  color: var(--pm-lens-backend);
+  border-color: rgba(111, 168, 255, 0.35);
+  background: rgba(111, 168, 255, 0.08);
+}
+.planmap-root .pm-flag[data-flag='frontend'] {
+  color: var(--pm-tag-frontend);
+  border-color: rgba(200, 155, 255, 0.35);
+  background: rgba(200, 155, 255, 0.08);
+}
+
+/* ============================ drift callout ============================ */
+.planmap-root .pm-drift-callout {
+  background: var(--pm-danger-soft);
+  border: 1px solid rgba(255, 92, 92, 0.3);
+  border-radius: var(--pm-r-md);
+  padding: var(--pm-sp-3);
+}
+.planmap-root .pm-drift-h {
+  color: var(--pm-danger);
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: var(--pm-sp-2);
+}
+.planmap-root .pm-drift-cause {
+  color: var(--pm-text-mid);
+  font-size: var(--pm-fs-sm);
+  line-height: var(--pm-lh-normal);
+  margin: var(--pm-sp-2) 0 0;
+}
+
+/* ============================ evolution tree ============================ */
+.planmap-root .pm-evo-tree {
+  padding: var(--pm-sp-4) var(--pm-sp-3) var(--pm-sp-6) var(--pm-sp-4);
+  overflow: auto;
+  height: 100%;
+}
+.planmap-root .pm-evo-root {
+  font-family: var(--pm-font-display);
+  font-size: var(--pm-fs-md);
+  font-weight: 700;
+  color: var(--pm-text-hi);
+  padding: var(--pm-sp-2) var(--pm-sp-3) var(--pm-sp-3);
+}
+.planmap-root .pm-evo-children {
+  margin-left: 15px;
+  padding-left: 14px;
+  border-left: 1px solid var(--pm-border-soft);
+}
+.planmap-root .pm-evo-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pm-sp-2);
+  padding: 6px var(--pm-sp-2);
+  border-radius: var(--pm-r-sm);
+  cursor: pointer;
+  outline: none;
+}
+.planmap-root .pm-evo-row:hover {
+  background: var(--pm-surface-2);
+}
+.planmap-root .pm-evo-row:focus-visible {
+  box-shadow: 0 0 0 2px var(--pm-lens-backend);
+}
+.planmap-root .pm-evo-row.is-selected {
+  background: var(--pm-surface-3);
+}
+.planmap-root .pm-evo-row[data-drift='true'] .pm-evo-title {
+  color: var(--pm-danger);
+}
+.planmap-root .pm-evo-toggle {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pm-text-low);
+  font-size: 9px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+.planmap-root .pm-evo-toggle.is-leaf {
+  visibility: hidden;
+}
+.planmap-root .pm-evo-title {
+  font-size: var(--pm-fs-sm);
+  color: var(--pm-text-hi);
+}
+.planmap-root .pm-evo-tags {
+  display: flex;
+  gap: var(--pm-sp-1);
+  margin-left: var(--pm-sp-1);
+}
+.planmap-root .pm-tag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pm-text-low);
+}
+.planmap-root .pm-tag-dot[data-tag='security'] {
+  background: var(--pm-lens-security);
+}
+.planmap-root .pm-tag-dot[data-tag='backend'] {
+  background: var(--pm-lens-backend);
+}
+.planmap-root .pm-tag-dot[data-tag='frontend'] {
+  background: var(--pm-tag-frontend);
+}
