@@ -15,3 +15,4 @@ export * from './depgraph';
 export * from './drift';
 export * from './project';
 export * from './handoff';
+export * from './automap';
