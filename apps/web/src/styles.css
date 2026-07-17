@@ -1,0 +1,106 @@
+/* App-level styles: the base reset plus a few composition classes specific to the
+ * web app (the design system itself lives in @planmap/ui/styles.css). */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background: #0a0c11;
+}
+
+/* full-viewport shell */
+#root .pm-shell {
+  height: 100vh;
+}
+
+/* right-drawer composition (impact + actions + handoff) */
+.planmap-root .pm-panel-stack {
+  width: 340px;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--pm-surface);
+  border-left: 1px solid var(--pm-border);
+  display: flex;
+  flex-direction: column;
+}
+.planmap-root .pm-panel-stack .pm-panel {
+  width: 100%;
+  border-left: none;
+  overflow: visible;
+}
+.planmap-root .pm-panel-actions {
+  display: flex;
+  gap: var(--pm-sp-2);
+  padding: 0 var(--pm-sp-5) var(--pm-sp-4);
+}
+.planmap-root .pm-handoff {
+  padding: 0 var(--pm-sp-5) var(--pm-sp-5);
+}
+.planmap-root .pm-code-block {
+  margin: 0;
+  padding: var(--pm-sp-3);
+  background: var(--pm-void);
+  border: 1px solid var(--pm-border-soft);
+  border-radius: var(--pm-r-md);
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  line-height: var(--pm-lh-normal);
+  color: var(--pm-text-hi);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+.planmap-root .pm-tree-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+/* splash / loading / error */
+.planmap-root .pm-splash {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pm-sp-4);
+  text-align: center;
+  padding: var(--pm-sp-8);
+}
+.planmap-root .pm-splash-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--pm-r-md);
+  background: linear-gradient(135deg, var(--pm-lens-business), var(--pm-lens-backend));
+  animation: pm-pulse 1.6s var(--pm-ease) infinite;
+}
+@keyframes pm-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+}
+.planmap-root .pm-splash-text {
+  font-family: var(--pm-font-display);
+  font-size: var(--pm-fs-lg);
+  color: var(--pm-text-mid);
+  line-height: var(--pm-lh-normal);
+}
+.planmap-root .pm-splash[data-tone='error'] .pm-splash-mark {
+  background: var(--pm-danger);
+  animation: none;
+}
+.planmap-root .pm-splash-detail {
+  font-family: var(--pm-font-mono);
+  font-size: var(--pm-fs-xs);
+  color: var(--pm-text-low);
+}
