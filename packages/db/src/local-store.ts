@@ -33,6 +33,10 @@ async function readJsonDir(dir: string): Promise<Record<string, unknown>[]> {
 
 const pretty = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
 
+/** Node/edge ids contain ':' '/' '#' — encode them into safe, flat filenames.
+ *  The canonical id lives inside the JSON, so reads never depend on the name. */
+const safeName = (id: string): string => encodeURIComponent(id);
+
 /**
  * The persistent, JSON-canonical `.planmap` store. Files under `nodes/`,
  * `edges/`, and `drift/` are the source of truth; an in-memory index (built on
@@ -75,10 +79,10 @@ export class LocalStore implements StorageAdapter {
       config.version = SCHEMA_VERSION;
       await writeFile(configPath(root), pretty(config));
       for (const raw of rawNodes) {
-        await writeFile(join(nodesDir(root), `${String(raw['id'])}.json`), pretty(raw));
+        await writeFile(join(nodesDir(root), `${safeName(String(raw['id']))}.json`), pretty(raw));
       }
       for (const raw of rawEdges) {
-        await writeFile(join(edgesDir(root), `${String(raw['id'])}.json`), pretty(raw));
+        await writeFile(join(edgesDir(root), `${safeName(String(raw['id']))}.json`), pretty(raw));
       }
     }
 
@@ -96,7 +100,7 @@ export class LocalStore implements StorageAdapter {
   }
 
   private async persistNode(node: Node): Promise<void> {
-    await writeFile(join(nodesDir(this.root), `${node.id}.json`), pretty(node));
+    await writeFile(join(nodesDir(this.root), `${safeName(node.id)}.json`), pretty(node));
   }
 
   async getNode(id: string): Promise<Node | null> {
@@ -132,7 +136,7 @@ export class LocalStore implements StorageAdapter {
   async putEdge(edge: Edge): Promise<void> {
     const parsed = EdgeSchema.parse(edge);
     this.edges.set(parsed.id, structuredClone(parsed));
-    await writeFile(join(edgesDir(this.root), `${parsed.id}.json`), pretty(parsed));
+    await writeFile(join(edgesDir(this.root), `${safeName(parsed.id)}.json`), pretty(parsed));
   }
 
   async listDrifted(): Promise<Node[]> {
@@ -192,7 +196,7 @@ export class LocalStore implements StorageAdapter {
       await mkdir(edgesDir(this.root), { recursive: true });
       for (const n of nodesSnap) await this.persistNode(n);
       for (const e of edgesSnap) {
-        await writeFile(join(edgesDir(this.root), `${e.id}.json`), pretty(e));
+        await writeFile(join(edgesDir(this.root), `${safeName(e.id)}.json`), pretty(e));
       }
       throw error;
     }
