@@ -61,18 +61,52 @@ function getDeclarationName(node) {
     return "<anonymous>";
 }
 
+function getExpressionText(node) {
+    if (!node) {
+        return null;
+    }
+
+    if (node.type === "identifier") {
+        return node.text;
+    }
+
+    if (node.type === "member_expression") {
+        const object = node.childForFieldName("object");
+        const property = node.childForFieldName("property");
+
+        const objectText = getExpressionText(object);
+
+        if (objectText && property) {
+            return `${objectText}.${property.text}`;
+        }
+    }
+
+    return null;
+}
 // This function creates a simple record for a declaration.
 // It stores the declaration's type, name, and exact location in the file.
 // This information is later used to build and print our structural inventory.
 function createDeclaration(
     node,
     name = getDeclarationName(node),
-    kind = node.type
+    kind = node.type,
+    modifiers = []
 ) {
+    const identityParts = [
+        name,
+        kind
+    ];
+
+    if (modifiers.includes("static")) {
+        identityParts.push("static");
+    }
+
     return {
         type: node.type,
         kind,
         name,
+        modifiers,
+        identity: identityParts.join(":"),
 
         startIndex: node.startIndex,
         endIndex: node.endIndex,
@@ -88,7 +122,6 @@ function createDeclaration(
 
 
 
-
 // This function goes through the syntax tree and finds declarations.
 const declarations = [];
 
@@ -96,58 +129,60 @@ function walk(node, scope = []) {
 
     let currentScope = scope;
 
-    // Normal class declaration
+    // Classes
     if (node.type === "class_declaration") {
         const name = getDeclarationName(node);
 
         if (name !== "<anonymous>") {
+            const qualifiedName = [...scope, name].join(".");
+
             declarations.push(
-                createDeclaration(node, name, "class")
+                createDeclaration(node, qualifiedName, "class")
             );
 
             currentScope = [...scope, name];
         }
     }
 
-    // Variable containing a class or function
+    // Variables containing objects, classes, or functions
     if (node.type === "variable_declarator") {
         const name = getDeclarationName(node);
         const value = node.childForFieldName("value");
 
-        // const MyClass = class {}
+        if (
+            value?.type === "object" &&
+            name !== "<anonymous>"
+        ) {
+            currentScope = [...scope, name];
+        }
+
         if (
             value?.type === "class" &&
             name !== "<anonymous>"
         ) {
+            const qualifiedName = [...scope, name].join(".");
+
             declarations.push(
-                createDeclaration(node, name, "class")
+                createDeclaration(node, qualifiedName, "class")
             );
 
             currentScope = [...scope, name];
         }
 
-        // const myFunction = () => {}
-        // const myFunction = function () {}
         if (
-            value?.type === "arrow_function" ||
-            value?.type === "function_expression"
+            (
+                value?.type === "arrow_function" ||
+                value?.type === "function_expression"
+            ) &&
+            name !== "<anonymous>"
         ) {
-            if (name !== "<anonymous>") {
-                const qualifiedName = [
-                    ...scope,
-                    name
-                ].join(".");
+            const qualifiedName = [...scope, name].join(".");
 
-                declarations.push(
-                    createDeclaration(
-                        node,
-                        qualifiedName,
-                        "function"
-                    )
-                );
+            declarations.push(
+                createDeclaration(node, qualifiedName, "function")
+            );
 
-                currentScope = [...scope, name];
-            }
+            currentScope = [...scope, name];
         }
     }
 
@@ -159,22 +194,17 @@ function walk(node, scope = []) {
         const name = getDeclarationName(node);
 
         if (name !== "<anonymous>") {
-            const qualifiedName = [
-                ...scope,
-                name
-            ].join(".");
+            const qualifiedName = [...scope, name].join(".");
 
             declarations.push(
-                createDeclaration(
-                    node,
-                    qualifiedName,
-                    "function"
-                )
+                createDeclaration(node, qualifiedName, "function")
             );
 
             currentScope = [...scope, name];
         }
     }
+
+    
 
     // Methods
     if (node.type === "method_definition") {
@@ -186,15 +216,29 @@ function walk(node, scope = []) {
         ) {
             const name = nameNode.text;
 
-            let kind = "method";
+            const childTypes = node.children.map(
+                child => child.type
+            );
 
-            const firstChild = node.children[0];
+            const modifiers = [];
 
-            if (firstChild?.type === "get") {
-                kind = "getter";
+            if (childTypes.includes("static")) {
+                modifiers.push("static");
             }
 
-            if (firstChild?.type === "set") {
+            if (childTypes.includes("async")) {
+                modifiers.push("async");
+            }
+
+            if (childTypes.includes("*")) {
+                modifiers.push("generator");
+            }
+
+            let kind = "method";
+
+            if (childTypes.includes("get")) {
+                kind = "getter";
+            } else if (childTypes.includes("set")) {
                 kind = "setter";
             }
 
@@ -207,9 +251,15 @@ function walk(node, scope = []) {
                 createDeclaration(
                     node,
                     qualifiedName,
-                    kind
+                    kind,
+                    modifiers
                 )
             );
+
+            currentScope = [
+                ...scope,
+                name
+            ];
         }
     }
 
@@ -239,6 +289,11 @@ function walk(node, scope = []) {
                     "function"
                 )
             );
+
+            currentScope = [
+                ...scope,
+                key.text
+            ];
         }
     }
 
@@ -268,17 +323,35 @@ function walk(node, scope = []) {
                     "function"
                 )
             );
+
+            currentScope = [
+                ...scope,
+                property.text
+            ];
         }
     }
 
-    // Assignments containing functions
+    // Assignments containing objects or functions
     if (node.type === "assignment_expression") {
         const left = node.childForFieldName("left");
         const right = node.childForFieldName("right");
 
+        const leftName = getExpressionText(left);
+
+        // Example: module.exports = {}
         if (
-            left &&
-            left.type === "identifier" &&
+            leftName &&
+            right?.type === "object"
+        ) {
+            currentScope = [
+                ...scope,
+                leftName
+            ];
+        }
+
+        // Example: module.exports.handler = () => {}
+        if (
+            leftName &&
             right &&
             (
                 right.type === "arrow_function" ||
@@ -287,7 +360,7 @@ function walk(node, scope = []) {
         ) {
             const qualifiedName = [
                 ...scope,
-                left.text
+                leftName
             ].join(".");
 
             declarations.push(
@@ -297,10 +370,15 @@ function walk(node, scope = []) {
                     "function"
                 )
             );
+
+            currentScope = [
+                ...scope,
+                leftName
+            ];
         }
     }
 
-    // Traverse children
+    // Visit children using the updated scope
     for (const child of node.namedChildren) {
         walk(child, currentScope);
     }
@@ -311,52 +389,64 @@ function walk(node, scope = []) {
 // It shows the declaration type, name, and its location in the source code.
 function printDeclarations(filePath, declarations) {
 
-    // Print the name of the file being analyzed.
     console.log(`\nFile: ${filePath}\n`);
 
+    const nameWidth =
+        Math.max(
+            "name".length,
+            ...declarations.map(
+                declaration => declaration.name.length
+            )
+        ) + 2;
 
-    // Print the column headings for the output table.
-    // padEnd() is used to keep the columns properly aligned.
     console.log(
         "kind".padEnd(24) +
-        "name".padEnd(20) +
+        "name".padEnd(nameWidth) +
         "location"
     );
 
+    console.log(
+        "-".repeat(24 + nameWidth + 20)
+    );
 
-    // Print a line to separate the headings from the results.
-    console.log("-".repeat(60));
-
-
-    // Go through each declaration found by the walk() function.
     for (const declaration of declarations) {
 
-        // Create a readable location for the declaration.
-        // Example: 10:0-12:1
-        // This means the declaration starts at line 10, column 0
-        // and ends at line 12, column 1.
         const location =
             `${declaration.startLine}:${declaration.startColumn}` +
             `-${declaration.endLine}:${declaration.endColumn}`;
 
+        const displayKind =
+    declaration.modifiers.length > 0
+        ? `${declaration.kind} [${declaration.modifiers.join(", ")}]`
+        : declaration.kind;
 
-        // Print the declaration type, name, and location.
-        console.log(
-    declaration.kind.padEnd(24) +
-    declaration.name.padEnd(30) +
+console.log(
+    displayKind.padEnd(24) +
+    declaration.name.padEnd(nameWidth) +
     location
 );
     }
 
-
-    // Print the total number of declarations found.
-    console.log(`\n${declarations.length} declarations`);
+    console.log(
+        `\n${declarations.length} declarations`
+    );
 }
 
 
 // Start walking through the syntax tree from its root node.
 // This searches the entire JavaScript file for declarations.
 walk(tree.rootNode);
+const identities = new Set();
+
+for (const declaration of declarations) {
+    if (identities.has(declaration.identity)) {
+        console.warn(
+            `Duplicate identity: ${declaration.identity}`
+        );
+    }
+
+    identities.add(declaration.identity);
+}
 
 printDeclarations(filePath, declarations);
 //console.log(tree.rootNode.toString());
