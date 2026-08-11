@@ -129,7 +129,7 @@ function walk(node, scope = []) {
 
     let currentScope = scope;
 
-    // Classes
+    // Normal class declaration
     if (node.type === "class_declaration") {
         const name = getDeclarationName(node);
 
@@ -144,11 +144,12 @@ function walk(node, scope = []) {
         }
     }
 
-    // Variables containing objects, classes, or functions
+    // Variable containing an object, class, or function
     if (node.type === "variable_declarator") {
         const name = getDeclarationName(node);
         const value = node.childForFieldName("value");
 
+        // const api = { ... }
         if (
             value?.type === "object" &&
             name !== "<anonymous>"
@@ -156,6 +157,7 @@ function walk(node, scope = []) {
             currentScope = [...scope, name];
         }
 
+        // const MyClass = class { ... }
         if (
             value?.type === "class" &&
             name !== "<anonymous>"
@@ -163,12 +165,18 @@ function walk(node, scope = []) {
             const qualifiedName = [...scope, name].join(".");
 
             declarations.push(
-                createDeclaration(node, qualifiedName, "class")
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "class"
+                )
             );
 
             currentScope = [...scope, name];
         }
 
+        // const handler = () => {}
+        // const handler = function () {}
         if (
             (
                 value?.type === "arrow_function" ||
@@ -179,7 +187,11 @@ function walk(node, scope = []) {
             const qualifiedName = [...scope, name].join(".");
 
             declarations.push(
-                createDeclaration(node, qualifiedName, "function")
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
             );
 
             currentScope = [...scope, name];
@@ -197,14 +209,37 @@ function walk(node, scope = []) {
             const qualifiedName = [...scope, name].join(".");
 
             declarations.push(
-                createDeclaration(node, qualifiedName, "function")
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
             );
 
             currentScope = [...scope, name];
         }
     }
 
-    
+    // Named function expressions used as independent scopes.
+    // Do not use the name when a parent binder already provides the name.
+    if (node.type === "function_expression") {
+        const name = getDeclarationName(node);
+
+        const parentType = node.parent?.type;
+
+        const alreadyBound =
+            parentType === "variable_declarator" ||
+            parentType === "pair" ||
+            parentType === "field_definition" ||
+            parentType === "assignment_expression";
+
+        if (
+            name !== "<anonymous>" &&
+            !alreadyBound
+        ) {
+            currentScope = [...scope, name];
+        }
+    }
 
     // Methods
     if (node.type === "method_definition") {
@@ -263,82 +298,97 @@ function walk(node, scope = []) {
         }
     }
 
-    // Object properties containing functions
+    // Object properties
     if (node.type === "pair") {
         const key = node.childForFieldName("key");
         const value = node.childForFieldName("value");
 
         if (
             key &&
-            key.type !== "computed_property_name" &&
-            value &&
-            (
-                value.type === "arrow_function" ||
-                value.type === "function_expression"
-            )
+            key.type !== "computed_property_name"
         ) {
-            const qualifiedName = [
-                ...scope,
-                key.text
-            ].join(".");
+            // admin: { ... }
+            if (value?.type === "object") {
+                currentScope = [
+                    ...scope,
+                    key.text
+                ];
+            }
 
-            declarations.push(
-                createDeclaration(
-                    node,
-                    qualifiedName,
-                    "function"
+            // handler: () => {}
+            if (
+                value &&
+                (
+                    value.type === "arrow_function" ||
+                    value.type === "function_expression"
                 )
-            );
+            ) {
+                const qualifiedName = [
+                    ...scope,
+                    key.text
+                ].join(".");
 
-            currentScope = [
-                ...scope,
-                key.text
-            ];
+                declarations.push(
+                    createDeclaration(
+                        node,
+                        qualifiedName,
+                        "function"
+                    )
+                );
+
+                currentScope = [
+                    ...scope,
+                    key.text
+                ];
+            }
         }
     }
 
-    // Class fields containing functions
+    // Class fields
     if (node.type === "field_definition") {
         const property = node.childForFieldName("property");
         const value = node.childForFieldName("value");
 
         if (
             property &&
-            property.type !== "computed_property_name" &&
-            value &&
-            (
-                value.type === "arrow_function" ||
-                value.type === "function_expression"
-            )
+            property.type !== "computed_property_name"
         ) {
-            const qualifiedName = [
-                ...scope,
-                property.text
-            ].join(".");
-
-            declarations.push(
-                createDeclaration(
-                    node,
-                    qualifiedName,
-                    "function"
+            if (
+                value &&
+                (
+                    value.type === "arrow_function" ||
+                    value.type === "function_expression"
                 )
-            );
+            ) {
+                const qualifiedName = [
+                    ...scope,
+                    property.text
+                ].join(".");
 
-            currentScope = [
-                ...scope,
-                property.text
-            ];
+                declarations.push(
+                    createDeclaration(
+                        node,
+                        qualifiedName,
+                        "function"
+                    )
+                );
+
+                currentScope = [
+                    ...scope,
+                    property.text
+                ];
+            }
         }
     }
 
-    // Assignments containing objects or functions
+    // Assignments
     if (node.type === "assignment_expression") {
         const left = node.childForFieldName("left");
         const right = node.childForFieldName("right");
 
         const leftName = getExpressionText(left);
 
-        // Example: module.exports = {}
+        // module.exports.admin = { ... }
         if (
             leftName &&
             right?.type === "object"
@@ -349,7 +399,7 @@ function walk(node, scope = []) {
             ];
         }
 
-        // Example: module.exports.handler = () => {}
+        // module.exports.handler = () => {}
         if (
             leftName &&
             right &&
@@ -378,7 +428,7 @@ function walk(node, scope = []) {
         }
     }
 
-    // Visit children using the updated scope
+    // Continue through the tree using the updated scope
     for (const child of node.namedChildren) {
         walk(child, currentScope);
     }
