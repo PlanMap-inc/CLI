@@ -1,0 +1,21 @@
+
+
+# Initialize Node.js
+npm init -y
+
+# Enable ES Modules
+npm pkg set type=module
+
+# Install Tree-sitter
+npm install web-tree-sitter
+npm install tree-sitter-javascript
+
+# Initialize Git
+git init
+
+# Check Node and npm
+node --version
+npm --version
+
+# Run PLAN_MAP
+node src/cli.js test/test.js
