@@ -5,7 +5,11 @@
 //importing the modules
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Parser, Language } from "web-tree-sitter";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 //reading the file path from command line arguments
 const filePath = process.argv[2];
@@ -28,7 +32,10 @@ const fileCode = fs.readFileSync(absolutePath, "utf8");
 await Parser.init();
 
 //Loading the JS grammer
-const wasmPath = path.resolve("./node_modules/tree-sitter-javascript/tree-sitter-javascript.wasm");
+const wasmPath = path.resolve(
+    __dirname,
+    "../node_modules/tree-sitter-javascript/tree-sitter-javascript.wasm"
+);
 const jslang = await Language.load(wasmPath);
 
 //creating a parser and setting the grammer 
@@ -57,10 +64,15 @@ function getDeclarationName(node) {
 // This function creates a simple record for a declaration.
 // It stores the declaration's type, name, and exact location in the file.
 // This information is later used to build and print our structural inventory.
-function createDeclaration(node) {
+function createDeclaration(
+    node,
+    name = getDeclarationName(node),
+    kind = node.type
+) {
     return {
         type: node.type,
-        name: getDeclarationName(node),
+        kind,
+        name,
 
         startIndex: node.startIndex,
         endIndex: node.endIndex,
@@ -73,55 +85,230 @@ function createDeclaration(node) {
     };
 }
 
-// This array stores all the declarations we find in the JavaScript file.
-const declarations = [];
+
 
 
 
 // This function goes through the syntax tree and finds declarations.
-function walk(node) {
+const declarations = [];
 
-    // Check if the current node is a function, class, or method.
-    if (
-        node.type === "function_declaration" ||
-        node.type === "class_declaration" ||
-        node.type === "method_definition"
-    ) {
-        // Save the declaration information in the declarations array.
-        declarations.push(createDeclaration(node));
-    }
+function walk(node, scope = []) {
 
+    let currentScope = scope;
 
-    // Check if the current node is a variable declaration.
-    if (node.type === "variable_declarator") {
+    // Normal class declaration
+    if (node.type === "class_declaration") {
+        const name = getDeclarationName(node);
 
-        // Get the value assigned to the variable.
-        const value = node.childForFieldName("value");
+        if (name !== "<anonymous>") {
+            declarations.push(
+                createDeclaration(node, name, "class")
+            );
 
-
-        // Check if the variable contains an arrow function.
-        // Example: const getUser = () => {};
-        if (value?.type === "arrow_function") {
-
-            // Save the arrow function's declaration information.
-            declarations.push(createDeclaration(node));
+            currentScope = [...scope, name];
         }
     }
 
+    // Variable containing a class or function
+    if (node.type === "variable_declarator") {
+        const name = getDeclarationName(node);
+        const value = node.childForFieldName("value");
 
-    // Go through all the child nodes of the current node.
-    // This allows us to find declarations inside other functions,
-    // classes, and other nested code.
+        // const MyClass = class {}
+        if (
+            value?.type === "class" &&
+            name !== "<anonymous>"
+        ) {
+            declarations.push(
+                createDeclaration(node, name, "class")
+            );
+
+            currentScope = [...scope, name];
+        }
+
+        // const myFunction = () => {}
+        // const myFunction = function () {}
+        if (
+            value?.type === "arrow_function" ||
+            value?.type === "function_expression"
+        ) {
+            if (name !== "<anonymous>") {
+                const qualifiedName = [
+                    ...scope,
+                    name
+                ].join(".");
+
+                declarations.push(
+                    createDeclaration(
+                        node,
+                        qualifiedName,
+                        "function"
+                    )
+                );
+
+                currentScope = [...scope, name];
+            }
+        }
+    }
+
+    // Normal and generator functions
+    if (
+        node.type === "function_declaration" ||
+        node.type === "generator_function_declaration"
+    ) {
+        const name = getDeclarationName(node);
+
+        if (name !== "<anonymous>") {
+            const qualifiedName = [
+                ...scope,
+                name
+            ].join(".");
+
+            declarations.push(
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
+            );
+
+            currentScope = [...scope, name];
+        }
+    }
+
+    // Methods
+    if (node.type === "method_definition") {
+        const nameNode = node.childForFieldName("name");
+
+        if (
+            nameNode &&
+            nameNode.type !== "computed_property_name"
+        ) {
+            const name = nameNode.text;
+
+            let kind = "method";
+
+            const firstChild = node.children[0];
+
+            if (firstChild?.type === "get") {
+                kind = "getter";
+            }
+
+            if (firstChild?.type === "set") {
+                kind = "setter";
+            }
+
+            const qualifiedName = [
+                ...scope,
+                name
+            ].join(".");
+
+            declarations.push(
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    kind
+                )
+            );
+        }
+    }
+
+    // Object properties containing functions
+    if (node.type === "pair") {
+        const key = node.childForFieldName("key");
+        const value = node.childForFieldName("value");
+
+        if (
+            key &&
+            key.type !== "computed_property_name" &&
+            value &&
+            (
+                value.type === "arrow_function" ||
+                value.type === "function_expression"
+            )
+        ) {
+            const qualifiedName = [
+                ...scope,
+                key.text
+            ].join(".");
+
+            declarations.push(
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
+            );
+        }
+    }
+
+    // Class fields containing functions
+    if (node.type === "field_definition") {
+        const property = node.childForFieldName("property");
+        const value = node.childForFieldName("value");
+
+        if (
+            property &&
+            property.type !== "computed_property_name" &&
+            value &&
+            (
+                value.type === "arrow_function" ||
+                value.type === "function_expression"
+            )
+        ) {
+            const qualifiedName = [
+                ...scope,
+                property.text
+            ].join(".");
+
+            declarations.push(
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
+            );
+        }
+    }
+
+    // Assignments containing functions
+    if (node.type === "assignment_expression") {
+        const left = node.childForFieldName("left");
+        const right = node.childForFieldName("right");
+
+        if (
+            left &&
+            left.type === "identifier" &&
+            right &&
+            (
+                right.type === "arrow_function" ||
+                right.type === "function_expression"
+            )
+        ) {
+            const qualifiedName = [
+                ...scope,
+                left.text
+            ].join(".");
+
+            declarations.push(
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
+            );
+        }
+    }
+
+    // Traverse children
     for (const child of node.namedChildren) {
-        walk(child);
+        walk(child, currentScope);
     }
 }
 
 
-
 // This function prints all the declarations found in the JavaScript file.
 // It shows the declaration type, name, and its location in the source code.
-
 function printDeclarations(filePath, declarations) {
 
     // Print the name of the file being analyzed.
@@ -155,10 +342,10 @@ function printDeclarations(filePath, declarations) {
 
         // Print the declaration type, name, and location.
         console.log(
-            declaration.type.padEnd(24) +
-            declaration.name.padEnd(20) +
-            location
-        );
+    declaration.kind.padEnd(24) +
+    declaration.name.padEnd(30) +
+    location
+);
     }
 
 
