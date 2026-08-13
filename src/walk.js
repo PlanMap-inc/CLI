@@ -1,29 +1,23 @@
+// src/walk.js
+
+import {
+    getExpressionText
+} from "./nodes.js";
+
+import {
+    extractProperties
+} from "./properties.js";
+
 
 function getDeclarationName(node) {
-    const nameNode = node.childForFieldName("name");
+    const nameNode =
+        node.childForFieldName("name");
+
     if (nameNode) {
         return nameNode.text;
     }
+
     return "<anonymous>";
-}
-
-
-function getExpressionText(node) {
-    if (!node) {
-        return null;
-    }
-    if (node.type === "identifier") {
-        return node.text;
-    }
-    if (node.type === "member_expression") {
-        const object = node.childForFieldName("object");
-        const property = node.childForFieldName("property");
-        const objectText = getExpressionText(object);
-        if (objectText && property) {
-            return `${objectText}.${property.text}`;
-        }
-    }
-    return null;
 }
 
 
@@ -53,17 +47,33 @@ function createDeclaration(
         startIndex: node.startIndex,
         endIndex: node.endIndex,
 
-        startLine: node.startPosition.row + 1,
-        startColumn: node.startPosition.column,
+        startLine:
+            node.startPosition.row + 1,
 
-        endLine: node.endPosition.row + 1,
-        endColumn: node.endPosition.column
+        startColumn:
+            node.startPosition.column,
+
+        endLine:
+            node.endPosition.row + 1,
+
+        endColumn:
+            node.endPosition.column,
+
+        properties:
+            extractProperties(node)
     };
 }
 
-// the walk function traverses the AST and collects declarations, returning an array of declaration objects. Each declaration object contains information about the type, kind, name, modifiers, and location of the declaration in the source code.
-export function walk(node, scope = [], declarations = []) {
 
+// --------------------------------------------------
+// WALK
+// --------------------------------------------------
+
+export function walk(
+    node,
+    scope = [],
+    declarations = []
+) {
     let currentScope = scope;
 
 
@@ -72,11 +82,10 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "class_declaration") {
-
-        const name = getDeclarationName(node);
+        const name =
+            getDeclarationName(node);
 
         if (name !== "<anonymous>") {
-
             const qualifiedName =
                 [...scope, name].join(".");
 
@@ -101,9 +110,11 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "variable_declarator") {
+        const name =
+            getDeclarationName(node);
 
-        const name = getDeclarationName(node);
-        const value = node.childForFieldName("value");
+        const value =
+            node.childForFieldName("value");
 
 
         // const api = { ... }
@@ -125,7 +136,6 @@ export function walk(node, scope = [], declarations = []) {
             value?.type === "class" &&
             name !== "<anonymous>"
         ) {
-
             const qualifiedName =
                 [...scope, name].join(".");
 
@@ -154,7 +164,6 @@ export function walk(node, scope = [], declarations = []) {
             ) &&
             name !== "<anonymous>"
         ) {
-
             const qualifiedName =
                 [...scope, name].join(".");
 
@@ -180,13 +189,13 @@ export function walk(node, scope = [], declarations = []) {
 
     if (
         node.type === "function_declaration" ||
-        node.type === "generator_function_declaration"
+        node.type ===
+            "generator_function_declaration"
     ) {
-
-        const name = getDeclarationName(node);
+        const name =
+            getDeclarationName(node);
 
         if (name !== "<anonymous>") {
-
             const qualifiedName =
                 [...scope, name].join(".");
 
@@ -211,16 +220,20 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "function_expression") {
+        const name =
+            getDeclarationName(node);
 
-        const name = getDeclarationName(node);
-
-        const parentType = node.parent?.type;
+        const parentType =
+            node.parent?.type;
 
         const alreadyBound =
-            parentType === "variable_declarator" ||
+            parentType ===
+                "variable_declarator" ||
             parentType === "pair" ||
-            parentType === "field_definition" ||
-            parentType === "assignment_expression";
+            parentType ===
+                "field_definition" ||
+            parentType ===
+                "assignment_expression";
 
         if (
             name !== "<anonymous>" &&
@@ -239,22 +252,20 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "method_definition") {
-
         const nameNode =
             node.childForFieldName("name");
 
         if (
             nameNode &&
-            nameNode.type !== "computed_property_name"
+            nameNode.type !==
+                "computed_property_name"
         ) {
-
             const name = nameNode.text;
 
             const childTypes =
                 node.children.map(
                     child => child.type
                 );
-
 
             const modifiers = [];
 
@@ -311,7 +322,6 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "pair") {
-
         const key =
             node.childForFieldName("key");
 
@@ -321,13 +331,13 @@ export function walk(node, scope = [], declarations = []) {
 
         if (
             key &&
-            key.type !== "computed_property_name"
+            key.type !==
+                "computed_property_name"
         ) {
 
             // admin: { ... }
 
             if (value?.type === "object") {
-
                 currentScope = [
                     ...scope,
                     key.text
@@ -336,20 +346,21 @@ export function walk(node, scope = [], declarations = []) {
 
 
             // handler: () => {}
+            // handler: function () {}
 
             if (
                 value &&
                 (
-                    value.type === "arrow_function" ||
-                    value.type === "function_expression"
+                    value.type ===
+                        "arrow_function" ||
+                    value.type ===
+                        "function_expression"
                 )
             ) {
-
                 const qualifiedName = [
                     ...scope,
                     key.text
                 ].join(".");
-
 
                 declarations.push(
                     createDeclaration(
@@ -358,7 +369,6 @@ export function walk(node, scope = [], declarations = []) {
                         "function"
                     )
                 );
-
 
                 currentScope = [
                     ...scope,
@@ -374,9 +384,10 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "field_definition") {
-
         const property =
-            node.childForFieldName("property");
+            node.childForFieldName(
+                "property"
+            );
 
         const value =
             node.childForFieldName("value");
@@ -384,22 +395,23 @@ export function walk(node, scope = [], declarations = []) {
 
         if (
             property &&
-            property.type !== "computed_property_name"
+            property.type !==
+                "computed_property_name"
         ) {
 
             if (
                 value &&
                 (
-                    value.type === "arrow_function" ||
-                    value.type === "function_expression"
+                    value.type ===
+                        "arrow_function" ||
+                    value.type ===
+                        "function_expression"
                 )
             ) {
-
                 const qualifiedName = [
                     ...scope,
                     property.text
                 ].join(".");
-
 
                 declarations.push(
                     createDeclaration(
@@ -408,7 +420,6 @@ export function walk(node, scope = [], declarations = []) {
                         "function"
                     )
                 );
-
 
                 currentScope = [
                     ...scope,
@@ -424,7 +435,6 @@ export function walk(node, scope = [], declarations = []) {
     // --------------------------------------------------
 
     if (node.type === "assignment_expression") {
-
         const left =
             node.childForFieldName("left");
 
@@ -441,7 +451,6 @@ export function walk(node, scope = [], declarations = []) {
             leftName &&
             right?.type === "object"
         ) {
-
             currentScope = [
                 ...scope,
                 leftName
@@ -455,16 +464,16 @@ export function walk(node, scope = [], declarations = []) {
             leftName &&
             right &&
             (
-                right.type === "arrow_function" ||
-                right.type === "function_expression"
+                right.type ===
+                    "arrow_function" ||
+                right.type ===
+                    "function_expression"
             )
         ) {
-
             const qualifiedName = [
                 ...scope,
                 leftName
             ].join(".");
-
 
             declarations.push(
                 createDeclaration(
@@ -473,7 +482,6 @@ export function walk(node, scope = [], declarations = []) {
                     "function"
                 )
             );
-
 
             currentScope = [
                 ...scope,
@@ -494,6 +502,7 @@ export function walk(node, scope = [], declarations = []) {
             declarations
         );
     }
+
 
     return declarations;
 }
