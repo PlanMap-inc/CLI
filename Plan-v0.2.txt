@@ -1,0 +1,225 @@
+PlanMap v0.2 — Property Extraction + Diff
+
+Goal: For every declaration, extract facts about what the code does. Then compare two versions of a file and report which facts changed.
+
+Time: Similar to v0.1, probably less. Two new files, one new flag, one new command.
+
+1. What you're building and why
+
+v0.1 answers "what code exists here?" — 34 declarations with addresses.
+
+v0.2 answers "what does each one actually do?" — and then, "what changed?"
+
+Run your current CLI on the two drift fixtures and you'll see the limitation clearly. Both print 8 declarations. Nothing tells you that validateScore stopped throwing, that the rate limit went from 5 to 500, or that password hashing disappeared. Those are the failures the product exists to catch, and v0.1 is blind to all of them.
+
+Why facts and not a hash. A hash says "something changed" — it fires when you add a space. Facts say "this function stopped throwing errors and started returning null." One is noise, the other is the bug report.
+
+	Hash	Facts
+Reformat	🔴 fires	✅ silent
+Rename a local	🔴 fires	✅ silent
+Add a comment	🔴 fires	✅ silent
+throw → return null	🔴 fires	🚨 throws: 2 → 0
+
+The hash gives the same alarm for all four. Facts speak only for the real one, and they say what happened.
+
+Why two files instead of a baseline. To learn whether this works, you don't need persistence, a watcher, or git. You need two versions of a file and a comparison. Baseline and chokidar come at v0.3 — after you already know the idea holds.
+
+Why no comments yet. The architecture moved: intent lives in the plan graph, not in comments. Comment parsing became a convenience feature, not the mechanism. Facts need zero human input, which is the real answer to your coverage objection.
+
+2. Build order
+
+Four steps, strictly in order. Each one runs before you start the next.
+
+Step	File	Output you can see
+1	src/properties.js	facts printed for one declaration
+2	src/walk.js (edit)	facts attached to every record
+3	src/cli.js (edit)	--json dumps everything
+4	src/diff.js + CLI	diff command reports changes
+
+Do not build diff.js until steps 1–3 are verified. If the facts are wrong and the diff is wrong, you'll be debugging two unknowns at once and won't know which is lying.
+
+3. Step 1 — src/properties.js
+
+One exported function. Takes a declaration node, returns an object of facts. Pure — no file reading, no printing, no knowledge of the rest of the tool.
+
+The ten facts
+Fact	Node type to look for	What it catches in real life
+throws	throw_statement	your Phase 0 bug
+throwTypes	constructor inside a throw	which error type disappeared
+returns	return_statement	exit points added or removed
+returnsNullish	return of null / undefined	the other half of Phase 0
+calls	call_expression	hashPassword vanishing from login
+numbers	number	rate limit 5 → 500
+awaits	await_expression	async code turned sync
+catches	catch_clause	error handling added or removed
+emptyCatches	catch with empty body	errors silently swallowed
+params	formal_parameters	signature drift
+
+Counts for most. Sorted arrays for throwTypes, calls, numbers.
+
+Why no string literals. Strings are mostly error messages, and people reword them constantly — they'd fire every time and mean nothing. Numbers are different: a number is usually a rule (a limit, a timeout, a retry count), so a change to one is meaningful.
+
+The rule that matters most
+
+Stop descending when you hit another declaration.
+
+Look at your own fixture:
+
+js
+function buildValidator(rules) {
+  function checkRequired(value) { ... }
+  const checkLength = (value) => {
+    function withinBounds(n) { ... }
+  };
+}
+
+Without a stop condition, buildValidator's facts absorb everything inside all three nested functions. Change one line in withinBounds and all four report as changed.
+
+That's cascading noise, and it makes the tool useless on real code. Each declaration owns only its own body.
+
+Use the same node-type list that's already in walk.js as the stop sign. When the recursion reaches one of those types, don't go deeper.
+
+The second rule
+
+Sort every array before returning it. calls, throwTypes, numbers.
+
+Without sorting, moving two function calls around produces a fake difference at step 4. With sorting, only genuine additions and removals show up.
+
+Reuse what you have
+
+Your getExpressionText already turns Number.isNaN into a full string. Use it for callee names — otherwise you'd record only isNaN and lose which object it came from. Export it from walk.js or move it somewhere shared.
+
+Verify step 1
+
+Print the facts for validateScore in both fixtures by hand. You should see:
+
+before  →  throws: 2,  returnsNullish: 0,  throwTypes: ["ValidationError"]
+after   →  throws: 0,  returnsNullish: 2,  throwTypes: []
+
+If those two lines are right, the hardest part of v0.2 is done.
+
+4. Step 2 — attach to walk.js
+
+createDeclaration calls extractProperties(node) and puts the result on the record as properties.
+
+walk.js stays pure. It's still traversal only; it just delegates one job to another module.
+
+A detail worth thinking about: walk.js will now import properties.js, and properties.js needs getExpressionText from walk.js. That's a circular import. Move the shared helpers into a third file — src/nodes.js or similar — before it bites you.
+
+5. Step 3 — --json flag
+
+The human table stays exactly as it is. Add a flag that dumps the full records, properties included, as JSON.
+
+Two reasons this is worth doing now:
+
+You can read the facts while building, without cramming ten columns into a table
+v0.3 reads this exact shape from .planmap/baseline.json — designing it now means no rework later
+
+Suggested shape per record:
+
+json
+{
+  "identity": "validateScore:function",
+  "kind": "function",
+  "name": "validateScore",
+  "startIndex": 412,
+  "endIndex": 890,
+  "properties": {
+    "throws": 2,
+    "throwTypes": ["ValidationError"],
+    "returns": 1,
+    "returnsNullish": 0,
+    "calls": ["Number", "Number.isNaN"],
+    "numbers": [1, 5],
+    "awaits": 0,
+    "catches": 0,
+    "emptyCatches": 0,
+    "params": 1
+  }
+}
+6. Step 4 — src/diff.js and the diff command
+bash
+node src/cli.js diff test/drift/before.js test/drift/after.js
+
+A pure function: two declaration arrays in, a change list out. It never touches the filesystem — cli.js does the reading and parsing, then hands over two arrays.
+
+That purity is what makes it easy to test, and v0.5 depends on it more than any other piece.
+
+Compare identity sets in both directions
+
+This was the hole in your architecture diagram:
+
+Check	Meaning
+In before, missing from after	deleted
+In after, missing from before	added
+In both, facts differ	changed
+In both, facts identical	unchanged
+
+If you only walk forward through the new file, a deleted function is invisible — it isn't there to be found. And deleting a function that carried an intent is the loudest drift signal there is.
+
+Output
+Comparing before.js → after.js
+
+  validateScore:function          CHANGED
+      throws            2 → 0
+      returnsNullish    0 → 2
+      throwTypes        [ValidationError] → []
+
+  rateLimit:function              CHANGED
+      numbers           [5, 3600] → [500, 3600]
+
+  saveUser:function               CHANGED
+      awaits            2 → 1
+      calls             -hashPassword
+
+  legacyExport:function           DELETED
+  healthCheck:function            ADDED
+
+  5 changed · 1 added · 1 deleted · 3 unchanged
+
+Only print facts that actually differ. Showing all ten for every changed declaration buries the signal.
+
+The argument-parsing decision
+
+Your CLI currently assumes process.argv[2] is a file. Now it might be the word diff. Handle it explicitly — a real subcommand check, not "if there are three arguments." One line of clarity now saves confusion when v0.5 adds check and accept.
+
+7. Test fixtures
+
+test/drift/before.js and test/drift/after.js — already built, already verified as parsing clean at 8 declarations each. Every case has its expected delta written in a comment above it.
+
+Declaration	Expected result
+validateScore	throws 2→0, returnsNullish 0→2, throwTypes empties
+rateLimit	numbers [5,3600]→[500,3600]
+saveUser	awaits 2→1, calls loses hashPassword
+getSession	params 1→2
+cleanup	catches 1→2, emptyCatches 0→1
+parseBody	no change at all
+legacyExport	DELETED
+healthCheck	ADDED
+normalizeEmail	no change
+parseBody is the pass/fail test
+
+It's been reformatted, had a comment added, and a local variable renamed. Nothing about its behaviour changed.
+
+It must show zero differences.
+
+If parseBody reports a change, your facts are no better than a hash and the entire approach is noise. Everything else in v0.2 is secondary to that one line of output.
+
+8. Done when
+All nine fixture cases behave as documented
+parseBody and normalizeEmail report nothing
+Deleted and added are both detected
+
+Then try it on real code. You don't need git: save two copies of a file from ai-developer-survey — one from before a change you made, one from after — and diff them.
+
+9. Not in v0.2
+
+No baseline file. No chokidar. No comments or @intent parsing. No plan graph. No LLM. No git.
+
+Still: files in, text out.
+
+10. Two things to write in DECISIONS.md
+
+Which facts you chose, and why strings are excluded. Future-you will wonder.
+
+The nested-declaration boundary. Write down that each declaration owns only its own body, and that the reason is cascading noise. This is the decision most likely to get "helpfully" undone by someone who doesn't know why it's there.
