@@ -82,9 +82,8 @@ const tree =
 
 
 if (tree.rootNode.hasError) {
-    console.error(
-        "Parse errors detected"
-    );
+    console.error("Parse errors detected");
+    process.exit(1);
 }
 
 
@@ -126,25 +125,21 @@ for (const declaration of declarations) {
 // PRINT INVENTORY
 // --------------------------------------------------
 
-function printDeclarations(
-    filePath,
-    declarations
-) {
+function printDeclarations(filePath, declarations) {
+    console.log(`\nFile: ${filePath}\n`);
 
-    console.log(
-        `\nFile: ${filePath}\n`
-    );
-
+    if (declarations.length === 0) {
+        console.log("No declarations found.");
+        return;
+    }
 
     const nameWidth =
         Math.max(
             "name".length,
             ...declarations.map(
-                declaration =>
-                    declaration.name.length
+                declaration => declaration.name.length
             )
         ) + 2;
-
 
     console.log(
         "kind".padEnd(24) +
@@ -152,29 +147,21 @@ function printDeclarations(
         "location"
     );
 
-
     console.log(
         "-".repeat(
             24 + nameWidth + 20
         )
     );
 
-
-    for (
-        const declaration
-        of declarations
-    ) {
-
+    for (const declaration of declarations) {
         const location =
             `${declaration.startLine}:${declaration.startColumn}` +
             `-${declaration.endLine}:${declaration.endColumn}`;
-
 
         const displayKind =
             declaration.modifiers.length > 0
                 ? `${declaration.kind} [${declaration.modifiers.join(", ")}]`
                 : declaration.kind;
-
 
         console.log(
             displayKind.padEnd(24) +
@@ -182,7 +169,6 @@ function printDeclarations(
             location
         );
     }
-
 
     console.log(
         `\n${declarations.length} declarations`
