@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# PlanMap generated memory
+.planmap/
+
+# Test project generated memory
+test/**/.planmap/
+
+# Build output
+dist/
+build/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
