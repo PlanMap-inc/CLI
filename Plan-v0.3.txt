@@ -1,0 +1,273 @@
+PlanMap v0.3 — Memory and Watching
+
+In one line: PlanMap remembers your project on disk and checks itself every time you save a file.
+
+1. What changes
+
+Right now, PlanMap is a tool you run. You point it at two files and it tells you what's different.
+
+After v0.3, it's a tool that runs. It sits in the background, watches your files, and speaks up the moment something behaves differently.
+
+That's the difference between a checker and a guard.
+
+2. Fix the repo first (30 minutes)
+
+Before any new code, two things are broken for anyone who clones your repo.
+
+No package.json. Nothing runs. npm install has nothing to read, and "type": "module" is missing, so every import fails on line one. Create it with your two dependencies and a few scripts.
+
+Delete requirnments.txt. It's a Python habit, and it's misspelled. Everything in it belongs in package.json — dependencies in dependencies, commands in scripts.
+
+Add .gitignore with node_modules/.
+
+After this, a stranger can clone your repo and run it. That matters when you show it to anyone.
+
+3. The big idea: PlanMap keeps its own memory
+
+You chose not to use git, and that's the right call.
+
+Git only sees commits. But an AI agent changes your code and you keep working — the damage happens long before you commit anything. By the time there's a commit, you've already moved on and forgotten.
+
+So PlanMap remembers by itself. A new folder called .planmap/ holds two files:
+
+File	What it holds	Changes when
+baseline.json	the facts you last approved	only when you say so
+events.jsonl	one line per real change, forever	every real change
+
+Think of it like a photo and a diary.
+
+baseline.json is a photograph — this is what things looked like when you last said "yes, this is correct."
+
+events.jsonl is a diary — every entry is something that happened, written down and never erased.
+
+The photo gets replaced. The diary never does. That diary is what becomes your project evolution history later.
+
+4. The rule that must not be broken
+
+The watcher never updates the baseline.
+
+Here's what goes wrong if it does:
+
+10:00   You save.                       baseline = throws: 2
+10:05   Agent changes throw → return.
+        You save.                       ⚠ drift printed
+                                        baseline = throws: 0   ← updated
+10:06   You save again.                 nothing wrong!
+
+At 10:06, the tool says everything is fine. The problem is gone from the current state. If you weren't watching the terminal at 10:05, you never found out — and you can't find out later.
+
+This is exactly what you criticised in Augment Code. PlanMap surfaces divergence instead of quietly overwriting it. Auto-updating the baseline is quietly overwriting it.
+
+So the baseline moves in only two situations:
+
+The very first scan, when there's nothing there yet
+When you run accept — you saying "I've seen it, it's fine"
+
+It's the same idea as git. Your files change all day, but the last commit doesn't move until you commit.
+
+5. Two kinds of memory
+
+The watcher needs to answer two different questions, so it needs two different reference points.
+
+Reference	Question it answers	Where it lives	Who updates it
+last seen	what changed just now?	memory only	the watcher, every save
+baseline	what's still unresolved?	baseline.json	only init and accept
+
+Both are useful, and they're not the same thing.
+
+last seen gives you the diary entry — the exact change that just happened.
+
+baseline gives you the status — what's still different from what you approved.
+
+6. The commands
+bash
+node src/cli.js init      # scan the project, write baseline.json
+node src/cli.js check     # compare now vs baseline, report, exit 1 if changed
+node src/cli.js accept    # approve current state → update baseline
+node src/cli.js watch     # auto-check on every save
+
+Build in that order. init and check are nearly the same code — one writes, one reports.
+
+7. Step 1 — Scanning a whole folder
+
+Right now you handle one file. Now you need to walk a directory.
+
+Find every .js file. Skip node_modules, .git, dist, build, coverage.
+
+Skipping node_modules isn't optional. A real project has tens of thousands of files in there. Without the skip, your tool will hang and look broken.
+
+Identity needs the file path
+
+Today an identity looks like this:
+
+getSurvey:function
+
+Across a whole project, three different files could each have a getSurvey. So it becomes:
+
+src/routes/survey.js::getSurvey:function
+
+Use relative paths, always with forward slashes. If you store absolute paths, your baseline.json will be different on every machine, and it breaks the moment a second person clones the repo.
+
+This is the same collision problem you solved inside a single file at v0.1 — just one level up.
+
+Run your duplicate check across the project
+
+You already have it, but it only runs per-file. Run it after scanning everything. That's where a real collision would actually show up.
+
+8. Step 2 — init (write the baseline)
+
+Walk every file, collect declarations, write .planmap/baseline.json.
+
+What to store
+
+Identity, file, kind, and properties. That's it.
+
+What NOT to store
+
+Leave out line numbers and byte offsets.
+
+Why: someone adds a blank line at the top of a file, and every line number below it shifts. Your baseline file would show hundreds of changes for something that means nothing. It would churn in git constantly.
+
+Two small things that save you pain
+
+Add a version number to the file. When v0.4 adds a new property, an old baseline can't be compared to a new one. Without a version, every declaration would suddenly report as changed and you'd spend an hour thinking your parser broke.
+
+Sort by identity before writing. If the order shuffles between runs, git shows a giant diff every time even when nothing changed.
+
+Auto-init
+
+Your idea here was better than mine. Don't force the developer to remember init:
+
+starting up
+  ↓
+does baseline.json exist?
+  ├─ no  → scan everything, write it, say "baseline created"
+  └─ yes → load it
+
+One less thing to remember.
+
+9. Step 3 — check
+
+Read the baseline. Re-scan the project. Run your existing diffDeclarations.
+
+Your v0.2 diff works here with no changes. It takes two arrays and doesn't care where they came from. That's the payoff for keeping it pure — you're now reusing it for something you hadn't planned.
+
+Exit with code 1 if anything changed
+
+One line, and it's what makes the tool usable in CI later. A tool that always exits 0 can't be automated. Nothing can act on it.
+
+check must never write the baseline
+
+That's accept's job. See section 4.
+
+10. Step 4 — accept
+bash
+node src/cli.js accept
+
+Re-scan, overwrite baseline.json with the current state, print what was accepted.
+
+That's all it does today. At v0.4 it grows one condition: refuse to run while an intent is violated.
+
+Print what's being accepted before writing. Silent approval of things the developer didn't read is the same problem in a different shape.
+
+11. Step 5 — watch
+bash
+npm install chokidar
+
+Watch .js files, ignore node_modules.
+
+Re-check only the saved file
+
+Not the whole project. A full rescan on every save is slow enough to be annoying, and annoying tools get uninstalled in a week.
+
+Two things you must get right
+
+Debounce ~300ms. Editors often fire two or three save events for one save. Wait a moment and only act on the last one.
+
+Only speak on real changes. A developer saves constantly — mid-thought, mid-sentence, out of habit. Most saves change bytes but not behaviour.
+
+Here's the good part: your property extraction is already the filter. You don't need extra logic. If the facts are identical, nothing happens.
+
+That's exactly what parseBody proved at v0.2 — reformatted, comment added, variable renamed, and it reported nothing.
+
+Don't repeat yourself
+
+If the baseline never moves, the same drift would print on every single save. Annoying.
+
+Fix: keep the last thing you printed in memory. Only print when it's different.
+
+save 1  →  throws 2 → 0                  print it
+save 2  →  throws 2 → 0                  same as before, stay quiet
+save 3  →  throws 2 → 0, params 1 → 2    new info, print it
+
+Memory only. Nothing on disk. About twenty lines.
+
+12. Step 6 — The event log
+
+When a real change happens, append one line to events.jsonl:
+
+json
+{"ts":"2026-08-14T10:04:00Z","identity":"src/auth.js::validateScore:function","type":"changed","delta":{"throws":[2,0],"returnsNullish":[0,2]}}
+
+Append only. Never rewrite.
+
+Why JSONL and not JSON: appending is one line of code, and if the process dies mid-write you lose one line instead of corrupting the whole file.
+
+This log is your project's history. Every line is already tied to one specific function — something a git commit never is, because one commit mixes five unrelated changes together.
+
+13. The complete flow
+start
+  ↓
+baseline exists? ── no ──→ scan all files, write baseline
+  ↓ yes
+load baseline
+  ↓
+watch files (chokidar, ignore node_modules)
+  ↓
+file saved → wait 300ms → re-parse that one file
+  ↓
+facts changed since last seen?
+  ├─ no  → do nothing
+  └─ yes ↓
+         append to events.jsonl
+         compare against baseline
+         different from what was last printed? → print it
+
+Notice: the baseline is never written inside this loop.
+
+14. Done when
+
+You can do this:
+
+node src/cli.js watch inside ai-developer-survey
+It says "baseline created — 214 declarations"
+Open a file in your editor
+Change a throw to a return null
+Save
+The terminal names the drift within a second
+
+That's your demo. Live, happening in front of someone — much stronger than showing a log of something from March.
+
+15. The trap to plan for
+
+A renamed file looks like a delete plus an add.
+
+Chokidar reports it as one file removed and one file created. Every declaration in it will report as deleted, then re-added under a new path.
+
+Decide now what you want that to look like. Discovering a wall of red in the middle of a demo is a bad time to find out.
+
+The simplest honest answer for v0.3: report it as-is and write it in the README as a known limitation. Solving it properly needs content matching, which is a v0.4+ problem.
+
+16. Not in v0.3
+
+No plan graph. No intent. No comments. No LLM. No VS Code.
+
+Still just facts in, facts out — remembered this time.
+
+17. Write these in DECISIONS.md
+
+Three lines, while the reasoning is fresh:
+
+The watcher never writes the baseline — auto-updating hides the drift you were trying to catch
+Line numbers aren't stored in the baseline — they shift for reasons that don't matter and would churn the file
+Relative paths only — absolute paths break the moment a second person clones the repo
