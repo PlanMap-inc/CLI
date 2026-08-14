@@ -1,3 +1,5 @@
+import { extractProperties } from "./properties.js";
+import { getExpressionText } from "./nodes.js";
 // --------------------------------------------------
 // GET DECLARATION NAME
 // --------------------------------------------------
