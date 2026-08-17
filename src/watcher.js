@@ -1,5 +1,6 @@
 import chokidar from "chokidar";
 import path from "node:path";
+import fs from "node:fs";
 import { readBaseline } from "./check.js";
 import { formatDiff, diffDeclarations } from "./diff.js";
 import { appendEvent } from "./events.js";
@@ -224,6 +225,104 @@ function recordChanges(
     projectRoot,
     changes
 ) {
+    // PLANMAP_DUPLICATE_EVENT_GUARD
+    //
+    // The filesystem watcher can occasionally deliver the same
+    // logical change more than once. events.jsonl is append-only,
+    // so protect persistence itself from duplicate events.
+    //
+    // A duplicate is defined by the complete event identity:
+    // timestamp + declaration identity + type + delta.
+    //
+    // This guard does NOT suppress legitimate later changes.
+    // It only suppresses an identical event already present in
+    // the current events.jsonl.
+
+    const eventsPath =
+        path.join(
+            projectRoot,
+            ".planmap",
+            "events.jsonl"
+        );
+
+    let existingEvents =
+        new Set();
+
+    if (fs.existsSync(eventsPath)) {
+        const existingText =
+            fs.readFileSync(
+                eventsPath,
+                "utf8"
+            );
+
+        for (
+            const line
+            of existingText.split("\n")
+        ) {
+            const trimmed =
+                line.trim();
+
+            if (!trimmed) {
+                continue;
+            }
+
+            try {
+                const event =
+                    JSON.parse(
+                        trimmed
+                    );
+
+                existingEvents.add(
+                    JSON.stringify({
+                        identity:
+                            event.identity,
+                        type:
+                            event.type,
+                        delta:
+                            event.delta || {}
+                    })
+                );
+            } catch {
+                // Ignore malformed historical lines.
+            }
+        }
+    }
+
+    const uniqueChanges =
+        changes.filter(
+            change => {
+                const key =
+                    JSON.stringify({
+                        identity:
+                            change.identity,
+                        type:
+                            change.type,
+                        delta:
+                            change.delta || {}
+                    });
+
+                if (
+                    existingEvents.has(
+                        key
+                    )
+                ) {
+                    return false;
+                }
+
+                existingEvents.add(
+                    key
+                );
+
+                return true;
+            }
+        );
+
+    if (
+        uniqueChanges.length === 0
+    ) {
+        return;
+    }
+
     const realChanges =
         changes.filter(
             change =>
@@ -234,7 +333,7 @@ function recordChanges(
 
     for (
         const change
-        of realChanges
+        of uniqueChanges
     ) {
         appendEvent(
             projectRoot,
@@ -261,7 +360,8 @@ function checkChangedFile(
     projectRoot,
     filePath,
     parseFile,
-    lastSeen
+    lastSeen,
+    lastSeenDeclarations
 ) {
     const baseline =
         readBaseline(
@@ -273,8 +373,8 @@ function checkChangedFile(
             projectRoot,
             filePath
         )
-        .split(path.sep)
-        .join("/");
+            .split(path.sep)
+            .join("/");
 
     const baselineDeclarations =
         getBaselineDeclarations(
@@ -306,14 +406,35 @@ function checkChangedFile(
         return;
     }
 
+    /*
+     * First observation:
+     * use baseline as the previous state.
+     *
+     * Later observations:
+     * use the last successfully observed declarations.
+     */
+    const previousDeclarations =
+        lastSeenDeclarations.has(
+            relativeFile
+        )
+            ? lastSeenDeclarations.get(
+                relativeFile
+            )
+            : baselineDeclarations;
+
     lastSeen.set(
         relativeFile,
         currentSignature
     );
 
+    lastSeenDeclarations.set(
+        relativeFile,
+        currentDeclarations
+    );
+
     const changes =
         diffDeclarations(
-            baselineDeclarations,
+            previousDeclarations,
             currentDeclarations
         );
 
@@ -342,11 +463,10 @@ function checkChangedFile(
 
     formatDiff(
         realChanges,
-        "baseline",
+        "previous",
         "current"
     );
 }
-
 
 // --------------------------------------------------
 // CHECK REMOVED FILE
@@ -472,9 +592,11 @@ export function watchProject(
 
     const removedTimers =
         new Map();
+const lastSeen =
+    new Map();
 
-    const lastSeen =
-        new Map();
+const lastSeenDeclarations =
+    new Map();
 
     const watcher =
         chokidar.watch(
@@ -541,11 +663,12 @@ export function watchProject(
                 addedFile => {
                     try {
                         checkChangedFile(
-                            projectRoot,
-                            addedFile,
-                            parseFile,
-                            lastSeen
-                        );
+    projectRoot,
+    filePath,
+    parseFile,
+    lastSeen,
+    lastSeenDeclarations
+);
                     } catch (error) {
                         console.error(
                             `Unable to check ${addedFile}: ${error.message}`
@@ -573,12 +696,13 @@ export function watchProject(
                 filePath,
                 changedFile => {
                     try {
-                        checkChangedFile(
-                            projectRoot,
-                            changedFile,
-                            parseFile,
-                            lastSeen
-                        );
+                     checkChangedFile(
+    projectRoot,
+    changedFile,
+    parseFile,
+    lastSeen,
+    lastSeenDeclarations
+);
                     } catch (error) {
                         console.error(
                             `Unable to check ${changedFile}: ${error.message}`
