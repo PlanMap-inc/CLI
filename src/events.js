@@ -102,9 +102,134 @@ export function appendEvent(
                 : {}
     };
 
+    /*
+     * Prevent consecutive duplicate events.
+     *
+     * Chokidar may cause the same logical change to reach
+     * appendEvent() more than once.
+     *
+     * Compare against the LAST persisted event only.
+     *
+     * This prevents:
+     *
+     *   200 → 203
+     *   200 → 203
+     *
+     * while still allowing a legitimate later recurrence:
+     *
+     *   200 → 203
+     *   203 → 200
+     *   200 → 203
+     */
+
+    if (fs.existsSync(eventsPath)) {
+        const existingContent =
+            fs.readFileSync(
+                eventsPath,
+                "utf8"
+            );
+
+        const lines =
+            existingContent
+                .split("\n")
+                .filter(
+                    line =>
+                        line.trim()
+                );
+
+        if (lines.length > 0) {
+            try {
+                const lastEvent =
+                    JSON.parse(
+                        lines[lines.length - 1]
+                    );
+
+                const sameEvent =
+                    lastEvent.identity ===
+                        event.identity &&
+                    lastEvent.type ===
+                        event.type &&
+                    JSON.stringify(
+                        lastEvent.delta || {}
+                    ) ===
+                        JSON.stringify(
+                            event.delta || {}
+                        );
+
+                if (sameEvent) {
+                    return;
+                }
+            } catch {
+                // Ignore malformed historical lines.
+                // The new event can still be appended.
+            }
+        }
+    }
+
     fs.appendFileSync(
         eventsPath,
         JSON.stringify(event) + "\n",
         "utf8"
     );
+}
+
+
+// --------------------------------------------------
+// APPEND INITIAL EVENTS
+// 1-Receives the project root and initial declarations.
+// 2-Creates one "added" event for every declaration.
+// 3-Uses the declaration identity as the event identity.
+// 4-Uses an empty delta for initial declarations.
+// 5-Appends the initial events to events.jsonl.
+// 6-Does not create duplicate initial events when
+//    events.jsonl already exists.
+// --------------------------------------------------
+
+export function appendInitialEvents(
+    projectRoot,
+    declarations
+) {
+    const eventsPath =
+        getEventsPath(
+            projectRoot
+        );
+
+    if (
+        fs.existsSync(
+            eventsPath
+        )
+    ) {
+        const existingEvents =
+            fs.readFileSync(
+                eventsPath,
+                "utf8"
+            ).trim();
+
+        if (
+            existingEvents.length > 0
+        ) {
+            return;
+        }
+    }
+
+    const timestamp =
+        new Date().toISOString();
+
+    for (
+        const declaration
+        of declarations
+    ) {
+        const event = {
+            ts: timestamp,
+            identity: declaration.identity,
+            type: "added",
+            delta: {}
+        };
+
+        fs.appendFileSync(
+            eventsPath,
+            JSON.stringify(event) + "\n",
+            "utf8"
+        );
+    }
 }
