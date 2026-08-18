@@ -1,188 +1,216 @@
-<div align="center">
-
 # PlanMap
 
-**Catch the changes your compiler can't see.**
+**Catches the code changes that compile, pass tests, and pass review.**
 
-</div>
+Local. No rules to write. No spec to maintain. Works on any JavaScript or TypeScript repo.
 
 ---
 
-## The problem
+## The change that started this
 
-You ask an AI agent to clean up a function. It does. The code compiles. Tests pass. The linter is happy. The diff looks reasonable, so you approve it.
-
-What actually happened:
+A function was changed from throwing an error to returning `null`:
 
 ```diff
   function validateScore(raw) {
-    const n = Number(raw);
-    if (Number.isNaN(n)) {
--     throw new ValidationError('score must be numeric');
-+     return null;
-    }
+-   if (raw == null) throw new ValidationError('score required');
++   if (raw == null) return null;
+    return Number(raw);
+  }
 ```
 
-Nothing crashed. Nothing failed. But the function stopped rejecting bad input and started silently returning nothing. Every caller that relied on it throwing is now wrong, and nobody finds out until the data is already corrupt.
+The compiler passed. The tests passed. ESLint passed. An AI code reviewer looked at the diff and said nothing.
 
-**A compiler checks that code is valid. A linter checks that code is tidy. Tests check the paths you thought to write. None of them check that code still does what it did yesterday.**
+Every caller that relied on catching that error now silently receives `null`. Nothing crashes. The behaviour is simply wrong from that point on.
 
-That's the gap.
+**This is the class of change PlanMap exists to catch.** Not syntax errors — those are already handled. Behavioural changes that survive every existing layer of verification.
 
 ---
 
-## The idea
+## What it does
 
-Write down **facts** about what each function does. Compare those facts over time. When a fact changes, say exactly which one.
+PlanMap parses your code into declarations and extracts **behavioural facts** about each one: how many times it throws, what it throws, whether it returns nullish, what it calls, what numbers it contains, how it handles errors.
 
-Not "this file changed." Not "3 lines differ." Instead:
+It stores those facts as a baseline. Then it watches.
+
+When a fact changes, you hear about it. When formatting changes, you don't.
 
 ```
-  validateScore     throws           2 → 0
-                    throwTypes       [ValidationError] → []
-                    returnsNullish   0 → 2
+$ planmap check
 
-  rateLimit         numbers          [5, 3600] → [500, 3600]
+Comparing baseline → current
 
-  saveUser          calls            [db.users.insert, hashPassword] → [db.users.insert]
-                    awaits           2 → 1
+  src/auth/token.js::verifyToken:function CHANGED
+      throws           1 → 0
+      throwTypes       [AuthError] → []
+      returnsNullish   0 → 1
+
+1 changed · 0 added · 0 deleted · 12 unchanged
 ```
 
-Read that as English:
-
-- error handling was removed from `validateScore`
-- a rate limit went from 5 to 500
-- **password hashing disappeared from `saveUser`**
-
-Every one of those compiles. Every one passes tests. **Every one is a bug.**
-
----
-
-## Why not just hash the code?
-
-Because a hash tells you *something* changed. It cannot tell you *what*.
-
-| Edit | Hash | PlanMap |
-|---|---|---|
-| Reformat the file | 🔴 alarm | ✅ silent |
-| Rename a local variable | 🔴 alarm | ✅ silent |
-| Add a comment | 🔴 alarm | ✅ silent |
-| `throw` becomes `return null` | 🔴 alarm | 🚨 `throws: 2 → 0` |
-
-A hash gives the same alarm for all four. After a day of that, you stop reading the alarms.
-
-PlanMap stays quiet for the first three and speaks up for the fourth — naming the actual problem.
-
----
-
-## No AI at runtime
-
-PlanMap does not ask a language model what changed.
-
-Every fact comes from a parser walking a syntax tree. Same input, same output, every time. No API key, no network, no cost per run, nothing hallucinated.
-
-> Static analysis determines **what** changed. A model may later narrate **why it matters** — but it never decides what happened.
-
-Models hallucinate dependencies. Parsers don't.
+That output is from a real run. Reformatting the same file, renaming its local variables, and adding comments produces **zero** changes — verified as a control test.
 
 ---
 
 ## Install
 
 ```bash
-git clone https://github.com/its-sambhav/PLAN_MAP
-cd PLAN_MAP
-npm install
+npx planmap init      # scan the project, write a baseline
+npx planmap watch     # watch for behavioural changes
 ```
 
-Three dependencies. Tree-sitter for parsing, chokidar for watching files. Nothing else.
+No API key. No account. No config file. Nothing leaves your machine.
 
 ---
 
-## Use
+## Commands
 
-**Look at one file**
+| Command | What it does |
+|---|---|
+| `init` | Scan the project and write `.planmap/baseline.json` |
+| `watch` | Watch files; report behavioural changes as they happen |
+| `check` | Compare current code against the baseline. Exits non-zero on change — usable in CI. |
+| `accept` | Approve the current state as the new baseline |
+| `diff <a> <b>` | Compare two files directly |
+| `evolution` | Render the project's change history as a feature tree |
 
-```bash
-node src/cli.js src/auth.js
-node src/cli.js src/auth.js --json     # with all extracted facts
-```
-
-**Compare two versions of a file**
-
-```bash
-node src/cli.js diff before.js after.js
-```
-
-**Watch a whole project**
-
-```bash
-node src/cli.js init    my-project     # remember the current state
-node src/cli.js watch   my-project     # report drift as you save
-node src/cli.js check   my-project     # one-shot check, exits 1 on drift
-node src/cli.js accept  my-project     # approve the current state
-```
-
-`check` exiting non-zero is what makes it work in CI.
+Only `init` and `accept` ever write the baseline. The watcher never does — otherwise a change would erase itself on the next save.
 
 ---
 
-## How it works
+## What gets tracked
 
-**1. Find every function that can be named.**
+Ten facts per declaration:
 
-Not every piece of code can carry a promise. A named function can. The third anonymous callback inside a `.map()` can't — add another `.map()` above it and it becomes the fourth. If you can't find it again after an edit, it can't be tracked.
+| Fact | Catches |
+|---|---|
+| `throws` / `throwTypes` | Error handling removed or changed |
+| `returns` / `returnsNullish` | A function that threw now returns nothing |
+| `calls` | A dependency added or dropped |
+| `numbers` | Limits, timeouts, retries, thresholds |
+| `awaits` | Sync/async behaviour changed |
+| `catches` / `emptyCatches` | Errors newly swallowed |
+| `params` | Signature changed |
 
-Each one gets a stable address:
+String literals are deliberately excluded — they are mostly error messages, and they get reworded constantly.
 
-```
-src/auth.js::ResponseValidator.validate:method
-src/auth.js::buildValidator.checkLength.withinBounds:function
-```
-
-**2. Extract facts about each one.**
-
-Does it throw, and what? How many exit points? What does it call? What numbers does it contain? Does it await? Does it swallow errors? How many parameters?
-
-Numbers are tracked because a number is usually a *rule* — a limit, a timeout, a retry count. Strings aren't, because they're mostly error messages that get reworded constantly.
-
-**3. Compare.**
-
-Two sets of facts, matched by address. Something in the old set and not the new one was **deleted** — the loudest signal there is, and one a forward-only scan would never see.
+**Why facts and not hashes:** a hash fires on reformatting. Facts don't. A hash tells you *something* changed; facts tell you *what*.
 
 ---
 
-## Memory, not git
+## Nested declarations
 
-Git sees commits. Agent drift happens **between** commits — you accept a change, keep working, and by commit time it's forgotten.
+Extraction stops at the boundary of the next declaration, so each one owns only its own body.
 
-PlanMap keeps its own memory in a `.planmap/` folder:
-
-- **`baseline.json`** — the state you last approved
-- **`events.jsonl`** — one line per real change, appended and never rewritten
-
-```json
-{"ts":"...","identity":"src/auth.js::validateScore:function","type":"changed","delta":{"throws":[2,0]}}
+```js
+function outer() {
+  function inner() {
+    throw new Error('x');   // belongs to inner, not outer
+  }
+}
 ```
 
-That works on uncommitted code, before the first commit, and on projects with no repository at all.
-
-**The watcher never moves the baseline.** If it did, a drift would vanish on the next save and you'd never know it happened. The baseline moves only when you run `accept` — you saying you've seen it and it's fine.
+Without this, one nested change makes every enclosing function report as changed.
 
 ---
 
-## What it doesn't do
+## Evolution graph
 
-JavaScript only. No dataflow analysis — re-exports and aliases resolve to where they're written, not where they end up. And it hasn't yet been run against a large production codebase, so real code will surprise it in ways the test fixtures don't.
+`planmap evolution` turns the change history into a feature-oriented tree:
+
+```markdown
+- **Login**
+  - Added authentication start endpoint `backend` `api`
+    - Updated authentication response status `backend` `api`
+      - numbers [200,401] → [200,402]
+  - Added JWT verification middleware `backend` `security`
+  - Added Google Sign-In initialization `frontend`
+
+- **Survey**
+  - Added survey start endpoint `backend` `api`
+  - Added survey submission service `backend` `database`
+```
+
+Features are **capabilities, not layers** — a feature spanning frontend and backend stays one node.
+
+Structure comes from static analysis. Labels are optional and come from an LLM you configure yourself (`OPENROUTER_API_KEY`). Without a key everything still works; nodes are left unlabelled.
+
+**PlanMap never sends your source code anywhere.** Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]` — and only if you enable labelling.
 
 ---
 
-<div align="center">
+## What it is not
 
-*A compiler checks that code is valid.
-A linter checks that code is tidy.
-PlanMap checks that code still means what it meant.*
+Being straight about this matters more than breadth.
 
-Built by [Sambhav](https://github.com/its-sambhav)
+- **Not a linter.** It has no opinion about whether your code is good. It reports what changed.
+- **Not an AI reviewer.** No model decides what happened. Static analysis determines the facts; the LLM only writes labels.
+- **Not a security scanner.**
+- **Not a spec tool.** Nothing to write, nothing to maintain. The baseline comes from your code.
 
-</div>
+---
+
+## How it compares
+
+| | Linters | AI reviewers | PlanMap |
+|---|---|---|---|
+| Needs rules | Yes | No | No |
+| Needs a spec | No | No | No |
+| Sees between commits | No | No | **Yes** |
+| Sends code to a server | No | Yes | **No** |
+| Deterministic | Yes | No | Yes |
+| Knows what the code did yesterday | No | No | **Yes** |
+
+A pattern-matching scanner would catch the example above only if someone had written a rule saying that function must throw. Nobody writes that rule.
+
+PlanMap catches it because it remembers what the function did yesterday, with zero configuration.
+
+---
+
+## Status
+
+**v0.4** — working, in active development, dogfooded daily.
+
+| | |
+|---|---|
+| ✅ | Declaration extraction (JS + TS) |
+| ✅ | Behavioural fact extraction |
+| ✅ | Baseline, diff, watch, CI exit codes |
+| ✅ | Change history and feature tree |
+| 🔨 | Significance filtering — stop reporting removed debug lines |
+| 🔨 | Dependency map — what calls what |
+| 🔨 | Impact analysis — what a change affects downstream |
+| 📋 | Python support |
+
+The next release adds the line the tool is missing today:
+
+```
+  3 declarations depend on this:
+    loadSession     direct
+    createOrder     direct
+    handleOrder     via loadSession
+```
+
+---
+
+## Tech
+
+Node ESM, no build step. [`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter) (WASM), `chokidar` for file watching. Storage is plain JSON in `.planmap/`, committable to git.
+
+Requires Node 18+.
+
+---
+
+## Contributing
+
+Issues welcome, especially:
+
+- A behavioural change PlanMap **missed**
+- A change it reported that **didn't matter**
+
+Both are more useful than feature requests right now.
+
+---
+
+## License
+
+MIT
