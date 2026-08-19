@@ -1,14 +1,24 @@
+<div align="center">
+
 # PlanMap
 
-**Catches the code changes that compile, pass tests, and pass review.**
+### Catches the code changes that compile, pass tests, and pass review.
 
-Local. No rules to write. No spec to maintain. Works on any JavaScript or TypeScript repo.
+Local · no rules to write · no spec to maintain · works on any repo
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-1f6feb.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A518-3fb950.svg)](https://nodejs.org)
+[![Status](https://img.shields.io/badge/status-v0.4%20active-d29922.svg)](#status)
+
+</div>
+
+<div align="center">
 
 ---
 
 ## The change that started this
 
-A function was changed from throwing an error to returning `null`:
+</div>
 
 ```diff
   function validateScore(raw) {
@@ -18,23 +28,37 @@ A function was changed from throwing an error to returning `null`:
   }
 ```
 
-The compiler passed. The tests passed. ESLint passed. An AI code reviewer looked at the diff and said nothing.
+<div align="center">
 
-Every caller that relied on catching that error now silently receives `null`. Nothing crashes. The behaviour is simply wrong from that point on.
+| | |
+|:--|:--|
+| ✅ Compiler | passed |
+| ✅ Tests | passed |
+| ✅ ESLint | passed |
+| ✅ AI code review | said nothing |
 
-**This is the class of change PlanMap exists to catch.** Not syntax errors — those are already handled. Behavioural changes that survive every existing layer of verification.
+Every caller that relied on catching that error now silently receives `null`.
+
+**Nothing crashes. The behaviour is simply wrong from that point on.**
+
+> This is the class of change PlanMap exists to catch.
+> Not syntax errors — those are already handled.
+> Behavioural changes that survive every existing layer of verification.
 
 ---
 
 ## What it does
 
-PlanMap parses your code into declarations and extracts **behavioural facts** about each one: how many times it throws, what it throws, whether it returns nullish, what it calls, what numbers it contains, how it handles errors.
+PlanMap extracts **behavioural facts** from every declaration in your code —
+what it throws, what it returns, what it calls, how it handles errors.
 
 It stores those facts as a baseline. Then it watches.
 
-When a fact changes, you hear about it. When formatting changes, you don't.
+### When a fact changes, you hear about it.<br>When formatting changes, you don't.
 
-```
+</div>
+
+```console
 $ planmap check
 
 Comparing baseline → current
@@ -47,170 +71,210 @@ Comparing baseline → current
 1 changed · 0 added · 0 deleted · 12 unchanged
 ```
 
-That output is from a real run. Reformatting the same file, renaming its local variables, and adding comments produces **zero** changes — verified as a control test.
+<div align="center">
+
+Reformat that same file, rename its locals, add comments — **zero changes reported.**
+
+*Verified as a control test.*
 
 ---
 
 ## Install
+
+</div>
 
 ```bash
 npx planmap init      # scan the project, write a baseline
 npx planmap watch     # watch for behavioural changes
 ```
 
-No API key. No account. No config file. Nothing leaves your machine.
+<div align="center">
+
+### No API key · No account · No config<br>Nothing leaves your machine
 
 ---
 
 ## Commands
 
-| Command | What it does |
-|---|---|
+| | |
+|:--|:--|
 | `init` | Scan the project and write `.planmap/baseline.json` |
 | `watch` | Watch files; report behavioural changes as they happen |
-| `check` | Compare current code against the baseline. Exits non-zero on change — usable in CI. |
+| `check` | Compare against the baseline. Exits non-zero — usable in CI. |
 | `accept` | Approve the current state as the new baseline |
 | `diff <a> <b>` | Compare two files directly |
-| `evolution` | Render the project's change history as a feature tree |
+| `evolution` | Render the change history as a feature tree |
 
-Only `init` and `accept` ever write the baseline. The watcher never does — otherwise a change would erase itself on the next save.
+> Only `init` and `accept` ever write the baseline.
+> The watcher never does — otherwise a change would erase its own evidence.
 
 ---
 
 ## What gets tracked
 
-Ten facts per declaration:
+Ten facts per declaration
 
 | Fact | Catches |
-|---|---|
-| `throws` / `throwTypes` | Error handling removed or changed |
-| `returns` / `returnsNullish` | A function that threw now returns nothing |
+|:--|:--|
+| `throws` · `throwTypes` | Error handling removed or changed |
+| `returns` · `returnsNullish` | A function that threw now returns nothing |
 | `calls` | A dependency added or dropped |
 | `numbers` | Limits, timeouts, retries, thresholds |
 | `awaits` | Sync/async behaviour changed |
-| `catches` / `emptyCatches` | Errors newly swallowed |
+| `catches` · `emptyCatches` | Errors newly swallowed |
 | `params` | Signature changed |
 
-String literals are deliberately excluded — they are mostly error messages, and they get reworded constantly.
+String literals are deliberately excluded —
+they're mostly error messages, and they get reworded constantly.
 
-**Why facts and not hashes:** a hash fires on reformatting. Facts don't. A hash tells you *something* changed; facts tell you *what*.
+<details>
+<summary><b>Why facts and not hashes?</b></summary>
 
----
+<br>
 
-## Nested declarations
+| Edit | Hash | Facts |
+|:--|:--:|:--:|
+| Reformat | 🔴 fires | 🟢 silent |
+| Rename a local | 🔴 fires | 🟢 silent |
+| Add a comment | 🔴 fires | 🟢 silent |
+| `throw` → `return null` | 🔴 fires | 🔴 `throws: 1 → 0` |
 
-Extraction stops at the boundary of the next declaration, so each one owns only its own body.
+A hash tells you *something* changed. Facts tell you **what**.
 
-```js
-function outer() {
-  function inner() {
-    throw new Error('x');   // belongs to inner, not outer
-  }
-}
-```
+</details>
 
-Without this, one nested change makes every enclosing function report as changed.
+<details>
+<summary><b>How nested declarations are handled</b></summary>
+
+<br>
+
+Extraction stops at the boundary of the next declaration,
+so each one owns only its own body.
+
+</details>
 
 ---
 
 ## Evolution graph
 
-`planmap evolution` turns the change history into a feature-oriented tree:
+Turns the change history into a feature-oriented tree
+
+</div>
 
 ```markdown
 - **Login**
-  - Added authentication start endpoint `backend` `api`
-    - Updated authentication response status `backend` `api`
+  - Added authentication start endpoint  `backend` `api`
+    - Updated authentication response status  `backend` `api`
       - numbers [200,401] → [200,402]
-  - Added JWT verification middleware `backend` `security`
-  - Added Google Sign-In initialization `frontend`
+  - Added JWT verification middleware  `backend` `security`
+  - Added Google Sign-In initialization  `frontend`
 
 - **Survey**
-  - Added survey start endpoint `backend` `api`
-  - Added survey submission service `backend` `database`
+  - Added survey start endpoint  `backend` `api`
+  - Added survey submission service  `backend` `database`
 ```
 
-Features are **capabilities, not layers** — a feature spanning frontend and backend stays one node.
+<div align="center">
 
-Structure comes from static analysis. Labels are optional and come from an LLM you configure yourself (`OPENROUTER_API_KEY`). Without a key everything still works; nodes are left unlabelled.
+Features are **capabilities, not layers** —
+a feature spanning frontend and backend stays one node.
 
-**PlanMap never sends your source code anywhere.** Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]` — and only if you enable labelling.
+Structure comes from static analysis.
+Labels are optional and come from an LLM you configure yourself.
 
----
+### 🔒 PlanMap never sends your source code anywhere.
 
-## What it is not
-
-Being straight about this matters more than breadth.
-
-- **Not a linter.** It has no opinion about whether your code is good. It reports what changed.
-- **Not an AI reviewer.** No model decides what happened. Static analysis determines the facts; the LLM only writes labels.
-- **Not a security scanner.**
-- **Not a spec tool.** Nothing to write, nothing to maintain. The baseline comes from your code.
+Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]` —
+and only if you enable labelling.
 
 ---
 
 ## How it compares
 
-| | Linters | AI reviewers | PlanMap |
-|---|---|---|---|
-| Needs rules | Yes | No | No |
-| Needs a spec | No | No | No |
-| Sees between commits | No | No | **Yes** |
-| Sends code to a server | No | Yes | **No** |
-| Deterministic | Yes | No | Yes |
-| Knows what the code did yesterday | No | No | **Yes** |
+| | Linters | AI reviewers | **PlanMap** |
+|:--|:--:|:--:|:--:|
+| Needs rules | ✅ yes | ❌ no | ❌ no |
+| Needs a spec | ❌ no | ❌ no | ❌ no |
+| Sees between commits | ❌ no | ❌ no | **✅ yes** |
+| Sends code to a server | ❌ no | ⚠️ yes | **❌ no** |
+| Deterministic | ✅ yes | ❌ no | **✅ yes** |
+| Knows what the code did yesterday | ❌ no | ❌ no | **✅ yes** |
 
-A pattern-matching scanner would catch the example above only if someone had written a rule saying that function must throw. Nobody writes that rule.
+A pattern-matching scanner catches the example at the top
+**only if someone wrote a rule** saying that function must throw.
 
-PlanMap catches it because it remembers what the function did yesterday, with zero configuration.
+Nobody writes that rule.
+
+**PlanMap catches it because it remembers what the function did yesterday.**
+
+---
+
+## What it is not
+
+**Not a linter** — no opinion about whether your code is good
+
+**Not an AI reviewer** — static analysis decides what happened, not a model
+
+**Not a security scanner**
+
+**Not a spec tool** — nothing to write, nothing to maintain
 
 ---
 
 ## Status
 
-**v0.4** — working, in active development, dogfooded daily.
+**v0.4** — working, in active development, dogfooded daily
 
 | | |
-|---|---|
-| ✅ | Declaration extraction (JS + TS) |
+|:--|:--|
+| ✅ | Declaration extraction |
 | ✅ | Behavioural fact extraction |
-| ✅ | Baseline, diff, watch, CI exit codes |
+| ✅ | Baseline · diff · watch · CI exit codes |
 | ✅ | Change history and feature tree |
-| 🔨 | Significance filtering — stop reporting removed debug lines |
+| 🔨 | Significance filtering |
 | 🔨 | Dependency map — what calls what |
 | 🔨 | Impact analysis — what a change affects downstream |
-| 📋 | Python support |
+| 📋 | TypeScript · Python |
 
-The next release adds the line the tool is missing today:
+**Next release** adds the line the tool is missing today
 
-```
+</div>
+
+```console
   3 declarations depend on this:
     loadSession     direct
     createOrder     direct
     handleOrder     via loadSession
 ```
 
+<div align="center">
+
 ---
 
 ## Tech
 
-Node ESM, no build step. [`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter) (WASM), `chokidar` for file watching. Storage is plain JSON in `.planmap/`, committable to git.
+Node ESM, no build step
+[`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter) (WASM) for parsing · `chokidar` for watching
+Storage is plain JSON in `.planmap/`, committable to git
 
-Requires Node 18+.
+Design decisions and their reasoning: [`DECISIONS.md`](DECISIONS.md)
 
 ---
 
 ## Contributing
 
-Issues welcome, especially:
+Issues welcome — especially these two
 
-- A behavioural change PlanMap **missed**
-- A change it reported that **didn't matter**
+> 🐛 **A behavioural change PlanMap missed**
+>
+> 🔇 **A change it reported that didn't matter**
 
 Both are more useful than feature requests right now.
 
 ---
 
-## License
+<br>
 
-MIT
+**MIT** · built by [@its-sambhav](https://github.com/its-sambhav)
+
+</div>
