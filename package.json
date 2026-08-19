@@ -1,8 +1,48 @@
 {
+  "name": "planmap",
+  "version": "0.4.0",
+  "description": "Catches the code changes that compile, pass tests, and pass review. Local semantic change detection for JavaScript.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Sambhav",
+  "bin": {
+    "planmap": "src/cli.js"
+  },
+  "main": "src/cli.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "DECISIONS.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "planmap": "node src/cli.js",
+    "test:v1": "node src/cli.js parse test/v0.1/test.js",
+    "test:v2": "node src/cli.js diff test/v0.2/before.js test/v0.2/after.js"
+  },
+  "keywords": [
+    "static-analysis",
+    "code-review",
+    "drift-detection",
+    "semantic-diff",
+    "ai-coding-agents",
+    "tree-sitter",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/its-sambhav/PLAN_MAP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/its-sambhav/PLAN_MAP/issues"
+  },
+  "homepage": "https://github.com/its-sambhav/PLAN_MAP#readme",
   "dependencies": {
     "chokidar": "^5.0.0",
     "tree-sitter-javascript": "^0.25.0",
     "web-tree-sitter": "^0.26.12"
-  },
-  "type": "module"
+  }
 }
