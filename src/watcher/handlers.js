@@ -25,43 +25,17 @@ export function handleAdd(
     context
 ) {
 
-    console.log(
-        "\n🟢 HANDLER ADD:",
-        filePath
-    );
-
-
-    // --------------------------------------------------
-    // CHECK FILTER
-    // --------------------------------------------------
-
     if (
         shouldIgnore(
             filePath
         )
     ) {
-
-        console.log(
-            "🔴 HANDLER ADD IGNORED:",
-            filePath
-        );
-
         return;
     }
-
-
-    // --------------------------------------------------
-    // DEBOUNCE
-    // --------------------------------------------------
 
     debounceFile(
         filePath,
         async () => {
-
-            console.log(
-                "\n🟡 RUNNING ADD CHECK:",
-                filePath
-            );
 
             try {
 
@@ -79,6 +53,7 @@ export function handleAdd(
                     `Unable to check added file ${filePath}: ${error.message}`
                 );
             }
+
         },
         context.debounceDelay
     );
@@ -98,43 +73,17 @@ export function handleChange(
     context
 ) {
 
-    console.log(
-        "\n🟢 HANDLER CHANGE:",
-        filePath
-    );
-
-
-    // --------------------------------------------------
-    // CHECK FILTER
-    // --------------------------------------------------
-
     if (
         shouldIgnore(
             filePath
         )
     ) {
-
-        console.log(
-            "🔴 HANDLER CHANGE IGNORED:",
-            filePath
-        );
-
         return;
     }
-
-
-    // --------------------------------------------------
-    // DEBOUNCE
-    // --------------------------------------------------
 
     debounceFile(
         filePath,
         async () => {
-
-            console.log(
-                "\n🟡 RUNNING CHANGE CHECK:",
-                filePath
-            );
 
             try {
 
@@ -146,17 +95,13 @@ export function handleChange(
                     context.lastSeenDeclarations
                 );
 
-                console.log(
-                    "✅ CHANGE CHECK FINISHED:",
-                    filePath
-                );
-
             } catch (error) {
 
                 console.error(
                     `Unable to check changed file ${filePath}: ${error.message}`
                 );
             }
+
         },
         context.debounceDelay
     );
@@ -176,43 +121,17 @@ export function handleUnlink(
     context
 ) {
 
-    console.log(
-        "\n🟢 HANDLER UNLINK:",
-        filePath
-    );
-
-
-    // --------------------------------------------------
-    // CHECK FILTER
-    // --------------------------------------------------
-
     if (
         shouldIgnore(
             filePath
         )
     ) {
-
-        console.log(
-            "🔴 HANDLER UNLINK IGNORED:",
-            filePath
-        );
-
         return;
     }
-
-
-    // --------------------------------------------------
-    // CLEAR PENDING DEBOUNCE
-    // --------------------------------------------------
 
     clearDebounce(
         filePath
     );
-
-
-    // --------------------------------------------------
-    // CHECK REMOVED FILE
-    // --------------------------------------------------
 
     try {
 
@@ -236,9 +155,6 @@ export function handleUnlink(
 // --------------------------------------------------
 // Returns the callbacks used by the filesystem
 // watcher.
-//
-// Keeping these callbacks here prevents watcher.js
-// from containing all event-handling logic.
 // --------------------------------------------------
 
 export function createWatcherHandlers(
@@ -257,7 +173,6 @@ export function createWatcherHandlers(
             );
         },
 
-
         change(
             filePath
         ) {
@@ -268,7 +183,6 @@ export function createWatcherHandlers(
             );
         },
 
-
         unlink(
             filePath
         ) {
@@ -278,6 +192,5 @@ export function createWatcherHandlers(
                 context
             );
         }
-
     };
 }

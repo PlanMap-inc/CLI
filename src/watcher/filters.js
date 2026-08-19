@@ -1,6 +1,16 @@
 // --------------------------------------------------
 // WATCHER FILE FILTER
 // --------------------------------------------------
+// 1-Receives a file path and optional filesystem stats.
+// 2-Ignores PlanMap internal files.
+// 3-Ignores dependency directories.
+// 4-Ignores common build/cache directories.
+// 5-Ignores common system files.
+// 6-Only applies the JavaScript extension check when
+//   the path is confirmed to be a file.
+// 7-Allows paths when stats are not yet available so
+//   Chokidar can continue traversing directories.
+// --------------------------------------------------
 
 export function shouldIgnore(
     filePath,
@@ -27,7 +37,7 @@ export function shouldIgnore(
 
 
     // --------------------------------------------------
-    // DEPENDENCIES
+    // DEPENDENCY / GENERATED DIRECTORIES
     // --------------------------------------------------
 
     const ignoredDirectories = [
@@ -58,7 +68,13 @@ export function shouldIgnore(
 
 
     // --------------------------------------------------
-    // ALWAYS ALLOW DIRECTORIES
+    // DIRECTORIES
+    // --------------------------------------------------
+    // Chokidar may call this function before filesystem
+    // stats are available.
+    //
+    // When stats are available and this is a directory,
+    // allow it so Chokidar can continue traversing it.
     // --------------------------------------------------
 
     if (
@@ -88,10 +104,20 @@ export function shouldIgnore(
 
 
     // --------------------------------------------------
-    // ONLY JAVASCRIPT FILES
+    // FILE EXTENSION
+    // --------------------------------------------------
+    // IMPORTANT:
+    //
+    // Do NOT reject a path when stats are undefined.
+    //
+    // Chokidar can call `ignored` before it has stat'd
+    // the path. At that point we do not know whether
+    // the path is a directory or a file.
     // --------------------------------------------------
 
     if (
+        stats &&
+        stats.isFile() &&
         !normalizedPath.endsWith(
             ".js"
         )
@@ -99,6 +125,10 @@ export function shouldIgnore(
         return true;
     }
 
+
+    // --------------------------------------------------
+    // ALLOW
+    // --------------------------------------------------
 
     return false;
 }
