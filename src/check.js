@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { appendEvent } from "./events.js";
 
 
 // --------------------------------------------------
@@ -15,17 +16,25 @@ import path from "node:path";
 // 7-Returns the baseline.
 // --------------------------------------------------
 
-export function readBaseline(projectRoot) {
-    const baselinePath = path.join(
-        projectRoot,
-        ".planmap",
-        "baseline.json"
-    );
+export function readBaseline(
+    projectRoot
+) {
+    const baselinePath =
+        path.join(
+            projectRoot,
+            ".planmap",
+            "baseline.json"
+        );
 
-    if (!fs.existsSync(baselinePath)) {
+    if (
+        !fs.existsSync(
+            baselinePath
+        )
+    ) {
         console.error(
             "Baseline not found. Run init first."
         );
+
         process.exit(1);
     }
 
@@ -35,7 +44,9 @@ export function readBaseline(projectRoot) {
             "utf8"
         );
 
-    return JSON.parse(baselineCode);
+    return JSON.parse(
+        baselineCode
+    );
 }
 
 
@@ -52,11 +63,16 @@ export function readBaseline(projectRoot) {
 //    * Exits the program.
 // --------------------------------------------------
 
-function checkBaselineVersion(baseline) {
-    if (baseline.version !== 1) {
+function checkBaselineVersion(
+    baseline
+) {
+    if (
+        baseline.version !== 1
+    ) {
         console.error(
             `Unsupported baseline version: ${baseline.version}`
         );
+
         process.exit(1);
     }
 }
@@ -69,7 +85,8 @@ function checkBaselineVersion(baseline) {
 // 3-Checks the baseline version.
 // 4-Scans the current project.
 // 5-Compares the current declarations with the baseline.
-// 6-Returns the detected changes.
+// 6-Appends every real change to events.jsonl.
+// 7-Returns the detected changes.
 // --------------------------------------------------
 
 export function runCheck(
@@ -79,7 +96,9 @@ export function runCheck(
     diffDeclarations
 ) {
     const baseline =
-        readBaseline(projectRoot);
+        readBaseline(
+            projectRoot
+        );
 
     checkBaselineVersion(
         baseline
@@ -96,6 +115,28 @@ export function runCheck(
             baseline.declarations,
             currentDeclarations
         );
+
+    // --------------------------------------------------
+    // RECORD REAL CHANGES
+    // --------------------------------------------------
+    // appendEvent() already ignores "unchanged"
+    // results and records:
+    //   - changed
+    //   - added
+    //   - deleted
+    //
+    // The baseline is NOT modified here.
+    // --------------------------------------------------
+
+    for (
+        const change
+        of changes
+    ) {
+        appendEvent(
+            projectRoot,
+            change
+        );
+    }
 
     return changes;
 }
