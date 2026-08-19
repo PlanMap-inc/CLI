@@ -1,0 +1,501 @@
+import fs from "node:fs";
+import path from "node:path";
+
+import {
+    parseEvolutionIdentity
+} from "./identity.js";
+
+ // --------------------------------------------------
+// GET EVENT LABEL
+// 1-Receives an evolution node.
+// 2-Uses the declaration identity.
+// 3-Creates a simple offline label.
+// 4-Does not use the LLM.
+// --------------------------------------------------
+
+export function getEvolutionLabel(
+    node
+) {
+    const parsed =
+        parseEvolutionIdentity(
+            node.identity
+        );
+
+    if (
+        node.type === "added"
+    ) {
+        return `Added ${parsed.declaration}`;
+    }
+
+    if (
+        node.type === "changed"
+    ) {
+        return `Changed ${parsed.declaration}`;
+    }
+
+    if (
+        node.type === "deleted"
+    ) {
+        return `Removed ${parsed.declaration}`;
+    }
+
+    return parsed.declaration;
+}
+
+
+ // --------------------------------------------------
+// FORMAT DELTA
+// 1-Receives an evolution node.
+// 2-Checks whether a property delta exists.
+// 3-Formats known property changes.
+// 4-Returns an empty string when no delta exists.
+// --------------------------------------------------
+
+export function formatEvolutionDelta(
+    node
+) {
+    if (
+        !node.delta
+    ) {
+        return "";
+    }
+
+    const delta =
+        node.delta;
+
+    const parts = [];
+
+    if (
+        delta.numbers
+    ) {
+        const before =
+            JSON.stringify(
+                delta.numbers[0]
+            );
+
+        const after =
+            JSON.stringify(
+                delta.numbers[1]
+            );
+
+        parts.push(
+            `numbers ${before} → ${after}`
+        );
+    }
+
+    if (
+        delta.calls
+    ) {
+        const before =
+            delta.calls[0] || [];
+
+        const after =
+            delta.calls[1] || [];
+
+        const added =
+            after.filter(
+                value =>
+                    !before.includes(
+                        value
+                    )
+            );
+
+        const removed =
+            before.filter(
+                value =>
+                    !after.includes(
+                        value
+                    )
+            );
+
+        if (
+            added.length > 0
+        ) {
+            parts.push(
+                `calls +${added.join(", ")}`
+            );
+        }
+
+        if (
+            removed.length > 0
+        ) {
+            parts.push(
+                `calls -${removed.join(", ")}`
+            );
+        }
+    }
+
+    if (
+        delta.params
+    ) {
+        parts.push(
+            `params ${JSON.stringify(delta.params)}`
+        );
+    }
+
+    if (
+        delta.throws
+    ) {
+        parts.push(
+            `throws ${JSON.stringify(delta.throws)}`
+        );
+    }
+
+    if (
+        delta.returns
+    ) {
+        parts.push(
+            `returns ${JSON.stringify(delta.returns)}`
+        );
+    }
+
+    return parts.length > 0
+        ? `   ${parts.join(" | ")}`
+        : "";
+}
+
+// --------------------------------------------------
+// RENDER EVOLUTION MARKDOWN
+//
+// Hierarchy:
+//
+// Feature
+//   └── Evolution change
+//       └── Child evolution change
+//
+// The hierarchy is NOT architecture-based.
+//
+// Lineage controls nesting.
+// Feature controls grouping.
+// Tags remain metadata.
+// --------------------------------------------------
+
+export function renderEvolutionMarkdown(
+    evolution
+) {
+
+    const nodes =
+        evolution.nodes || [];
+
+
+    const children =
+        new Map();
+
+
+    for (
+        const node
+        of nodes
+    ) {
+
+        if (
+            !node.parent
+        ) {
+            continue;
+        }
+
+
+        if (
+            !children.has(
+                node.parent
+            )
+        ) {
+
+            children.set(
+                node.parent,
+                []
+            );
+        }
+
+
+        children
+            .get(
+                node.parent
+            )
+            .push(
+                node
+            );
+    }
+
+
+    const roots =
+        nodes.filter(
+            node =>
+                !node.parent
+        );
+
+
+    /*
+     * Group only ROOT events by feature.
+     *
+     * Children inherit their position
+     * through lineage.
+     */
+
+    const features =
+        new Map();
+
+
+    for (
+        const node
+        of roots
+    ) {
+
+        const feature =
+            node.feature ||
+            node.category ||
+            "Unclassified";
+
+
+        if (
+            !features.has(
+                feature
+            )
+        ) {
+
+            features.set(
+                feature,
+                []
+            );
+        }
+
+
+        features
+            .get(
+                feature
+            )
+            .push(
+                node
+            );
+    }
+
+
+    const lines =
+        [];
+
+
+    lines.push(
+        "# Project Evolution"
+    );
+
+
+    lines.push(
+        ""
+    );
+
+
+    lines.push(
+        "> Feature-oriented evolution history generated by PlanMap."
+    );
+
+
+    lines.push(
+        "> Product features form the top level. Event lineage forms the nesting."
+    );
+
+
+    lines.push(
+        ""
+    );
+
+
+    const sortedFeatures =
+        [
+            ...features.entries()
+        ]
+            .sort(
+                (
+                    first,
+                    second
+                ) =>
+                    first[0]
+                        .localeCompare(
+                            second[0]
+                        )
+            );
+
+
+    for (
+        const [
+            feature,
+            featureRoots
+        ]
+        of sortedFeatures
+    ) {
+
+        lines.push(
+            `- **${feature}**`
+        );
+
+
+        const sortedRoots =
+            [
+                ...featureRoots
+            ]
+                .sort(
+                    (
+                        first,
+                        second
+                    ) =>
+                        first.ts.localeCompare(
+                            second.ts
+                        )
+                );
+
+
+        for (
+            const node
+            of sortedRoots
+        ) {
+
+            renderEvolutionNode(
+                node,
+                children,
+                lines,
+                1
+            );
+        }
+
+
+        lines.push(
+            ""
+        );
+    }
+    return (
+        lines
+            .join(
+                "\n"
+            )
+            .trim() +
+        "\n"
+    );
+}
+
+// --------------------------------------------------
+// RENDER EVOLUTION NODE
+//
+// Only the human-facing change is shown in the
+// main tree.
+//
+// Technical identity and tags are kept as metadata
+// underneath the change so the tree stays readable.
+// --------------------------------------------------
+
+export function renderEvolutionNode(
+    node,
+    children,
+    lines,
+    depth
+) {
+
+    const indentation =
+        "  ".repeat(
+            depth
+        );
+
+
+    const label =
+        node.label ||
+        getEvolutionLabel(
+            node
+        );
+
+
+    const inlineTags =
+        Array.isArray(node.tags) &&
+        node.tags.length > 0
+            ? " " +
+              node.tags
+                  .map(
+                      tag =>
+                          `\`${String(tag).trim()}\``
+                  )
+                  .join(" ")
+            : "";
+
+    lines.push(
+        `${indentation}- ${label}${inlineTags}`
+    );
+
+
+    const delta =
+        formatEvolutionDelta(
+            node
+        );
+
+
+    if (
+        delta
+    ) {
+
+        lines.push(
+            `${indentation}  - ${delta.trim()}`
+        );
+    }
+
+
+    const nodeChildren =
+        children.get(
+            node.id
+        ) || [];
+
+
+    const sortedChildren =
+        [
+            ...nodeChildren
+        ]
+            .sort(
+                (
+                    first,
+                    second
+                ) =>
+                    first.ts.localeCompare(
+                        second.ts
+                    )
+            );
+
+
+    for (
+        const child
+        of sortedChildren
+    ) {
+
+        renderEvolutionNode(
+            child,
+            children,
+            lines,
+            depth + 1
+        );
+    }
+}
+// --------------------------------------------------
+// WRITE EVOLUTION MARKDOWN
+// 1-Receives the project root.
+// 2-Receives the evolution data.
+// 3-Renders deterministic Markdown.
+// 4-Writes EVOLUTION.md in the project root.
+// 5-Returns the written path.
+// --------------------------------------------------
+
+export function writeEvolutionMarkdown(
+    projectRoot,
+    evolution
+) {
+    const markdown =
+        renderEvolutionMarkdown(
+            evolution
+        );
+
+    const markdownPath =
+        path.join(
+            projectRoot,
+            "EVOLUTION.md"
+        );
+
+    fs.writeFileSync(
+        markdownPath,
+        markdown,
+        "utf8"
+    );
+
+    return markdownPath;
+}
