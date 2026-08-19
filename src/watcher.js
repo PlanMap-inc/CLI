@@ -13,11 +13,12 @@ import {
 // WATCH PROJECT
 // --------------------------------------------------
 // 1-Creates a Chokidar watcher for the project.
-// 2-Watches the project directory recursively.
-// 3-Uses the filter to ignore unwanted files.
-// 4-Delegates add/change/unlink events.
-// 5-Keeps the watcher alive until Ctrl+C.
-// 6-Closes the watcher cleanly on shutdown.
+// 2-Uses the watcher filter for ignored paths.
+// 3-Ignores the initial scan.
+// 4-Creates in-memory watcher state.
+// 5-Delegates add/change/unlink handling.
+// 6-Keeps the watcher alive through Chokidar.
+// 7-Closes the watcher cleanly on shutdown.
 // --------------------------------------------------
 
 export function watchProject(
@@ -26,7 +27,7 @@ export function watchProject(
 ) {
 
     // --------------------------------------------------
-    // IN-MEMORY STATE
+    // IN-MEMORY WATCHER STATE
     // --------------------------------------------------
 
     const lastSeen =
@@ -67,16 +68,6 @@ export function watchProject(
     // --------------------------------------------------
     // CREATE CHOKIDAR WATCHER
     // --------------------------------------------------
-    // IMPORTANT:
-    //
-    // Watch the project directory itself.
-    //
-    // Do NOT use:
-    //
-    //     `${projectRoot}/**/*.js`
-    //
-    // because Chokidar v4 does not support glob patterns.
-    // --------------------------------------------------
 
     const watcher =
         chokidar.watch(
@@ -109,7 +100,7 @@ export function watchProject(
 
 
     // --------------------------------------------------
-    // READY
+    // WATCHER READY
     // --------------------------------------------------
 
     watcher.on(
@@ -128,17 +119,12 @@ export function watchProject(
 
 
     // --------------------------------------------------
-    // ADD
+    // HANDLE ADDED FILE
     // --------------------------------------------------
 
     watcher.on(
         "add",
         filePath => {
-
-            console.log(
-                "\n🔥 CHOKIDAR ADD:",
-                filePath
-            );
 
             handlers.add(
                 filePath
@@ -148,17 +134,12 @@ export function watchProject(
 
 
     // --------------------------------------------------
-    // CHANGE
+    // HANDLE CHANGED FILE
     // --------------------------------------------------
 
     watcher.on(
         "change",
         filePath => {
-
-            console.log(
-                "\n🔥 CHOKIDAR CHANGE:",
-                filePath
-            );
 
             handlers.change(
                 filePath
@@ -168,17 +149,12 @@ export function watchProject(
 
 
     // --------------------------------------------------
-    // UNLINK
+    // HANDLE REMOVED FILE
     // --------------------------------------------------
 
     watcher.on(
         "unlink",
         filePath => {
-
-            console.log(
-                "\n🔥 CHOKIDAR UNLINK:",
-                filePath
-            );
 
             handlers.unlink(
                 filePath
@@ -188,7 +164,7 @@ export function watchProject(
 
 
     // --------------------------------------------------
-    // ERROR
+    // HANDLE WATCHER ERROR
     // --------------------------------------------------
 
     watcher.on(
@@ -196,40 +172,14 @@ export function watchProject(
         error => {
 
             console.error(
-                "\nWatcher error:",
-                error
+                `Watcher error: ${error.message}`
             );
         }
     );
 
 
     // --------------------------------------------------
-    // RAW DEBUG EVENT
-    // --------------------------------------------------
-
-    watcher.on(
-        "all",
-        (
-            event,
-            filePath
-        ) => {
-
-            console.log(
-                `RAW WATCHER EVENT: ${event} ${filePath}`
-            );
-        }
-    );
-
-
-    // --------------------------------------------------
-    // KEEP PROCESS ALIVE
-    // --------------------------------------------------
-
-    process.stdin.resume();
-
-
-    // --------------------------------------------------
-    // CTRL+C
+    // HANDLE CTRL+C
     // --------------------------------------------------
 
     process.once(
