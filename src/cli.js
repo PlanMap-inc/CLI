@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import {
     parseFile
 } from "./parser.js";
