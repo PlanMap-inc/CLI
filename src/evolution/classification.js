@@ -102,16 +102,13 @@ export function getEvolutionFacts(
 
     return {
 
-        file:
-            "",
+        file: "",
+        kind: "",
 
-        kind:
-            "",
-
-        properties:
-            {}
+        properties: {}
     };
 }
+
 
 
 // --------------------------------------------------
@@ -120,7 +117,8 @@ export function getEvolutionFacts(
 // Existing features and tags are passed to the LLM.
 //
 // This keeps terminology stable across multiple
-// evolution batches and sessions.
+// evolution sessions and, importantly, across
+// multiple LLM batches.
 // --------------------------------------------------
 
 export function getEvolutionVocabulary(
@@ -147,10 +145,6 @@ export function getEvolutionVocabulary(
         const node
         of evolution.nodes || []
     ) {
-
-        // --------------------------------------------------
-        // FEATURE
-        // --------------------------------------------------
 
         const feature =
             node.feature ||
@@ -190,10 +184,6 @@ export function getEvolutionVocabulary(
             }
         }
 
-
-        // --------------------------------------------------
-        // TAGS
-        // --------------------------------------------------
 
         for (
             const tag
@@ -243,16 +233,30 @@ export function getEvolutionVocabulary(
 }
 
 
+
 // --------------------------------------------------
 // GET NEW EVOLUTION EVENTS
 // --------------------------------------------------
-// 1-Receives all events.
-// 2-Receives the stored evolution.
-// 3-Checks whether an event already exists.
-// 4-Retries path fallbacks.
-// 5-Retries events that were stored but never
-//   successfully classified.
-// 6-Returns events that still need LLM classification.
+// An event is considered complete ONLY when both
+// classification sources are "llm".
+//
+// This is important for batching recovery.
+//
+// If a node has:
+// - labelSource === "llm"
+// - tagSource === "llm"
+//
+// it is complete.
+//
+// If either source is:
+// - "path"
+// - undefined
+// - null
+// - any future non-LLM source
+//
+// it is retried.
+//
+// This makes partially persisted batches recoverable.
 // --------------------------------------------------
 
 export function getNewEvolutionEvents(
@@ -285,9 +289,9 @@ export function getNewEvolutionEvents(
                 );
 
 
-            // --------------------------------------------------
+            // ------------------------------------------
             // EVENT DOES NOT EXIST YET
-            // --------------------------------------------------
+            // ------------------------------------------
 
             if (
                 !existingNode
@@ -297,44 +301,251 @@ export function getNewEvolutionEvents(
             }
 
 
-            /*
-             * IMPORTANT:
-             *
-             * A node is considered complete ONLY when the
-             * LLM successfully classified it.
-             *
-             * Therefore:
-             *
-             * labelSource = "llm" -> completed
-             *
-             * labelSource = "path" -> retry
-             *
-             * labelSource = undefined -> retry
-             *
-             * missing source -> retry
-             *
-             * unknown future source -> retry
-             *
-             * This makes interrupted batches recoverable.
-             */
+            // ------------------------------------------
+            // ONLY A FULL LLM CLASSIFICATION IS DONE
+            // ------------------------------------------
+            //
+            // Missing source values are deliberately
+            // treated as incomplete.
+            //
+            // This fixes the stranded-event problem
+            // after a batch failure.
+            // ------------------------------------------
 
             return (
-                existingNode.labelSource !==
-                    "llm" ||
-
-                existingNode.tagSource !==
-                    "llm"
+                existingNode.labelSource !== "llm" ||
+                existingNode.tagSource !== "llm"
             );
         }
     );
 }
 
 
+
+// --------------------------------------------------
+// GET FALLBACK TAGS
+// --------------------------------------------------
+// Produces deterministic tags when the LLM is
+// unavailable.
+//
+// This function uses only information already known
+// by PlanMap. It never invents semantic information.
+//
+// These fallback tags are temporary and may be
+// replaced by successful LLM classification later.
+// --------------------------------------------------
+
+export function getFallbackTags(
+    event,
+    facts
+) {
+
+    const tags =
+        [];
+
+
+    const identity =
+        String(
+            event?.identity ||
+            ""
+        ).toLowerCase();
+
+
+    const file =
+        String(
+            facts?.file ||
+            ""
+        ).toLowerCase();
+
+
+    const properties =
+        facts?.properties ||
+        {};
+
+
+    const propertyText =
+        JSON.stringify(
+            properties
+        ).toLowerCase();
+
+
+    const source =
+        `${identity} ${file} ${propertyText}`;
+
+
+    // --------------------------------------------------
+    // BACKEND
+    // --------------------------------------------------
+
+    if (
+        source.includes(
+            "controller"
+        ) ||
+        source.includes(
+            "middleware"
+        ) ||
+        source.includes(
+            "route"
+        ) ||
+        source.includes(
+            "service"
+        ) ||
+        source.includes(
+            "server"
+        ) ||
+        source.includes(
+            "backend"
+        )
+    ) {
+
+        tags.push(
+            "backend"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // API
+    // --------------------------------------------------
+
+    if (
+        source.includes(
+            "request"
+        ) ||
+        source.includes(
+            "response"
+        ) ||
+        source.includes(
+            "req."
+        ) ||
+        source.includes(
+            "res."
+        ) ||
+        source.includes(
+            "http"
+        ) ||
+        source.includes(
+            "api"
+        )
+    ) {
+
+        tags.push(
+            "api"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // DATABASE
+    // --------------------------------------------------
+
+    if (
+        source.includes(
+            "database"
+        ) ||
+        source.includes(
+            "db"
+        ) ||
+        source.includes(
+            "query"
+        ) ||
+        source.includes(
+            "sql"
+        ) ||
+        source.includes(
+            "postgres"
+        ) ||
+        source.includes(
+            "mysql"
+        ) ||
+        source.includes(
+            "mongo"
+        )
+    ) {
+
+        tags.push(
+            "database"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // AUTHENTICATION
+    // --------------------------------------------------
+
+    if (
+        source.includes(
+            "auth"
+        ) ||
+        source.includes(
+            "jwt"
+        ) ||
+        source.includes(
+            "token"
+        ) ||
+        source.includes(
+            "login"
+        ) ||
+        source.includes(
+            "password"
+        )
+    ) {
+
+        tags.push(
+            "auth"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // FRONTEND
+    // --------------------------------------------------
+
+    if (
+        source.includes(
+            "frontend"
+        ) ||
+        source.includes(
+            "component"
+        ) ||
+        source.includes(
+            ".jsx"
+        ) ||
+        source.includes(
+            ".tsx"
+        ) ||
+        source.includes(
+            "dom"
+        ) ||
+        source.includes(
+            "window."
+        )
+    ) {
+
+        tags.push(
+            "frontend"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // REMOVE DUPLICATES
+    // --------------------------------------------------
+
+    return [
+        ...new Set(
+            tags
+        )
+    ];
+}
+
+
+
 // --------------------------------------------------
 // APPLY LLM EVOLUTION CLASSIFICATION
 // --------------------------------------------------
-//
 // The LLM provides:
+// - category
 // - feature
 // - label
 // - tags
@@ -345,7 +556,9 @@ export function getNewEvolutionEvents(
 // - lineage
 //
 // Successful LLM classifications are frozen.
-// Temporary path fallbacks remain retryable.
+//
+// Temporary fallback classifications remain
+// retryable.
 // --------------------------------------------------
 
 export function applyEvolutionClassification(
@@ -358,10 +571,6 @@ export function applyEvolutionClassification(
         new Map();
 
 
-    // --------------------------------------------------
-    // INDEX LLM CLASSIFICATIONS
-    // --------------------------------------------------
-
     for (
         const item
         of classifications
@@ -373,10 +582,6 @@ export function applyEvolutionClassification(
         );
     }
 
-
-    // --------------------------------------------------
-    // INDEX FALLBACK DATA
-    // --------------------------------------------------
 
     const fallbackMap =
         new Map();
@@ -394,10 +599,6 @@ export function applyEvolutionClassification(
     }
 
 
-    // --------------------------------------------------
-    // APPLY CLASSIFICATIONS
-    // --------------------------------------------------
-
     for (
         const node
         of evolution.nodes || []
@@ -407,27 +608,18 @@ export function applyEvolutionClassification(
             `${node.ts}|${node.identity}`;
 
 
-        /*
-         * Successful LLM classifications are frozen.
-         *
-         * Path classifications remain retryable.
-         */
+        // --------------------------------------------------
+        // SUCCESSFUL LLM CLASSIFICATION IS FROZEN
+        // --------------------------------------------------
 
         if (
-            node.labelSource ===
-                "llm" ||
-
-            node.tagSource ===
-                "llm"
+            node.labelSource === "llm" &&
+            node.tagSource === "llm"
         ) {
 
             continue;
         }
 
-
-        // --------------------------------------------------
-        // FIND LLM CLASSIFICATION
-        // --------------------------------------------------
 
         const classification =
             classificationMap.get(
@@ -435,64 +627,62 @@ export function applyEvolutionClassification(
             );
 
 
+        // --------------------------------------------------
+        // LLM CLASSIFICATION AVAILABLE
+        // --------------------------------------------------
+
         if (
             classification
         ) {
 
-            // --------------------------------------------------
-            // FEATURE
-            // --------------------------------------------------
-            // Accept either "feature" or "category".
-            //
-            // The stored feature is then available to the
-            // next batch through getEvolutionVocabulary().
-            // --------------------------------------------------
-
-            const feature =
-                classification.feature ||
-                classification.category;
+            const category =
+                classification.category ||
+                classification.feature;
 
 
             if (
-                feature
+                category
             ) {
 
-                node.feature =
-                    String(
-                        feature
-                    ).trim();
-
-
                 node.category =
-                    node.feature;
+                    category;
+
+
+                // ------------------------------------------
+                // IMPORTANT:
+                // Persist feature as well as category.
+                //
+                // getEvolutionVocabulary() reads
+                // node.feature || node.category.
+                //
+                // Without this field, vocabulary cannot
+                // be threaded between batches correctly.
+                // ------------------------------------------
+
+                node.feature =
+                    category;
             }
 
 
-            // --------------------------------------------------
-            // LABEL
-            // --------------------------------------------------
+            if (
+                classification.label
+            ) {
 
-            node.label =
-                classification.label;
+                node.label =
+                    classification.label;
+            }
 
 
-            // --------------------------------------------------
-            // TAGS
-            // --------------------------------------------------
-
-            node.tags =
+            if (
                 Array.isArray(
                     classification.tags
                 )
-                    ? [
-                        ...classification.tags
-                    ]
-                    : [];
+            ) {
 
+                node.tags =
+                    classification.tags;
+            }
 
-            // --------------------------------------------------
-            // SOURCE
-            // --------------------------------------------------
 
             node.labelSource =
                 "llm";
@@ -507,7 +697,14 @@ export function applyEvolutionClassification(
 
 
         // --------------------------------------------------
-        // OFFLINE FALLBACK
+        // FALLBACK CLASSIFICATION
+        // --------------------------------------------------
+        //
+        // If the LLM did not return a classification
+        // for this node, use the deterministic fallback.
+        //
+        // These values remain marked as "path" so the
+        // event can be retried by the LLM later.
         // --------------------------------------------------
 
         const fallback =
@@ -520,28 +717,37 @@ export function applyEvolutionClassification(
             fallback
         ) {
 
-            node.feature =
-                fallback.feature ||
-                fallback.category ||
-                "Unclassified";
+            if (
+                fallback.category
+            ) {
+
+                node.category =
+                    fallback.category;
 
 
-            node.category =
-                node.feature;
+                node.feature =
+                    fallback.category;
+            }
 
 
-            node.label =
-                fallback.label;
+            if (
+                fallback.label
+            ) {
+
+                node.label =
+                    fallback.label;
+            }
 
 
-            node.tags =
+            if (
                 Array.isArray(
                     fallback.tags
                 )
-                    ? [
-                        ...fallback.tags
-                    ]
-                    : [];
+            ) {
+
+                node.tags =
+                    fallback.tags;
+            }
 
 
             node.labelSource =
