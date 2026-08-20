@@ -105,8 +105,17 @@ export async function classifyEvolutionEvents(
                         temperature:
                             0.1,
 
+                        // --------------------------------------------------
+                        // BATCHED REQUEST CEILING
+                        // --------------------------------------------------
+                        // Evolution events are now processed in batches
+                        // of 30. A 2500-token ceiling gives each batch
+                        // enough room without reserving the old 8000-token
+                        // maximum for every request.
+                        // --------------------------------------------------
+
                         max_tokens:
-                            8000
+                            2500
                     })
             }
         );
@@ -175,6 +184,7 @@ export async function classifyEvolutionEvents(
             classifications
         )
     ) {
+
         throw new Error(
             "OpenRouter response did not contain a classifications array."
         );

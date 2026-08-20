@@ -35,6 +35,292 @@ import {
 
 
 // --------------------------------------------------
+// EVOLUTION BATCH CONFIGURATION
+// --------------------------------------------------
+
+const BATCH_SIZE =
+    30;
+
+
+// --------------------------------------------------
+// CREATE DETERMINISTIC EVENT KEY
+// --------------------------------------------------
+
+function getEventKey(
+    event
+) {
+    return (
+        `${event.ts}|${event.identity}`
+    );
+}
+
+
+// --------------------------------------------------
+// GET EVENT DIRECTORY
+// --------------------------------------------------
+// Groups events by the directory containing the
+// declaration's source file.
+//
+// This keeps related events together while also making
+// batching deterministic.
+// --------------------------------------------------
+
+function getEventDirectory(
+    event
+) {
+
+    const filePath =
+        event.identity
+            .split("::")[0];
+
+
+    return path.dirname(
+        filePath
+    );
+}
+
+
+// --------------------------------------------------
+// BUILD LLM EVENTS
+// --------------------------------------------------
+
+function buildLlmEvents(
+    projectRoot,
+    events,
+    factsByEvent
+) {
+
+    return events.map(
+        event => {
+
+            const key =
+                getEventKey(
+                    event
+                );
+
+
+            let facts =
+                factsByEvent.get(
+                    key
+                );
+
+
+            if (
+                !facts
+            ) {
+
+                facts =
+                    getEvolutionFacts(
+                        projectRoot,
+                        event
+                    );
+            }
+
+
+            return {
+                ts:
+                    event.ts,
+
+                identity:
+                    event.identity,
+
+                type:
+                    event.type,
+
+                delta:
+                    event.delta ||
+                    {},
+
+                facts
+            };
+        }
+    );
+}
+
+
+// --------------------------------------------------
+// BUILD FALLBACK DATA
+// --------------------------------------------------
+
+function buildFallbackData(
+    events,
+    factsByEvent
+) {
+
+    return events.map(
+        event => {
+
+            const facts =
+                factsByEvent.get(
+                    getEventKey(
+                        event
+                    )
+                );
+
+
+            const pathCategory =
+                getPathCategory(
+                    event.identity
+                );
+
+
+            return {
+                ts:
+                    event.ts,
+
+                identity:
+                    event.identity,
+
+                category:
+                    pathCategory.category,
+
+                label:
+                    getEvolutionLabel(
+                        event
+                    ),
+
+                tags:
+                    getFallbackTags(
+                        event,
+                        facts
+                    )
+            };
+        }
+    );
+}
+
+
+// --------------------------------------------------
+// CREATE DETERMINISTIC BATCHES
+// --------------------------------------------------
+// 1-Groups events by source directory.
+// 2-Sorts directories.
+// 3-Sorts events inside each directory.
+// 4-Splits into batches of 30.
+// --------------------------------------------------
+
+function createBatches(
+    events
+) {
+
+    const eventsByDirectory =
+        new Map();
+
+
+    for (
+        const event
+        of events
+    ) {
+
+        const directory =
+            getEventDirectory(
+                event
+            );
+
+
+        if (
+            !eventsByDirectory.has(
+                directory
+            )
+        ) {
+
+            eventsByDirectory.set(
+                directory,
+                []
+            );
+        }
+
+
+        eventsByDirectory
+            .get(
+                directory
+            )
+            .push(
+                event
+            );
+    }
+
+
+    const directories =
+        Array.from(
+            eventsByDirectory.keys()
+        ).sort();
+
+
+    const batches =
+        [];
+
+
+    for (
+        const directory
+        of directories
+    ) {
+
+        const directoryEvents =
+            eventsByDirectory.get(
+                directory
+            );
+
+
+        directoryEvents.sort(
+            (
+                left,
+                right
+            ) => {
+
+                const timestampCompare =
+                    String(
+                        left.ts
+                    ).localeCompare(
+                        String(
+                            right.ts
+                        )
+                    );
+
+
+                if (
+                    timestampCompare !==
+                    0
+                ) {
+                    return timestampCompare;
+                }
+
+
+                return String(
+                    left.identity
+                ).localeCompare(
+                    String(
+                        right.identity
+                    )
+                );
+            }
+        );
+
+
+        for (
+            let index = 0;
+            index < directoryEvents.length;
+            index += BATCH_SIZE
+        ) {
+
+            batches.push({
+                directory,
+
+                events:
+                    directoryEvents.slice(
+                        index,
+                        index + BATCH_SIZE
+                    )
+            });
+        }
+    }
+
+
+    return batches;
+}
+
+
+// --------------------------------------------------
 // RUN EVOLUTION
 // --------------------------------------------------
 // 1-Receives the project folder path.
@@ -47,56 +333,75 @@ import {
 // 8-Reads evolution.json.
 // 9-Finds new evolution events.
 // 10-Collects static facts for events requiring classification.
-// 11-Sends events to Gemini.
-// 12-Validates and stores successful classifications.
-// 13-Uses temporary fallback metadata when Gemini is unavailable.
-// 14-Writes evolution.json.
-// 15-Prints sessions.
-// 16-Prints lineage.
-// 17-When --md is provided, writes EVOLUTION.md.
+// 11-Groups events into deterministic batches.
+// 12-Sends each batch to the LLM sequentially.
+// 13-Persists evolution after every successful batch.
+// 14-Updates vocabulary between batches.
+// 15-Stops when a batch fails.
+// 16-Writes evolution.json.
+// 17-Prints sessions.
+// 18-Prints lineage.
+// 19-When --md is provided, writes EVOLUTION.md.
 // --------------------------------------------------
 
 export async function runEvolution(
     projectPath,
     markdownRequested = false
 ) {
+
+    // --------------------------------------------------
+    // VALIDATE PROJECT PATH
+    // --------------------------------------------------
+
     if (
         !projectPath
     ) {
+
         console.error(
             "Usage: node src/cli.js evolution <project-folder> [--md]"
         );
 
-        process.exit(1);
+        process.exit(
+            1
+        );
     }
+
 
     const projectRoot =
         path.resolve(
             projectPath
         );
 
+
     if (
         !fs.existsSync(
             projectRoot
         )
     ) {
+
         console.error(
             `Project folder not found: ${projectPath}`
         );
 
-        process.exit(1);
+        process.exit(
+            1
+        );
     }
+
 
     if (
         !fs.statSync(
             projectRoot
         ).isDirectory()
     ) {
+
         console.error(
             `Project path is not a folder: ${projectPath}`
         );
 
-        process.exit(1);
+        process.exit(
+            1
+        );
     }
 
 
@@ -108,11 +413,15 @@ export async function runEvolution(
         typeof process.loadEnvFile ===
         "function"
     ) {
+
         try {
+
             process.loadEnvFile();
+
         } catch (
             error
         ) {
+
             // .env is optional.
         }
     }
@@ -127,15 +436,18 @@ export async function runEvolution(
             projectRoot
         );
 
+
     const sessions =
         groupSessions(
             events
         );
 
+
     const lineage =
         buildLineage(
             events
         );
+
 
     const evolution =
         readEvolution(
@@ -172,158 +484,229 @@ export async function runEvolution(
     if (
         newEvents.length > 0
     ) {
+
+        // --------------------------------------------------
+        // PREPARE STATIC FACTS
+        // --------------------------------------------------
+
         const factsByEvent =
             new Map();
 
-        const llmEvents =
-            newEvents.map(
-                event => {
-                    const facts =
-                        getEvolutionFacts(
-                            projectRoot,
-                            event
-                        );
-
-                    factsByEvent.set(
-                        `${event.ts}|${event.identity}`,
-                        facts
-                    );
-
-                    return {
-                        ts:
-                            event.ts,
-
-                        identity:
-                            event.identity,
-
-                        type:
-                            event.type,
-
-                        delta:
-                            event.delta ||
-                            {},
-
-                        facts
-                    };
-                }
-            );
-
-
-        // --------------------------------------------------
-        // EXISTING CATEGORY + TAG VOCABULARY
-        // --------------------------------------------------
-
-        const vocabulary =
-            getEvolutionVocabulary(
-                evolution
-            );
-
-        let classifications =
-            [];
-
-        const fallbackData =
-            [];
-
-
-        // --------------------------------------------------
-        // PREPARE OFFLINE FALLBACK
-        // --------------------------------------------------
 
         for (
             const event
             of newEvents
         ) {
+
             const facts =
-                factsByEvent.get(
-                    `${event.ts}|${event.identity}`
+                getEvolutionFacts(
+                    projectRoot,
+                    event
                 );
 
-            const pathCategory =
-                getPathCategory(
-                    event.identity
-                );
 
-            fallbackData.push({
-                ts:
-                    event.ts,
-
-                identity:
-                    event.identity,
-
-                category:
-                    pathCategory.category,
-
-                label:
-                    getEvolutionLabel(
-                        event
-                    ),
-
-                tags:
-                    getFallbackTags(
-                        event,
-                        facts
-                    )
-            });
+            factsByEvent.set(
+                getEventKey(
+                    event
+                ),
+                facts
+            );
         }
 
 
         // --------------------------------------------------
-        // CALL GEMINI
+        // CREATE BATCHES
         // --------------------------------------------------
 
-        try {
-            const {
-                classifyEvolutionEvents
-            } = await import(
-                "../llm.js"
+        const batches =
+            createBatches(
+                newEvents
             );
 
-            classifications =
-                await classifyEvolutionEvents(
-                    llmEvents,
-                    vocabulary.features,
-                    vocabulary.tags,
-                    Number(
-                        process.env.PLANMAP_MAX_TAGS ||
-                        8
-                    )
-                );
+
+        console.log(
+            `\nEvolution classification: ${newEvents.length} events in ${batches.length} batch(es).`
+        );
+
+
+        let totalClassified =
+            0;
+
+
+        // --------------------------------------------------
+        // PROCESS BATCHES SEQUENTIALLY
+        // --------------------------------------------------
+
+        for (
+            let batchIndex = 0;
+            batchIndex < batches.length;
+            batchIndex++
+        ) {
+
+            const batch =
+                batches[
+                    batchIndex
+                ];
+
 
             console.log(
-                `\nGemini classified ${classifications.length} evolution events.`
+                `\nClassifying batch ${batchIndex + 1}/${batches.length}`
             );
 
-        } catch (
-            error
-        ) {
-            console.warn(
-                "\nGemini classification unavailable."
+
+            console.log(
+                `Directory: ${batch.directory}`
             );
 
-            console.warn(
-                `Using offline fallback: ${error.message}`
+
+            console.log(
+                `Events: ${batch.events.length}`
             );
 
-            classifications =
-                [];
+
+            // --------------------------------------------------
+            // BUILD CURRENT VOCABULARY
+            // --------------------------------------------------
+            // This is deliberately recalculated for every batch.
+            //
+            // A successful Batch 1 can introduce vocabulary that
+            // Batch 2 should reuse.
+            // --------------------------------------------------
+
+            const vocabulary =
+                getEvolutionVocabulary(
+                    updatedEvolution
+                );
+
+
+            // --------------------------------------------------
+            // BUILD BATCH LLM EVENTS
+            // --------------------------------------------------
+
+            const batchLlmEvents =
+                buildLlmEvents(
+                    projectRoot,
+                    batch.events,
+                    factsByEvent
+                );
+
+
+            // --------------------------------------------------
+            // LOAD LLM
+            // --------------------------------------------------
+
+            let batchClassifications;
+
+
+            try {
+
+                const {
+                    classifyEvolutionEvents
+                } = await import(
+                    "../llm.js"
+                );
+
+
+                batchClassifications =
+                    await classifyEvolutionEvents(
+                        batchLlmEvents,
+                        vocabulary.features,
+                        vocabulary.tags,
+                        Number(
+                            process.env.PLANMAP_MAX_TAGS ||
+                            8
+                        )
+                    );
+
+
+                console.log(
+                    `Gemini classified ${batchClassifications.length} event(s) in batch ${batchIndex + 1}.`
+                );
+
+            } catch (
+                error
+            ) {
+
+                console.warn(
+                    `\nBatch ${batchIndex + 1} failed.`
+                );
+
+
+                console.warn(
+                    `Evolution classification stopped: ${error.message}`
+                );
+
+
+                console.warn(
+                    "Previously successful batches have already been persisted."
+                );
+
+
+                console.warn(
+                    "Run the evolution command again to retry the remaining events."
+                );
+
+
+                break;
+            }
+
+
+            // --------------------------------------------------
+            // BUILD FALLBACK DATA FOR THIS BATCH
+            // --------------------------------------------------
+
+            const batchFallbackData =
+                buildFallbackData(
+                    batch.events,
+                    factsByEvent
+                );
+
+
+            // --------------------------------------------------
+            // APPLY CLASSIFICATION
+            // --------------------------------------------------
+
+            updatedEvolution =
+                applyEvolutionClassification(
+                    updatedEvolution,
+                    batchClassifications,
+                    batchFallbackData
+                );
+
+
+            totalClassified +=
+                batchClassifications.length;
+
+
+            // --------------------------------------------------
+            // PERSIST IMMEDIATELY
+            // --------------------------------------------------
+            // This is the critical recovery point.
+            //
+            // If the next batch fails, this batch is already
+            // safely stored in evolution.json.
+            // --------------------------------------------------
+
+            writeEvolution(
+                projectRoot,
+                updatedEvolution
+            );
+
+
+            console.log(
+                `Batch ${batchIndex + 1} persisted successfully.`
+            );
         }
 
 
-        // --------------------------------------------------
-        // APPLY CLASSIFICATION
-        // --------------------------------------------------
-
-        updatedEvolution =
-            applyEvolutionClassification(
-                updatedEvolution,
-                classifications,
-                fallbackData
-            );
+        console.log(
+            `\nTotal LLM classifications applied: ${totalClassified}`
+        );
     }
 
 
     // --------------------------------------------------
-    // WRITE EVOLUTION
+    // WRITE FINAL EVOLUTION
     // --------------------------------------------------
 
     const evolutionPath =
@@ -341,26 +724,34 @@ export async function runEvolution(
         `\nEvolution sessions: ${sessions.length}\n`
     );
 
+
     for (
         let index = 0;
         index < sessions.length;
         index++
     ) {
+
         const session =
-            sessions[index];
+            sessions[
+                index
+            ];
+
 
         console.log(
             `Session ${index + 1}`
         );
 
+
         for (
             const event
             of session
         ) {
+
             console.log(
                 `  ${event.ts}  ${event.type}  ${event.identity}`
             );
         }
+
 
         console.log();
     }
@@ -374,35 +765,25 @@ export async function runEvolution(
         "\nLineage:\n"
     );
 
+
     for (
         const node
         of lineage
     ) {
+
         console.log(
             `  ${node.event.type}  ${node.event.identity}`
         );
 
-        if (
-            node.parent
-        ) {
-            console.log(
-                `    parent: ${node.parent.identity}`
-            );
-        } else {
-            console.log(
-                "    parent: none"
-            );
-        }
+
+        console.log(
+            `    parent: ${
+                node.parent
+                    ? node.parent.identity
+                    : "none"
+            }`
+        );
     }
-
-
-    // --------------------------------------------------
-    // PRINT EVOLUTION STORE
-    // --------------------------------------------------
-
-    console.log(
-        `\nEvolution written: ${evolutionPath}`
-    );
 
 
     // --------------------------------------------------
@@ -412,14 +793,29 @@ export async function runEvolution(
     if (
         markdownRequested
     ) {
+
         const markdownPath =
             writeEvolutionMarkdown(
                 projectRoot,
-                updatedEvolution
+                updatedEvolution,
+                sessions,
+                lineage
             );
+
+
+        console.log(
+            `\nEvolution written: ${evolutionPath}`
+        );
+
 
         console.log(
             `Evolution Markdown written: ${markdownPath}`
+        );
+
+    } else {
+
+        console.log(
+            `\nEvolution written: ${evolutionPath}`
         );
     }
 }
