@@ -14,6 +14,7 @@ function isNestedDeclaration(node) {
     switch (node.type) {
 
         case "class_declaration":
+        case "abstract_class_declaration":
         case "function_declaration":
         case "generator_function_declaration":
         case "method_definition":
