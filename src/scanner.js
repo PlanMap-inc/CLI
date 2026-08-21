@@ -206,10 +206,20 @@ export function scanProject(
         );
 
 
-        const result =
-            parseFile(
-                filePath
+        let result;
+
+        try {
+            result =
+                parseFile(
+                    filePath
+                );
+        } catch (error) {
+            console.warn(
+                `Skipping ${relativeFile}: ${error.message}`
             );
+
+            continue;
+        }
 
 
         for (
