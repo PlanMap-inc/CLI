@@ -70,6 +70,66 @@ function createDeclaration(node, name = getDeclarationName(node), kind = node.ty
 
 
 // --------------------------------------------------
+// STABLE CALLBACK / KEY HELPERS
+// --------------------------------------------------
+
+function getNamedCallScope(node) {
+    if (
+        node.type !== "arrow_function" &&
+        node.type !== "function_expression"
+    ) {
+        return null;
+    }
+
+    const args = node.parent;
+
+    if (
+        !args ||
+        args.type !== "arguments"
+    ) {
+        return null;
+    }
+
+    const call = args.parent;
+
+    if (
+        !call ||
+        call.type !== "call_expression"
+    ) {
+        return null;
+    }
+
+    const first =
+        args.namedChildren[0];
+
+    if (
+        !first ||
+        first.type !== "string"
+    ) {
+        return null;
+    }
+
+    const label =
+        first.text.slice(1, -1).trim();
+
+    if (!label) {
+        return null;
+    }
+
+    return label;
+}
+
+
+function normalizeKey(node) {
+    if (node.type === "string") {
+        return node.text.slice(1, -1);
+    }
+
+    return node.text;
+}
+
+
+// --------------------------------------------------
 // WALK
 // --------------------------------------------------
 // 1-Receives the current Tree-sitter syntax tree node.
@@ -222,6 +282,17 @@ export function walk(node, scope = [], declarations = []) {
         }
     }
 
+    const namedCallScope =
+        getNamedCallScope(node);
+
+    if (namedCallScope) {
+        currentScope = [
+            ...scope,
+            namedCallScope
+        ];
+    }
+
+
     // NORMAL / GENERATOR FUNCTION
     if (node.type === "function_declaration" || node.type === "generator_function_declaration") {
         const name = getDeclarationName(node);
@@ -236,7 +307,7 @@ export function walk(node, scope = [], declarations = []) {
     if (node.type === "function_expression") {
         const name = getDeclarationName(node);
         const parentType = node.parent?.type;
-        const alreadyBound = parentType === "variable_declarator" || parentType === "pair" || parentType === "field_definition" || parentType === "assignment_expression";
+        const alreadyBound = parentType === "variable_declarator" || parentType === "pair" || parentType === "field_definition" || parentType === "public_field_definition" || parentType === "assignment_expression";
 
         if (name !== "<anonymous>" && !alreadyBound) {
             currentScope = [...scope, name];
@@ -275,23 +346,58 @@ export function walk(node, scope = [], declarations = []) {
 
     // OBJECT PROPERTY
     if (node.type === "pair") {
-        const key = node.childForFieldName("key");
-        const value = node.childForFieldName("value");
+        const key =
+            node.childForFieldName("key");
 
-        if (key && key.type !== "computed_property_name") {
+        const value =
+            node.childForFieldName("value");
+
+        if (
+            key &&
+            key.type !== "computed_property_name"
+        ) {
+            const normalizedKey =
+                normalizeKey(key);
+
             // admin: { ... }
             if (value?.type === "object") {
-                currentScope = [...scope, key.text];
+                currentScope = [
+                    ...scope,
+                    normalizedKey
+                ];
             }
+
             // handler: () => {}
             // handler: function () {}
-            if (value && (value.type === "arrow_function" || value.type === "function_expression")) {
-                const qualifiedName = [...scope, key.text].join(".");
-                declarations.push(createDeclaration(node, qualifiedName, "function"));
-                currentScope = [...scope, key.text];
+            if (
+                value &&
+                (
+                    value.type === "arrow_function" ||
+                    value.type === "function_expression"
+                )
+            ) {
+                const qualifiedName =
+                    [
+                        ...scope,
+                        normalizedKey
+                    ].join(".");
+
+                declarations.push(
+                    createDeclaration(
+                        node,
+                        qualifiedName,
+                        "function"
+                    )
+                );
+
+                currentScope = [
+                    ...scope,
+                    normalizedKey
+                ];
             }
         }
     }
+
 
     // CLASS FIELD
     if (
