@@ -506,6 +506,80 @@ Only `return_statement` matches — but every concept maps one-to-one. **The fix
 
 ---
 
+
+### 10.1 — TypeScript declaration identity disambiguation
+
+**Decision:** declaration identities must remain stable and unique without relying on positional ordinals.
+
+Three layers are used:
+
+1. **Named-call scope**
+   - Named callback calls such as `it("first case", ...)` and `describe("outer", ...)` contribute their stable string argument to the declaration scope.
+   - Nested named calls compose naturally.
+   - Dynamic template literals and empty strings do not create a scope.
+   - This makes declarations inside anonymous callbacks distinguishable without using source position.
+
+2. **Quoted-key normalization**
+   - String-literal object keys and method names are normalized before becoming part of an identity.
+   - For example:
+     - `"=== INVALID"` → `=== INVALID`
+     - `"arktype (instanceof)"` → `arktype (instanceof)`
+   - The normalization applies to both object-property functions and method declarations.
+
+3. **Collision disambiguation**
+   - If two declarations still produce the same identity, later declarations receive a `#N` suffix:
+     - `toThenable.then:method`
+     - `toThenable.then:method#2`
+   - This prevents silent baseline overwrites while preserving the original identity as the primary name.
+
+**Rejected:** positional ordinals as the primary identity mechanism.
+
+**Why:** inserting an unrelated declaration before an existing declaration would shift every later ordinal and create false drift. Collision suffixes are only introduced when an actual identity collision exists.
+
+**Measured validation:** tested against 9 real TypeScript repositories containing 16,328 declarations. The original 1,005 duplicate identities were reduced to zero duplicate identities after disambiguation.
+
+**Known trade-off:** inserting a new declaration that collides with an existing identity can shift the `#N` suffix of later colliding siblings. This is bounded to genuine collision groups and is preferable to silently losing a declaration.
+
+---
+
+### 10.2 — Parse errors during project scans
+
+**Decision:** project scans skip files with parser errors, report the skipped file, and continue scanning the remaining project.
+
+**Why:** modern TypeScript repositories can contain valid syntax unsupported by the pinned Tree-sitter grammar. Failing the entire project because of one such file makes PlanMap unusable on otherwise valid repositories.
+
+`parseFile()` still throws on parser errors. The scanner catches the error for project-level operations.
+
+**Strict behavior remains available to single-file parsing and other commands where the parsed file itself is the requested result.**
+
+---
+
+### 10.3 — Baseline format version 2
+
+**Decision:** bump the baseline format from version `1` to version `2`.
+
+**Why:** identity generation changed. Existing baselines may contain identities generated under the previous rules and therefore cannot safely be compared with newly generated identities.
+
+Version `1` baselines are rejected with actionable guidance to regenerate the baseline using `planmap init`.
+
+---
+
+### 10.4 — Corpus validation
+
+**Validation corpus:** 9 real TypeScript repositories, 3,600+ TypeScript files, 16,328 declarations.
+
+Results:
+
+- Project scans complete successfully.
+- Parse-error files are skipped rather than aborting the project scan.
+- Zero duplicate identities remain after disambiguation.
+- Named callback scopes remain stable when declarations are inserted before existing callbacks.
+- Quoted object keys and quoted method names receive normalized identities.
+- Existing JavaScript and TypeScript regression tests continue to pass.
+
+---
+
+
 ## 11. Open
 
 | Question | Status |
