@@ -181,6 +181,10 @@ export function scanProject(
         [];
 
 
+    let totalDisambiguated =
+        0;
+
+
     while (
         fileQueue.length > 0
     ) {
@@ -213,6 +217,9 @@ export function scanProject(
                 parseFile(
                     filePath
                 );
+
+            totalDisambiguated +=
+                result.disambiguatedCount ?? 0;
         } catch (error) {
             console.warn(
                 `Skipping ${relativeFile}: ${error.message}`
@@ -239,6 +246,16 @@ export function scanProject(
                 declaration
             );
         }
+    }
+
+
+    if (totalDisambiguated > 0) {
+        console.warn(
+            `⚠ ${totalDisambiguated} duplicate identities disambiguated with #N suffixes`
+        );
+        console.warn(
+            "  See DECISIONS.md §1.10."
+        );
     }
 
 

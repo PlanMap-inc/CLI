@@ -72,6 +72,12 @@ function checkBaselineVersion(
         console.error(
             `Unsupported baseline version: ${baseline.version}`
         );
+        console.error(
+            "Baseline was written by an older version of PlanMap."
+        );
+        console.error(
+            "Identity generation has changed. Run 'planmap init' to regenerate the baseline."
+        );
 
         process.exit(1);
     }

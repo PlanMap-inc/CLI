@@ -248,17 +248,11 @@ export function parseFile(
         ).length;
 
 
-    if (disambiguatedCount > 0) {
-        console.warn(
-            `⚠ ${disambiguatedCount} duplicate identities disambiguated with #N suffixes`
-        );
-    }
-
-
     return {
         filePath,
         code: fileCode,
         tree,
-        declarations
+        declarations,
+        disambiguatedCount
     };
 }
