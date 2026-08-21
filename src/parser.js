@@ -239,6 +239,22 @@ export function parseFile(
     }
 
 
+    const disambiguatedCount =
+        declarations.filter(
+            declaration =>
+                /#\d+$/.test(
+                    declaration.identity
+                )
+        ).length;
+
+
+    if (disambiguatedCount > 0) {
+        console.warn(
+            `⚠ ${disambiguatedCount} duplicate identities disambiguated with #N suffixes`
+        );
+    }
+
+
     return {
         filePath,
         code: fileCode,
