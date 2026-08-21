@@ -161,7 +161,10 @@ function createDeclaration(node, name = getDeclarationName(node), kind = node.ty
 export function walk(node, scope = [], declarations = []) {
     let currentScope = scope;
     // CLASS DECLARATION
-    if (node.type === "class_declaration") {
+    if (
+        node.type === "class_declaration" ||
+        node.type === "abstract_class_declaration"
+    ) {
         const name = getDeclarationName(node);
         if (name !== "<anonymous>") {
             const qualifiedName = [...scope, name].join(".");
