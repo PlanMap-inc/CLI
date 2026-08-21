@@ -3,7 +3,7 @@ import path from "node:path";
 
 import {
     readEvents,
-    groupSessions,
+    groupTimeGroups,
     buildLineage
 } from "../evolution/events.js";
 
@@ -393,8 +393,8 @@ export async function runEvolution(
             projectRoot
         );
 
-    const sessions =
-        groupSessions(
+    const timeGroups =
+        groupTimeGroups(
             events
         );
 
@@ -702,27 +702,27 @@ export async function runEvolution(
     // --------------------------------------------------
 
     console.log(
-        `\nEvolution sessions: ${sessions.length}\n`
+        `\nTime groups: ${timeGroups.length}\n`
     );
 
     for (
         let index = 0;
-        index < sessions.length;
+        index < timeGroups.length;
         index++
     ) {
 
-        const session =
-            sessions[
+        const timeGroup =
+            timeGroups[
                 index
             ];
 
         console.log(
-            `Session ${index + 1}`
+            `Time group ${index + 1}`
         );
 
         for (
             const event
-            of session
+            of timeGroup
         ) {
 
             console.log(
@@ -773,7 +773,7 @@ export async function runEvolution(
             writeEvolutionMarkdown(
                 projectRoot,
                 updatedEvolution,
-                sessions,
+                timeGroups,
                 lineage
             );
 
