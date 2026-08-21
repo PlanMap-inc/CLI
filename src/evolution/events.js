@@ -44,6 +44,7 @@ export function readEvents(
         );
 
     const events = [];
+    let malformed = 0;
 
     for (
         const line
@@ -58,10 +59,20 @@ export function readEvents(
             continue;
         }
 
-        events.push(
-            JSON.parse(
-                trimmed
-            )
+        try {
+            events.push(
+                JSON.parse(
+                    trimmed
+                )
+            );
+        } catch {
+            malformed += 1;
+        }
+    }
+
+    if (malformed > 0) {
+        console.warn(
+            `⚠ ${malformed} malformed event line(s) ignored in events.jsonl`
         );
     }
 
