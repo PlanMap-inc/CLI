@@ -12,9 +12,53 @@ const SKIP_DIRECTORIES = new Set([
     ".git",
     "dist",
     "build",
-    "coverage"
+    "coverage",
+    ".next",
+    "out",
+    ".turbo",
+    ".cache"
 ]);
 
+
+
+// --------------------------------------------------
+// SOURCE FILE CHECK
+// --------------------------------------------------
+// Supported:
+//   .js   JavaScript
+//   .ts   TypeScript
+//   .tsx  TypeScript + JSX
+//
+// Type declaration files (.d.ts) are excluded.
+// --------------------------------------------------
+
+export function isSourceFile(
+    filePath
+) {
+
+    const normalizedPath =
+        String(filePath)
+            .split("\\")
+            .join("/");
+
+    const fileName =
+        normalizedPath
+            .split("/")
+            .pop()
+            ?.toLowerCase();
+
+    if (
+        fileName?.endsWith(".d.ts")
+    ) {
+        return false;
+    }
+
+    return (
+        fileName?.endsWith(".js") ||
+        fileName?.endsWith(".ts") ||
+        fileName?.endsWith(".tsx")
+    );
+}
 
 
 // --------------------------------------------------
@@ -84,16 +128,10 @@ function findSourceFiles(projectRoot) {
             }
 
 
-            const extension =
-                path.extname(
-                    entry.name
-                ).toLowerCase();
-
-
             if (
-                extension === ".js" ||
-                extension === ".ts" ||
-                extension === ".tsx"
+                isSourceFile(
+                    entry.name
+                )
             ) {
 
                 files.push(
