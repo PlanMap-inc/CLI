@@ -231,7 +231,7 @@ function createBatches(
             eventsByDirectory.keys()
         ).sort();
 
-    const batches =
+    const labelBatches =
         [];
 
     for (
@@ -283,7 +283,7 @@ function createBatches(
             index += BATCH_SIZE
         ) {
 
-            batches.push({
+            labelBatches.push({
 
                 directory,
 
@@ -296,7 +296,7 @@ function createBatches(
         }
     }
 
-    return batches;
+    return labelBatches;
 }
 
 
@@ -470,13 +470,13 @@ export async function runEvolution(
         // CREATE BATCHES
         // --------------------------------------------------
 
-        const batches =
+        const labelBatches =
             createBatches(
                 newEvents
             );
 
         console.log(
-            `\nEvolution classification: ${newEvents.length} events in ${batches.length} batch(es).`
+            `\nEvolution classification: ${newEvents.length} events in ${labelBatches.length} batch(es).`
         );
 
         let totalClassified =
@@ -538,17 +538,17 @@ export async function runEvolution(
 
             for (
                 let batchIndex = 0;
-                batchIndex < batches.length;
+                batchIndex < labelBatches.length;
                 batchIndex++
             ) {
 
                 const batch =
-                    batches[
+                    labelBatches[
                         batchIndex
                     ];
 
                 console.log(
-                    `\nClassifying batch ${batchIndex + 1}/${batches.length}`
+                    `\nClassifying label batch ${batchIndex + 1}/${labelBatches.length}`
                 );
 
                 console.log(
@@ -620,7 +620,7 @@ export async function runEvolution(
                 ) {
 
                     console.warn(
-                        `\nBatch ${batchIndex + 1} failed.`
+                        `\nLabel batch ${batchIndex + 1} failed.`
                     );
 
                     console.warn(
@@ -675,7 +675,7 @@ export async function runEvolution(
                 );
 
                 console.log(
-                    `Batch ${batchIndex + 1} persisted successfully.`
+                    `Label batch ${batchIndex + 1} persisted successfully.`
                 );
             }
 
