@@ -204,26 +204,9 @@ export function parseFile(
         tree.rootNode.hasError
     ) {
 
-        const error =
-            new Error(
-                `Parse errors detected in ${filePath}`
-            );
-
-
-        if (
-            options.throwOnError
-        ) {
-
-            throw error;
-        }
-
-
-        console.error(
-            error.message
+        throw new Error(
+            `Parse errors detected in ${filePath}`
         );
-
-
-        process.exit(1);
     }
 
 
