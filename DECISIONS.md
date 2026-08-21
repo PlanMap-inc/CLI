@@ -99,11 +99,15 @@ Format: what was decided · why · what it prevents · where it lives.
 
 ---
 
-### 1.9 — Parse errors exit non-zero with no output
+### 1.9 — Parse errors are strict for single-file parsing, skippable during project scans
 
-**Decision:** a file with syntax errors produces nothing, not partial results.
+**Decision:** a file with parse errors produces no declarations. Single-file parsing remains strict and fails non-zero. Project scans (`init`, `check`, and `watch`) skip the affected file, warn, and continue scanning the remaining source files.
 
-**Why:** verified failure mode — a broken file causes tree-sitter to misclassify subsequent functions as `method`, silently corrupting every identity after the error point. Partial output is worse than none because it looks valid.
+**Why:** a genuinely broken file can cause tree-sitter to misclassify subsequent functions, silently corrupting identities after the error point. Returning partial declarations from that file is therefore unsafe. But failing an entire project scan because one file uses a valid TypeScript construct unsupported by the installed grammar makes PlanMap unusable on otherwise valid projects. Skipping that file preserves correctness while allowing the rest of the project to be analysed.
+
+**Consequence:** project scans may produce a partial baseline when one or more files cannot be parsed. Skipped files must be reported to the user. A strict mode may be used when callers require the scan to fail on any parse error.
+
+**Verified in:** `parser.js` — parse errors are surfaced to the caller; `scanner.js` — project scanning skips files whose parser reports an error; `commands/init.js`, `check.js`, and `watcher.js` — project-level commands continue with the remaining files.
 
 ---
 
