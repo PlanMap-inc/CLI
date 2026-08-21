@@ -269,16 +269,41 @@ export function walk(node, scope = [], declarations = []) {
     }
 
     // CLASS FIELD
-    if (node.type === "field_definition") {
-        const property = node.childForFieldName("property");
-        const value = node.childForFieldName("value");
+    if (
+        node.type === "field_definition" ||
+        node.type === "public_field_definition"
+    ) {
+        const property =
+            node.childForFieldName("property") ||
+            node.childForFieldName("name");
 
-        if (property && property.type !== "computed_property_name") {
-            if (value && (value.type === "arrow_function" || value.type === "function_expression")) {
-                const qualifiedName = [...scope, property.text].join(".");
-                declarations.push(createDeclaration(node, qualifiedName, "function"));
-                currentScope = [...scope, property.text];
-            }
+        const value =
+            node.childForFieldName("value");
+
+        if (
+            property &&
+            property.type !== "computed_property_name" &&
+            value &&
+            (
+                value.type === "arrow_function" ||
+                value.type === "function_expression"
+            )
+        ) {
+            const qualifiedName =
+                [...scope, property.text].join(".");
+
+            declarations.push(
+                createDeclaration(
+                    node,
+                    qualifiedName,
+                    "function"
+                )
+            );
+
+            currentScope = [
+                ...scope,
+                property.text
+            ];
         }
     }
 
