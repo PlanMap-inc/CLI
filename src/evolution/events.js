@@ -70,10 +70,10 @@ export function readEvents(
 
 
 // --------------------------------------------------
-// GROUP EVENTS INTO SESSIONS
+// GROUP EVENTS INTO TIME GROUPS
 // --------------------------------------------------
 
-export function groupSessions(
+export function groupTimeGroups(
     events,
     gapMinutes = 5
 ) {
@@ -111,9 +111,9 @@ export function groupSessions(
         60 *
         1000;
 
-    const sessions = [];
+    const timeGroups = [];
 
-    let currentSession = [];
+    let currentTimeGroup = [];
 
     for (
         let index = 0;
@@ -124,9 +124,9 @@ export function groupSessions(
             sortedEvents[index];
 
         if (
-            currentSession.length === 0
+            currentTimeGroup.length === 0
         ) {
-            currentSession.push(
+            currentTimeGroup.push(
                 event
             );
 
@@ -155,29 +155,29 @@ export function groupSessions(
         if (
             gap < gapMilliseconds
         ) {
-            currentSession.push(
+            currentTimeGroup.push(
                 event
             );
         } else {
-            sessions.push(
-                currentSession
+            timeGroups.push(
+                currentTimeGroup
             );
 
-            currentSession = [
+            currentTimeGroup = [
                 event
             ];
         }
     }
 
     if (
-        currentSession.length > 0
+        currentTimeGroup.length > 0
     ) {
-        sessions.push(
-            currentSession
+        timeGroups.push(
+            currentTimeGroup
         );
     }
 
-    return sessions;
+    return timeGroups;
 }
 
 
