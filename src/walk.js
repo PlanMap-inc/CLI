@@ -171,6 +171,28 @@ export function walk(node, scope = [], declarations = []) {
         }
     }
 
+    // --------------------------------------------------
+    // TYPESCRIPT NAMESPACE
+    // --------------------------------------------------
+
+    if (
+        node.type === "internal_module"
+    ) {
+        const nameNode =
+            node.childForFieldName("name");
+
+        if (
+            nameNode &&
+            nameNode.type !== "string"
+        ) {
+            currentScope = [
+                ...scope,
+                nameNode.text
+            ];
+        }
+    }
+
+
     // VARIABLE DECLARATOR
     if (node.type === "variable_declarator") {
         const name = getDeclarationName(node);
@@ -292,11 +314,25 @@ export function walk(node, scope = [], declarations = []) {
             const qualifiedName =
                 [...scope, property.text].join(".");
 
+            const childTypes =
+                node.children.map(
+                    child => child.type
+                );
+
+            const modifiers = [];
+
+            if (
+                childTypes.includes("static")
+            ) {
+                modifiers.push("static");
+            }
+
             declarations.push(
                 createDeclaration(
                     node,
                     qualifiedName,
-                    "function"
+                    "function",
+                    modifiers
                 )
             );
 
