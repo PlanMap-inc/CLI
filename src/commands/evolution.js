@@ -49,6 +49,7 @@ const BATCH_SIZE =
 function getEventKey(
     event
 ) {
+
     return (
         `${event.ts}|${event.identity}`
     );
@@ -58,12 +59,6 @@ function getEventKey(
 // --------------------------------------------------
 // GET EVENT DIRECTORY
 // --------------------------------------------------
-// Groups events by the directory containing the
-// declaration's source file.
-//
-// This keeps related events together while also making
-// batching deterministic.
-// --------------------------------------------------
 
 function getEventDirectory(
     event
@@ -72,7 +67,6 @@ function getEventDirectory(
     const filePath =
         event.identity
             .split("::")[0];
-
 
     return path.dirname(
         filePath
@@ -98,12 +92,10 @@ function buildLlmEvents(
                     event
                 );
 
-
             let facts =
                 factsByEvent.get(
                     key
                 );
-
 
             if (
                 !facts
@@ -115,7 +107,6 @@ function buildLlmEvents(
                         event
                     );
             }
-
 
             return {
                 ts:
@@ -157,12 +148,10 @@ function buildFallbackData(
                     )
                 );
 
-
             const pathCategory =
                 getPathCategory(
                     event.identity
                 );
-
 
             return {
                 ts:
@@ -192,7 +181,7 @@ function buildFallbackData(
 
 // --------------------------------------------------
 // CREATE DETERMINISTIC BATCHES
-// --------------------------------------------------
+//
 // 1-Groups events by source directory.
 // 2-Sorts directories.
 // 3-Sorts events inside each directory.
@@ -206,7 +195,6 @@ function createBatches(
     const eventsByDirectory =
         new Map();
 
-
     for (
         const event
         of events
@@ -216,7 +204,6 @@ function createBatches(
             getEventDirectory(
                 event
             );
-
 
         if (
             !eventsByDirectory.has(
@@ -230,7 +217,6 @@ function createBatches(
             );
         }
 
-
         eventsByDirectory
             .get(
                 directory
@@ -240,16 +226,13 @@ function createBatches(
             );
     }
 
-
     const directories =
         Array.from(
             eventsByDirectory.keys()
         ).sort();
 
-
     const batches =
         [];
-
 
     for (
         const directory
@@ -260,7 +243,6 @@ function createBatches(
             eventsByDirectory.get(
                 directory
             );
-
 
         directoryEvents.sort(
             (
@@ -277,14 +259,13 @@ function createBatches(
                         )
                     );
 
-
                 if (
                     timestampCompare !==
                     0
                 ) {
+
                     return timestampCompare;
                 }
-
 
                 return String(
                     left.identity
@@ -296,7 +277,6 @@ function createBatches(
             }
         );
 
-
         for (
             let index = 0;
             index < directoryEvents.length;
@@ -304,6 +284,7 @@ function createBatches(
         ) {
 
             batches.push({
+
                 directory,
 
                 events:
@@ -315,33 +296,12 @@ function createBatches(
         }
     }
 
-
     return batches;
 }
 
 
 // --------------------------------------------------
 // RUN EVOLUTION
-// --------------------------------------------------
-// 1-Receives the project folder path.
-// 2-Checks whether the project folder was provided.
-// 3-Converts the project path into an absolute path.
-// 4-Checks whether the project folder exists.
-// 5-Reads events.jsonl.
-// 6-Groups events into deterministic sessions.
-// 7-Builds lineage relationships.
-// 8-Reads evolution.json.
-// 9-Finds new evolution events.
-// 10-Collects static facts for events requiring classification.
-// 11-Groups events into deterministic batches.
-// 12-Sends each batch to the LLM sequentially.
-// 13-Persists evolution after every successful batch.
-// 14-Updates vocabulary between batches.
-// 15-Stops when a batch fails.
-// 16-Writes evolution.json.
-// 17-Prints sessions.
-// 18-Prints lineage.
-// 19-When --md is provided, writes EVOLUTION.md.
 // --------------------------------------------------
 
 export async function runEvolution(
@@ -366,12 +326,10 @@ export async function runEvolution(
         );
     }
 
-
     const projectRoot =
         path.resolve(
             projectPath
         );
-
 
     if (
         !fs.existsSync(
@@ -387,7 +345,6 @@ export async function runEvolution(
             1
         );
     }
-
 
     if (
         !fs.statSync(
@@ -436,18 +393,15 @@ export async function runEvolution(
             projectRoot
         );
 
-
     const sessions =
         groupSessions(
             events
         );
 
-
     const lineage =
         buildLineage(
             events
         );
-
 
     const evolution =
         readEvolution(
@@ -492,7 +446,6 @@ export async function runEvolution(
         const factsByEvent =
             new Map();
 
-
         for (
             const event
             of newEvents
@@ -503,7 +456,6 @@ export async function runEvolution(
                     projectRoot,
                     event
                 );
-
 
             factsByEvent.set(
                 getEventKey(
@@ -523,185 +475,214 @@ export async function runEvolution(
                 newEvents
             );
 
-
         console.log(
             `\nEvolution classification: ${newEvents.length} events in ${batches.length} batch(es).`
         );
-
 
         let totalClassified =
             0;
 
 
         // --------------------------------------------------
-        // PROCESS BATCHES SEQUENTIALLY
+        // OFFLINE MODE
+        // --------------------------------------------------
+        // If no OpenRouter API key is configured,
+        // do not attempt an LLM request.
+        //
+        // Instead, apply deterministic fallback
+        // classification to every new event.
+        //
+        // These nodes remain marked as "path" so a
+        // future run with an API key can retry them.
         // --------------------------------------------------
 
-        for (
-            let batchIndex = 0;
-            batchIndex < batches.length;
-            batchIndex++
+        if (
+            !process.env.OPENROUTER_API_KEY
         ) {
 
-            const batch =
-                batches[
-                    batchIndex
-                ];
-
-
-            console.log(
-                `\nClassifying batch ${batchIndex + 1}/${batches.length}`
+            console.warn(
+                "OPENROUTER_API_KEY not configured."
             );
 
-
-            console.log(
-                `Directory: ${batch.directory}`
+            console.warn(
+                "Using deterministic fallback classification."
             );
 
-
-            console.log(
-                `Events: ${batch.events.length}`
-            );
-
-
-            // --------------------------------------------------
-            // BUILD CURRENT VOCABULARY
-            // --------------------------------------------------
-            // This is deliberately recalculated for every batch.
-            //
-            // A successful Batch 1 can introduce vocabulary that
-            // Batch 2 should reuse.
-            // --------------------------------------------------
-
-            const vocabulary =
-                getEvolutionVocabulary(
-                    updatedEvolution
-                );
-
-
-            // --------------------------------------------------
-            // BUILD BATCH LLM EVENTS
-            // --------------------------------------------------
-
-            const batchLlmEvents =
-                buildLlmEvents(
-                    projectRoot,
-                    batch.events,
-                    factsByEvent
-                );
-
-
-            // --------------------------------------------------
-            // LOAD LLM
-            // --------------------------------------------------
-
-            let batchClassifications;
-
-
-            try {
-
-                const {
-                    classifyEvolutionEvents
-                } = await import(
-                    "../llm.js"
-                );
-
-
-                batchClassifications =
-                    await classifyEvolutionEvents(
-                        batchLlmEvents,
-                        vocabulary.features,
-                        vocabulary.tags,
-                        Number(
-                            process.env.PLANMAP_MAX_TAGS ||
-                            8
-                        )
-                    );
-
-
-                console.log(
-                    `Gemini classified ${batchClassifications.length} event(s) in batch ${batchIndex + 1}.`
-                );
-
-            } catch (
-                error
-            ) {
-
-                console.warn(
-                    `\nBatch ${batchIndex + 1} failed.`
-                );
-
-
-                console.warn(
-                    `Evolution classification stopped: ${error.message}`
-                );
-
-
-                console.warn(
-                    "Previously successful batches have already been persisted."
-                );
-
-
-                console.warn(
-                    "Run the evolution command again to retry the remaining events."
-                );
-
-
-                break;
-            }
-
-
-            // --------------------------------------------------
-            // BUILD FALLBACK DATA FOR THIS BATCH
-            // --------------------------------------------------
-
-            const batchFallbackData =
+            const fallbackData =
                 buildFallbackData(
-                    batch.events,
+                    newEvents,
                     factsByEvent
                 );
-
-
-            // --------------------------------------------------
-            // APPLY CLASSIFICATION
-            // --------------------------------------------------
 
             updatedEvolution =
                 applyEvolutionClassification(
                     updatedEvolution,
-                    batchClassifications,
-                    batchFallbackData
+                    [],
+                    fallbackData
                 );
-
-
-            totalClassified +=
-                batchClassifications.length;
-
-
-            // --------------------------------------------------
-            // PERSIST IMMEDIATELY
-            // --------------------------------------------------
-            // This is the critical recovery point.
-            //
-            // If the next batch fails, this batch is already
-            // safely stored in evolution.json.
-            // --------------------------------------------------
 
             writeEvolution(
                 projectRoot,
                 updatedEvolution
             );
 
+            console.log(
+                `Fallback classification applied to ${newEvents.length} event(s).`
+            );
+
+        } else {
+
+            // --------------------------------------------------
+            // PROCESS BATCHES SEQUENTIALLY
+            // --------------------------------------------------
+
+            for (
+                let batchIndex = 0;
+                batchIndex < batches.length;
+                batchIndex++
+            ) {
+
+                const batch =
+                    batches[
+                        batchIndex
+                    ];
+
+                console.log(
+                    `\nClassifying batch ${batchIndex + 1}/${batches.length}`
+                );
+
+                console.log(
+                    `Directory: ${batch.directory}`
+                );
+
+                console.log(
+                    `Events: ${batch.events.length}`
+                );
+
+
+                // --------------------------------------------------
+                // BUILD CURRENT VOCABULARY
+                //
+                // Recalculated for every batch so vocabulary
+                // learned in earlier batches is available to
+                // later batches.
+                // --------------------------------------------------
+
+                const vocabulary =
+                    getEvolutionVocabulary(
+                        updatedEvolution
+                    );
+
+
+                // --------------------------------------------------
+                // BUILD BATCH LLM EVENTS
+                // --------------------------------------------------
+
+                const batchLlmEvents =
+                    buildLlmEvents(
+                        projectRoot,
+                        batch.events,
+                        factsByEvent
+                    );
+
+
+                // --------------------------------------------------
+                // LOAD LLM
+                // --------------------------------------------------
+
+                let batchClassifications;
+
+                try {
+
+                    const {
+                        classifyEvolutionEvents
+                    } = await import(
+                        "../llm.js"
+                    );
+
+                    batchClassifications =
+                        await classifyEvolutionEvents(
+                            batchLlmEvents,
+                            vocabulary.features,
+                            vocabulary.tags,
+                            Number(
+                                process.env.PLANMAP_MAX_TAGS ||
+                                8
+                            )
+                        );
+
+                    console.log(
+                        `Gemini classified ${batchClassifications.length} event(s) in batch ${batchIndex + 1}.`
+                    );
+
+                } catch (
+                    error
+                ) {
+
+                    console.warn(
+                        `\nBatch ${batchIndex + 1} failed.`
+                    );
+
+                    console.warn(
+                        `Evolution classification stopped: ${error.message}`
+                    );
+
+                    console.warn(
+                        "Previously successful batches have already been persisted."
+                    );
+
+                    console.warn(
+                        "Run the evolution command again to retry the remaining events."
+                    );
+
+                    break;
+                }
+
+
+                // --------------------------------------------------
+                // BUILD FALLBACK DATA FOR THIS BATCH
+                // --------------------------------------------------
+
+                const batchFallbackData =
+                    buildFallbackData(
+                        batch.events,
+                        factsByEvent
+                    );
+
+
+                // --------------------------------------------------
+                // APPLY CLASSIFICATION
+                // --------------------------------------------------
+
+                updatedEvolution =
+                    applyEvolutionClassification(
+                        updatedEvolution,
+                        batchClassifications,
+                        batchFallbackData
+                    );
+
+                totalClassified +=
+                    batchClassifications.length;
+
+
+                // --------------------------------------------------
+                // PERSIST IMMEDIATELY
+                // --------------------------------------------------
+
+                writeEvolution(
+                    projectRoot,
+                    updatedEvolution
+                );
+
+                console.log(
+                    `Batch ${batchIndex + 1} persisted successfully.`
+                );
+            }
 
             console.log(
-                `Batch ${batchIndex + 1} persisted successfully.`
+                `\nTotal LLM classifications applied: ${totalClassified}`
             );
         }
-
-
-        console.log(
-            `\nTotal LLM classifications applied: ${totalClassified}`
-        );
     }
 
 
@@ -724,7 +705,6 @@ export async function runEvolution(
         `\nEvolution sessions: ${sessions.length}\n`
     );
 
-
     for (
         let index = 0;
         index < sessions.length;
@@ -736,11 +716,9 @@ export async function runEvolution(
                 index
             ];
 
-
         console.log(
             `Session ${index + 1}`
         );
-
 
         for (
             const event
@@ -751,7 +729,6 @@ export async function runEvolution(
                 `  ${event.ts}  ${event.type}  ${event.identity}`
             );
         }
-
 
         console.log();
     }
@@ -765,7 +742,6 @@ export async function runEvolution(
         "\nLineage:\n"
     );
 
-
     for (
         const node
         of lineage
@@ -774,7 +750,6 @@ export async function runEvolution(
         console.log(
             `  ${node.event.type}  ${node.event.identity}`
         );
-
 
         console.log(
             `    parent: ${
@@ -802,11 +777,9 @@ export async function runEvolution(
                 lineage
             );
 
-
         console.log(
             `\nEvolution written: ${evolutionPath}`
         );
-
 
         console.log(
             `Evolution Markdown written: ${markdownPath}`
