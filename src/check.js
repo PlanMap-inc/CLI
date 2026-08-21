@@ -67,7 +67,7 @@ function checkBaselineVersion(
     baseline
 ) {
     if (
-        baseline.version !== 1
+        baseline.version !== 2
     ) {
         console.error(
             `Unsupported baseline version: ${baseline.version}`

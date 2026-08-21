@@ -318,7 +318,13 @@ export function walk(node, scope = [], declarations = []) {
     if (node.type === "method_definition") {
         const nameNode = node.childForFieldName("name");
         if (nameNode && nameNode.type !== "computed_property_name") {
-            const name = nameNode.text;
+            const rawName = nameNode.text;
+
+            const name =
+                nameNode.type === "string"
+                    ? rawName.slice(1, -1)
+                    : rawName;
+
             const childTypes = node.children.map(child => child.type);
             const modifiers = [];
             if (childTypes.includes("static")) {

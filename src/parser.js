@@ -216,6 +216,29 @@ export function parseFile(
         );
 
 
+    // Disambiguate genuine identity collisions.
+    // Unique identities remain unchanged.
+    const identityCounts = new Map();
+
+    for (const declaration of declarations) {
+        const baseIdentity =
+            declaration.identity;
+
+        const count =
+            identityCounts.get(baseIdentity) ?? 0;
+
+        identityCounts.set(
+            baseIdentity,
+            count + 1
+        );
+
+        if (count > 0) {
+            declaration.identity =
+                `${baseIdentity}#${count + 1}`;
+        }
+    }
+
+
     return {
         filePath,
         code: fileCode,
