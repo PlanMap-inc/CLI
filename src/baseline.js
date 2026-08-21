@@ -9,7 +9,7 @@ import path from "node:path";
 //   formats when the baseline structure changes.
 // --------------------------------------------------
 
-const BASELINE_VERSION = 1;
+const BASELINE_VERSION = 2;
 
 
 // --------------------------------------------------
