@@ -44,7 +44,8 @@ function isNestedDeclaration(node) {
         }
 
 
-        case "field_definition": {
+        case "field_definition":
+        case "public_field_definition": {
 
             const value =
                 node.childForFieldName("value");
@@ -234,6 +235,7 @@ function getFunctionNode(
         case "variable_declarator":
         case "pair":
         case "field_definition":
+        case "public_field_definition":
 
             return (
                 declarationNode.childForFieldName(

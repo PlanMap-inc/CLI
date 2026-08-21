@@ -1,3 +1,8 @@
+import {
+    isSourceFile
+} from "../scanner.js";
+
+
 // --------------------------------------------------
 // WATCHER FILE FILTER
 // --------------------------------------------------
@@ -48,7 +53,8 @@ export function shouldIgnore(
         "/coverage/",
         "/.next/",
         "/.cache/",
-        "/out/"
+        "/out/",
+        "/.turbo/"
     ];
 
 
@@ -118,8 +124,8 @@ export function shouldIgnore(
     if (
         stats &&
         stats.isFile() &&
-        !normalizedPath.endsWith(
-            ".js"
+        !isSourceFile(
+            normalizedPath
         )
     ) {
         return true;

@@ -112,7 +112,7 @@ export function watchProject(
             );
 
             console.log(
-                "Waiting for JavaScript file changes...\n"
+                "Waiting for source file changes...\n"
             );
         }
     );
