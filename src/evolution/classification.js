@@ -146,6 +146,17 @@ export function getEvolutionVocabulary(
         of evolution.nodes || []
     ) {
 
+        // Only successful LLM classifications define the
+        // vocabulary used by later LLM batches.
+        //
+        // Path fallback values such as "Unclassified" are
+        // temporary and must never become vocabulary.
+        if (
+            node.labelSource !== "llm"
+        ) {
+            continue;
+        }
+
         const feature =
             node.feature ||
             node.category;
