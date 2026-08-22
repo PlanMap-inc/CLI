@@ -9,7 +9,7 @@ Local · no rules to write · no spec to maintain · works on any repo
 [![License: MIT](https://img.shields.io/badge/License-MIT-1f6feb.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-3fb950.svg)](https://nodejs.org)
 [![Language](https://img.shields.io/badge/JavaScript%20%C2%B7%20TypeScript-3fb950.svg)](#what-gets-tracked)
-[![Status](https://img.shields.io/badge/status-v0.4.1%20active-d29922.svg)](#status)
+[![Status](https://img.shields.io/badge/status-v0.4%20active-d29922.svg)](#status)
 
 </div>
 
