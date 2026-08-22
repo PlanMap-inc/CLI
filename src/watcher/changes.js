@@ -112,7 +112,7 @@ export function recordChanges(
     if (
         uniqueChanges.length === 0
     ) {
-        return;
+        return [];
     }
 
     for (
@@ -124,6 +124,8 @@ export function recordChanges(
             change
         );
     }
+
+    return uniqueChanges;
 }
 
 
@@ -254,10 +256,11 @@ export function checkChangedFile(
         return;
     }
 
-    recordChanges(
-        projectRoot,
-        realChanges
-    );
+    const recordedChanges =
+        recordChanges(
+            projectRoot,
+            realChanges
+        );
 
     console.log(
         `\nChange detected: ${relativeFile}\n`
@@ -268,6 +271,8 @@ export function checkChangedFile(
         "previous",
         "current"
     );
+
+    return recordedChanges;
 }
 
 
@@ -355,10 +360,11 @@ export function checkRemovedFile(
         return;
     }
 
-    recordChanges(
-        projectRoot,
-        realChanges
-    );
+    const recordedChanges =
+        recordChanges(
+            projectRoot,
+            realChanges
+        );
 
     console.log(
         `\nChange detected: ${relativeFile}\n`
@@ -369,6 +375,8 @@ export function checkRemovedFile(
         "baseline",
         "current"
     );
+
+    return recordedChanges;
 }
 
 
