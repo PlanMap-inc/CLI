@@ -8,7 +8,8 @@ Local · no rules to write · no spec to maintain · works on any repo
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-1f6feb.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-3fb950.svg)](https://nodejs.org)
-[![Status](https://img.shields.io/badge/status-v0.4%20active-d29922.svg)](#status)
+[![Language](https://img.shields.io/badge/JavaScript%20%C2%B7%20TypeScript-3fb950.svg)](#what-gets-tracked)
+[![Status](https://img.shields.io/badge/status-v0.4.1%20active-d29922.svg)](#status)
 
 </div>
 
@@ -63,7 +64,7 @@ $ planmap check
 
 Comparing baseline → current
 
-  src/auth/token.js::verifyToken:function CHANGED
+  src/auth/token.ts::verifyToken:function CHANGED
       throws           1 → 0
       throwTypes       [AuthError] → []
       returnsNullish   0 → 1
@@ -112,6 +113,8 @@ npx planmap watch     # watch for behavioural changes
 
 ## What gets tracked
 
+**JavaScript · TypeScript · JSX · TSX**
+
 Ten facts per declaration
 
 | Fact | Catches |
@@ -151,7 +154,44 @@ A hash tells you *something* changed. Facts tell you **what**.
 Extraction stops at the boundary of the next declaration,
 so each one owns only its own body.
 
+Without this, one nested change makes every enclosing function report as changed.
+
 </details>
+
+<details>
+<summary><b>TypeScript specifics</b></summary>
+
+<br>
+
+`.ts` and `.tsx` use separate grammars — in `.tsx`, `<Foo>` is JSX;
+in `.ts` it's a type assertion.
+
+Handled: classes, abstract classes, namespaces, decorators,
+generics, overloads, getters and setters, `static` and `#private` members,
+parameter properties, `satisfies`, and class fields holding functions.
+
+`.d.ts` files are skipped — type declarations have no behaviour to extract.
+So are `dist`, `build`, `out`, and `.next`, to avoid parsing compiled output
+alongside its source.
+
+</details>
+
+---
+
+## Validated on real code
+
+PlanMap has been run across **9 open-source TypeScript repositories**
+
+| | |
+|:--|:--|
+| **16,328** | declarations parsed |
+| **0** | identity collisions |
+| **9 / 9** | repositories scanned successfully |
+
+*TanStack Query · tRPC · Zod · Remeda · type-fest · got · ky · Zustand · ofetch*
+
+A file that fails to parse is skipped and reported — never fatal.
+One unsupported construct does not cost you the other 900 files.
 
 ---
 
@@ -181,6 +221,7 @@ a feature spanning frontend and backend stays one node.
 
 Structure comes from static analysis.
 Labels are optional and come from an LLM you configure yourself.
+Without a key everything still works — nodes fall back to deterministic labels.
 
 ### 🔒 PlanMap never sends your source code anywhere.
 
@@ -223,18 +264,19 @@ Nobody writes that rule.
 
 ## Status
 
-**v0.4** — working, in active development, dogfooded daily
+**v0.4.1** — working, in active development, dogfooded daily
 
 | | |
 |:--|:--|
-| ✅ | Declaration extraction |
+| ✅ | Declaration extraction — JavaScript, TypeScript, JSX, TSX |
 | ✅ | Behavioural fact extraction |
 | ✅ | Baseline · diff · watch · CI exit codes |
 | ✅ | Change history and feature tree |
-| 🔨 | Significance filtering |
+| 🔨 | Sessions — group saves into one unit of work |
+| 🔨 | Significance filtering — stop reporting removed debug lines |
 | 🔨 | Dependency map — what calls what |
 | 🔨 | Impact analysis — what a change affects downstream |
-| 📋 | TypeScript · Python |
+| 📋 | Python |
 
 **Next release** adds the line the tool is missing today
 
