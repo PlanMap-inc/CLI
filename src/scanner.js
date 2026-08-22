@@ -254,7 +254,7 @@ export function scanProject(
             `⚠ ${totalDisambiguated} duplicate identities disambiguated with #N suffixes`
         );
         console.warn(
-            "  See DECISIONS.md §1.10."
+            "  See DECISIONS.md §10.1."
         );
     }
 
