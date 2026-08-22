@@ -2,7 +2,7 @@
 
 # PlanMap
 
-### Catches the code changes that compile, pass tests, and pass review.
+### Reads your codebase, learns what every function does,<br>and tracks how it changes.
 
 Local · no rules to write · no spec to maintain · works on any repo
 
@@ -12,6 +12,37 @@ Local · no rules to write · no spec to maintain · works on any repo
 [![Status](https://img.shields.io/badge/status-v0.4%20active-d29922.svg)](#status)
 
 </div>
+
+<div align="center">
+
+---
+
+## Two things it does
+
+</div>
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🔴 Detects behavioural change
+
+Not "this file changed" — **this function stopped throwing**.
+
+Reformat or rename → silent.
+Remove error handling → reported.
+
+</td>
+<td width="50%" valign="top">
+
+### 🌲 Builds a feature history
+
+Turns those changes into a readable tree, grouped by
+**what the feature does** — not which folder it's in.
+
+</td>
+</tr>
+</table>
 
 <div align="center">
 
@@ -31,28 +62,26 @@ Local · no rules to write · no spec to maintain · works on any repo
 
 <div align="center">
 
-| | |
-|:--|:--|
-| ✅ Compiler | passed |
-| ✅ Tests | passed |
-| ✅ ESLint | passed |
-| ✅ AI code review | said nothing |
+**Compiler passed · Tests passed · ESLint passed · AI review said nothing**
 
 Every caller that relied on catching that error now silently receives `null`.
-
-**Nothing crashes. The behaviour is simply wrong from that point on.**
-
-> This is the class of change PlanMap exists to catch.
-> Not syntax errors — those are already handled.
-> Behavioural changes that survive every existing layer of verification.
+Nothing crashes. The behaviour is just wrong from here on.
 
 ---
 
-## In one sentence
+## Install
 
-### PlanMap remembers what every function in your code *did*,<br>and tells you when that changes.
+</div>
 
-Even if the code still compiles, still passes tests,<br>and still looks fine in review.
+```bash
+npx planmap init        # learn the codebase
+npx planmap watch       # report behavioural changes as they happen
+npx planmap evolution   # build the feature tree
+```
+
+<div align="center">
+
+**No API key · No account · No config · Nothing leaves your machine**
 
 ---
 
@@ -62,63 +91,26 @@ Even if the code still compiles, still passes tests,<br>and still looks fine in 
 
 ```mermaid
 flowchart TD
-    A["📁 Your project"] --> B["🌳 Parse every file<br/>tree-sitter"]
-    B --> C["🔎 Find every declaration<br/>functions · classes · methods"]
-    C --> D["📊 Extract 10 behavioural facts<br/>throws · returns · calls · numbers"]
-    D --> E["💾 Save as baseline<br/>.planmap/baseline.json"]
+    A["📁 Your project"] --> B["🌳 Parse every file"]
+    B --> C["🔎 Find every function"]
+    C --> D["📊 Record 10 behavioural facts"]
+    D --> E["💾 Save as baseline"]
     E --> F{"✏️ You edit a file"}
-    F -->|"only formatting changed"| G["🟢 Silent"]
-    F -->|"behaviour changed"| H["🔴 Reported immediately"]
-    H --> I["📜 Appended to history<br/>.planmap/events.jsonl"]
-    I --> J["🌲 Feature tree<br/>planmap evolution"]
+    F -->|"formatting only"| G["🟢 Silent"]
+    F -->|"behaviour changed"| H["🔴 Reported"]
+    H --> I["📜 Added to history"]
+    I --> J["🌲 Feature tree"]
 ```
 
 <div align="center">
 
 ---
 
-# 🔍 Phase 1 — Learn
-
-### `planmap init .`
+## What it looks like
 
 </div>
 
-**Step 1 · Find your source files**
-Walks every folder, skipping `node_modules`, `.git`, `dist`, `build`, `out`, `.next`. Finds every `.js`, `.jsx`, `.ts`, `.tsx`. Skips `.d.ts` — type declarations have no behaviour to track.
-
-**Step 2 · Read each file properly**
-Builds a real syntax tree with tree-sitter — not text matching. Picks the right grammar for JavaScript, TypeScript, or TSX. If one file can't be parsed, it says so and **keeps going** with the rest.
-
-**Step 3 · Find every declaration**
-Functions, classes, methods, getters, setters, arrow functions, class fields. Each gets a unique name based on where it lives:
-
-```
-src/auth/token.ts::UserService.validate:method
-```
-
-Handles the tricky cases — `static` vs instance, `#private`, namespaces, abstract classes. If two would collide, the second gets `#2` so neither is lost.
-
-**Step 4 · Extract the behavioural facts**
-Ten facts per declaration. See [the table below](#what-gets-tracked).
-
-**Step 5 · Save the baseline**
-Written to `.planmap/baseline.json`. **No line numbers** — those churn constantly and would cause false alarms. Commit it to git like any other file.
-
-<div align="center">
-
----
-
-# 👀 Phase 2 — Watch
-
-### `planmap watch .` · `planmap check .` · `planmap accept .`
-
-</div>
-
-**Step 6 · Watch for behavioural changes**
-Every save re-reads the file and compares facts against the baseline.
-
-> 🟢 Only formatting changed → **says nothing**
-> 🔴 Behaviour changed → **tells you immediately**
+**Behavioural change detected**
 
 ```console
 src/auth/token.ts::verifyToken:function CHANGED
@@ -127,30 +119,7 @@ src/auth/token.ts::verifyToken:function CHANGED
     returnsNullish   0 → 1
 ```
 
-**Step 7 · Or check on demand**
-Same comparison, once instead of continuously. Exits `1` if anything changed, `0` if nothing did — so it works in CI.
-
-**Step 8 · Record the history**
-Every real change is appended to `.planmap/events.jsonl`. Append-only, never rewritten. Both `watch` and `check` write to it. A corrupted line is skipped with a warning instead of crashing.
-
-**Step 9 · Approve when you're ready**
-`accept` makes the current state the new baseline.
-
-> ⚠️ **Only `init` and `accept` ever write the baseline.**
-> The watcher never does — otherwise a change would erase its own evidence.
-
-<div align="center">
-
----
-
-# 🌲 Phase 3 — Remember
-
-### `planmap evolution .`
-
-</div>
-
-**Step 10 · Build the feature tree**
-Reads the recorded events, groups them by directory, splits into batches of 30, and asks an LLM to write readable labels. Vocabulary threads forward so batch 5 reuses names from batch 1. Each batch is saved as it completes — a failure halfway doesn't lose earlier work, and re-running picks up where it stopped.
+**Feature history** — `planmap evolution`
 
 ```markdown
 - **Login**
@@ -158,6 +127,7 @@ Reads the recorded events, groups them by directory, splits into batches of 30, 
     - Updated authentication response status
       - numbers [200,401] → [200,402]
   - Added JWT verification middleware  `backend` `security`
+  - Added Google Sign-In initialization  `frontend`
 
 - **Survey**
   - Added survey start endpoint  `backend` `api`
@@ -166,68 +136,53 @@ Reads the recorded events, groups them by directory, splits into batches of 30, 
 
 <div align="center">
 
-Features are **capabilities, not layers** —
-a feature spanning frontend and backend stays one node.
-
-**Without an API key it still works** — labels fall back to
-deterministic values derived from the code itself.
-
-### 🔒 PlanMap never sends your source code anywhere.
-
-Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]` —
-and only if you enable labelling.
-
 ---
 
-## Install
+## The Evolution Graph
+
+**What your project actually is — derived from code, not commit messages.**
+
+| Question it answers | |
+|:--|:--|
+| *"I just joined — what is this?"* | A map of real capabilities |
+| *"What does Login contain?"* | Every part of it, across every layer |
+| *"How did this get built?"* | Order things appeared, and what changed after |
 
 </div>
 
-```bash
-npx planmap init      # scan the project, write a baseline
-npx planmap watch     # watch for behavioural changes
-```
+Structure comes from **static analysis** — deterministic, no model involved. Labels come from an **LLM**, batched 30 at a time, with vocabulary threading forward so batch 5 reuses batch 1's names. Each batch saves as it completes, so a failure halfway doesn't lose earlier work.
+
+> **Features are capabilities, not layers.** A feature spanning frontend and backend stays **one** node. Grouping by layer would shred Login into Controller, Service, and Middleware — three places, no story.
 
 <div align="center">
 
-### No API key · No account · No config<br>Nothing leaves your machine
+**No API key? Still works.** Labels fall back to deterministic values
+from the code, and upgrade automatically if you add a key later.
 
----
+### 🔒 Your source code never leaves your machine
 
-## Commands
-
-| | |
-|:--|:--|
-| `init` | Scan the project and write `.planmap/baseline.json` |
-| `watch` | Watch files; report behavioural changes as they happen |
-| `check` | Compare against the baseline. Exits non-zero — usable in CI. |
-| `accept` | Approve the current state as the new baseline |
-| `diff <a> <b>` | Compare two files directly |
-| `evolution` | Render the change history as a feature tree |
+Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]`
 
 ---
 
 ## What gets tracked
 
-**JavaScript · TypeScript · JSX · TSX**
+**JavaScript · TypeScript · JSX · TSX** — ten facts per function
 
-Ten facts per declaration
-
-| Fact | What it catches |
+| | |
 |:--|:--|
-| `throws` | How many times it throws an error |
-| `throwTypes` | Which error types |
-| `returns` | How many return statements |
-| `returnsNullish` | How many return `null` or `undefined` |
-| `calls` | What other functions it calls |
+| `throws` · `throwTypes` | Error handling removed or changed |
+| `returns` · `returnsNullish` | A function that threw now returns nothing |
+| `calls` | A dependency added or dropped |
 | `numbers` | Limits, timeouts, retries, status codes |
-| `awaits` | How many `await`s |
-| `catches` | How many `catch` blocks |
-| `emptyCatches` | Catch blocks that silently swallow errors |
-| `params` | How many parameters |
+| `awaits` | Sync/async behaviour changed |
+| `catches` · `emptyCatches` | Errors newly swallowed |
+| `params` | Signature changed |
 
-**String text is deliberately not recorded** —
-error messages get reworded constantly and would create false alarms.
+**String text is not recorded** — error messages get reworded constantly
+and would create false alarms.
+
+</div>
 
 <details>
 <summary><b>Why facts and not hashes?</b></summary>
@@ -242,19 +197,6 @@ error messages get reworded constantly and would create false alarms.
 | `throw` → `return null` | 🔴 fires | 🔴 `throws: 1 → 0` |
 
 A hash tells you *something* changed. Facts tell you **what**.
-
-</details>
-
-<details>
-<summary><b>How nested declarations are handled</b></summary>
-
-<br>
-
-Extraction stops at the boundary of the next declaration,
-so each one owns only its own body.
-
-Without this, one nested change would make every enclosing function
-report as changed.
 
 </details>
 
@@ -275,22 +217,38 @@ otherwise compiled output gets parsed alongside its source.
 
 </details>
 
+<details>
+<summary><b>Commands</b></summary>
+
+<br>
+
+| | |
+|:--|:--|
+| `init` | Scan the project and write `.planmap/baseline.json` |
+| `watch` | Watch files; report changes as they happen |
+| `check` | Compare against the baseline. Exits non-zero — usable in CI. |
+| `accept` | Approve the current state as the new baseline |
+| `diff <a> <b>` | Compare two files directly |
+| `evolution` | Render the change history as a feature tree |
+
+**Only `init` and `accept` ever write the baseline.** The watcher never does —
+otherwise a change would erase its own evidence.
+
+</details>
+
+<div align="center">
+
 ---
 
 ## Validated on real code
 
 Run across **9 open-source TypeScript repositories**
 
-| | |
-|:--|:--|
-| **16,328** | declarations parsed |
-| **0** | identity collisions |
-| **9 / 9** | repositories scanned successfully |
+**16,328** declarations · **0** identity collisions · **9/9** repos scanned
 
 *TanStack Query · tRPC · Zod · Remeda · type-fest · got · ky · Zustand · ofetch*
 
 A file that fails to parse is skipped and reported — never fatal.
-One unsupported construct does not cost you the other 900 files.
 
 ---
 
@@ -298,31 +256,14 @@ One unsupported construct does not cost you the other 900 files.
 
 | | Linters | AI reviewers | **PlanMap** |
 |:--|:--:|:--:|:--:|
-| Needs rules | ✅ yes | ❌ no | ❌ no |
-| Needs a spec | ❌ no | ❌ no | ❌ no |
-| Sees between commits | ❌ no | ❌ no | **✅ yes** |
-| Sends code to a server | ❌ no | ⚠️ yes | **❌ no** |
-| Deterministic | ✅ yes | ❌ no | **✅ yes** |
-| Knows what the code did yesterday | ❌ no | ❌ no | **✅ yes** |
+| Needs rules | ✅ | ❌ | ❌ |
+| Sees between commits | ❌ | ❌ | **✅** |
+| Sends code to a server | ❌ | ⚠️ | **❌** |
+| Deterministic | ✅ | ❌ | **✅** |
+| Builds a feature history | ❌ | ❌ | **✅** |
 
-A pattern-matching scanner catches the example at the top
-**only if someone wrote a rule** saying that function must throw.
-
-Nobody writes that rule.
-
-**PlanMap catches it because it remembers what the function did yesterday.**
-
----
-
-## What it is not
-
-**Not a linter** — no opinion about whether your code is good
-
-**Not an AI reviewer** — static analysis decides what happened, not a model
-
-**Not a security scanner**
-
-**Not a spec tool** — nothing to write, nothing to maintain
+A pattern-matching scanner catches the example above **only if someone
+wrote a rule** saying that function must throw. Nobody writes that rule.
 
 ---
 
@@ -332,14 +273,13 @@ Nobody writes that rule.
 
 | | |
 |:--|:--|
-| ✅ | Declaration extraction — JavaScript, TypeScript, JSX, TSX |
+| ✅ | Declaration extraction — JS, TS, JSX, TSX |
 | ✅ | Behavioural fact extraction |
-| ✅ | Baseline · diff · watch · CI exit codes |
-| ✅ | Change history and feature tree |
+| ✅ | Baseline · watch · CI exit codes |
+| ✅ | Evolution graph with batched labelling |
 | 🔨 | Sessions — group saves into one unit of work |
-| 🔨 | Significance filtering — stop reporting removed debug lines |
-| 🔨 | Dependency map — what calls what |
-| 🔨 | Impact analysis — what a change affects downstream |
+| 🔨 | Significance — stop reporting removed debug lines |
+| 🔨 | Dependency map + impact analysis |
 | 📋 | Python |
 
 **Next release** adds the line the tool is missing today
@@ -357,25 +297,19 @@ Nobody writes that rule.
 
 ---
 
-## Tech
-
-Node ESM, no build step
-[`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter) (WASM) for parsing · `chokidar` for watching
+Node ESM, no build step · [`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter) for parsing · `chokidar` for watching
 Storage is plain JSON in `.planmap/`, committable to git
 
-Design decisions and their reasoning: [`DECISIONS.md`](DECISIONS.md)
+Design decisions and reasoning: [`DECISIONS.md`](DECISIONS.md)
 
 ---
 
 ## Contributing
 
-Issues welcome — especially these two
+Issues welcome — especially
 
 > 🐛 **A behavioural change PlanMap missed**
->
 > 🔇 **A change it reported that didn't matter**
-
-Both are more useful than feature requests right now.
 
 ---
 
