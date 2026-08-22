@@ -48,35 +48,134 @@ Every caller that relied on catching that error now silently receives `null`.
 
 ---
 
-## What it does
+## In one sentence
 
-PlanMap extracts **behavioural facts** from every declaration in your code —
-what it throws, what it returns, what it calls, how it handles errors.
+### PlanMap remembers what every function in your code *did*,<br>and tells you when that changes.
 
-It stores those facts as a baseline. Then it watches.
+Even if the code still compiles, still passes tests,<br>and still looks fine in review.
 
-### When a fact changes, you hear about it.<br>When formatting changes, you don't.
+---
+
+## How it works
 
 </div>
 
-```console
-$ planmap check
-
-Comparing baseline → current
-
-  src/auth/token.ts::verifyToken:function CHANGED
-      throws           1 → 0
-      throwTypes       [AuthError] → []
-      returnsNullish   0 → 1
-
-1 changed · 0 added · 0 deleted · 12 unchanged
+```mermaid
+flowchart TD
+    A["📁 Your project"] --> B["🌳 Parse every file<br/>tree-sitter"]
+    B --> C["🔎 Find every declaration<br/>functions · classes · methods"]
+    C --> D["📊 Extract 10 behavioural facts<br/>throws · returns · calls · numbers"]
+    D --> E["💾 Save as baseline<br/>.planmap/baseline.json"]
+    E --> F{"✏️ You edit a file"}
+    F -->|"only formatting changed"| G["🟢 Silent"]
+    F -->|"behaviour changed"| H["🔴 Reported immediately"]
+    H --> I["📜 Appended to history<br/>.planmap/events.jsonl"]
+    I --> J["🌲 Feature tree<br/>planmap evolution"]
 ```
 
 <div align="center">
 
-Reformat that same file, rename its locals, add comments — **zero changes reported.**
+---
 
-*Verified as a control test.*
+# 🔍 Phase 1 — Learn
+
+### `planmap init .`
+
+</div>
+
+**Step 1 · Find your source files**
+Walks every folder, skipping `node_modules`, `.git`, `dist`, `build`, `out`, `.next`. Finds every `.js`, `.jsx`, `.ts`, `.tsx`. Skips `.d.ts` — type declarations have no behaviour to track.
+
+**Step 2 · Read each file properly**
+Builds a real syntax tree with tree-sitter — not text matching. Picks the right grammar for JavaScript, TypeScript, or TSX. If one file can't be parsed, it says so and **keeps going** with the rest.
+
+**Step 3 · Find every declaration**
+Functions, classes, methods, getters, setters, arrow functions, class fields. Each gets a unique name based on where it lives:
+
+```
+src/auth/token.ts::UserService.validate:method
+```
+
+Handles the tricky cases — `static` vs instance, `#private`, namespaces, abstract classes. If two would collide, the second gets `#2` so neither is lost.
+
+**Step 4 · Extract the behavioural facts**
+Ten facts per declaration. See [the table below](#what-gets-tracked).
+
+**Step 5 · Save the baseline**
+Written to `.planmap/baseline.json`. **No line numbers** — those churn constantly and would cause false alarms. Commit it to git like any other file.
+
+<div align="center">
+
+---
+
+# 👀 Phase 2 — Watch
+
+### `planmap watch .` · `planmap check .` · `planmap accept .`
+
+</div>
+
+**Step 6 · Watch for behavioural changes**
+Every save re-reads the file and compares facts against the baseline.
+
+> 🟢 Only formatting changed → **says nothing**
+> 🔴 Behaviour changed → **tells you immediately**
+
+```console
+src/auth/token.ts::verifyToken:function CHANGED
+    throws           1 → 0
+    throwTypes       [AuthError] → []
+    returnsNullish   0 → 1
+```
+
+**Step 7 · Or check on demand**
+Same comparison, once instead of continuously. Exits `1` if anything changed, `0` if nothing did — so it works in CI.
+
+**Step 8 · Record the history**
+Every real change is appended to `.planmap/events.jsonl`. Append-only, never rewritten. Both `watch` and `check` write to it. A corrupted line is skipped with a warning instead of crashing.
+
+**Step 9 · Approve when you're ready**
+`accept` makes the current state the new baseline.
+
+> ⚠️ **Only `init` and `accept` ever write the baseline.**
+> The watcher never does — otherwise a change would erase its own evidence.
+
+<div align="center">
+
+---
+
+# 🌲 Phase 3 — Remember
+
+### `planmap evolution .`
+
+</div>
+
+**Step 10 · Build the feature tree**
+Reads the recorded events, groups them by directory, splits into batches of 30, and asks an LLM to write readable labels. Vocabulary threads forward so batch 5 reuses names from batch 1. Each batch is saved as it completes — a failure halfway doesn't lose earlier work, and re-running picks up where it stopped.
+
+```markdown
+- **Login**
+  - Added authentication start endpoint  `backend` `api`
+    - Updated authentication response status
+      - numbers [200,401] → [200,402]
+  - Added JWT verification middleware  `backend` `security`
+
+- **Survey**
+  - Added survey start endpoint  `backend` `api`
+  - Added survey submission service  `backend` `database`
+```
+
+<div align="center">
+
+Features are **capabilities, not layers** —
+a feature spanning frontend and backend stays one node.
+
+**Without an API key it still works** — labels fall back to
+deterministic values derived from the code itself.
+
+### 🔒 PlanMap never sends your source code anywhere.
+
+Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]` —
+and only if you enable labelling.
 
 ---
 
@@ -106,9 +205,6 @@ npx planmap watch     # watch for behavioural changes
 | `diff <a> <b>` | Compare two files directly |
 | `evolution` | Render the change history as a feature tree |
 
-> Only `init` and `accept` ever write the baseline.
-> The watcher never does — otherwise a change would erase its own evidence.
-
 ---
 
 ## What gets tracked
@@ -117,18 +213,21 @@ npx planmap watch     # watch for behavioural changes
 
 Ten facts per declaration
 
-| Fact | Catches |
+| Fact | What it catches |
 |:--|:--|
-| `throws` · `throwTypes` | Error handling removed or changed |
-| `returns` · `returnsNullish` | A function that threw now returns nothing |
-| `calls` | A dependency added or dropped |
-| `numbers` | Limits, timeouts, retries, thresholds |
-| `awaits` | Sync/async behaviour changed |
-| `catches` · `emptyCatches` | Errors newly swallowed |
-| `params` | Signature changed |
+| `throws` | How many times it throws an error |
+| `throwTypes` | Which error types |
+| `returns` | How many return statements |
+| `returnsNullish` | How many return `null` or `undefined` |
+| `calls` | What other functions it calls |
+| `numbers` | Limits, timeouts, retries, status codes |
+| `awaits` | How many `await`s |
+| `catches` | How many `catch` blocks |
+| `emptyCatches` | Catch blocks that silently swallow errors |
+| `params` | How many parameters |
 
-String literals are deliberately excluded —
-they're mostly error messages, and they get reworded constantly.
+**String text is deliberately not recorded** —
+error messages get reworded constantly and would create false alarms.
 
 <details>
 <summary><b>Why facts and not hashes?</b></summary>
@@ -154,7 +253,8 @@ A hash tells you *something* changed. Facts tell you **what**.
 Extraction stops at the boundary of the next declaration,
 so each one owns only its own body.
 
-Without this, one nested change makes every enclosing function report as changed.
+Without this, one nested change would make every enclosing function
+report as changed.
 
 </details>
 
@@ -166,13 +266,12 @@ Without this, one nested change makes every enclosing function report as changed
 `.ts` and `.tsx` use separate grammars — in `.tsx`, `<Foo>` is JSX;
 in `.ts` it's a type assertion.
 
-Handled: classes, abstract classes, namespaces, decorators,
-generics, overloads, getters and setters, `static` and `#private` members,
+Handled: classes, abstract classes, namespaces, decorators, generics,
+overloads, getters and setters, `static` and `#private` members,
 parameter properties, `satisfies`, and class fields holding functions.
 
-`.d.ts` files are skipped — type declarations have no behaviour to extract.
-So are `dist`, `build`, `out`, and `.next`, to avoid parsing compiled output
-alongside its source.
+`.d.ts` files are skipped, as are `dist`, `build`, `out`, and `.next` —
+otherwise compiled output gets parsed alongside its source.
 
 </details>
 
@@ -180,7 +279,7 @@ alongside its source.
 
 ## Validated on real code
 
-PlanMap has been run across **9 open-source TypeScript repositories**
+Run across **9 open-source TypeScript repositories**
 
 | | |
 |:--|:--|
@@ -192,41 +291,6 @@ PlanMap has been run across **9 open-source TypeScript repositories**
 
 A file that fails to parse is skipped and reported — never fatal.
 One unsupported construct does not cost you the other 900 files.
-
----
-
-## Evolution graph
-
-Turns the change history into a feature-oriented tree
-
-</div>
-
-```markdown
-- **Login**
-  - Added authentication start endpoint  `backend` `api`
-    - Updated authentication response status  `backend` `api`
-      - numbers [200,401] → [200,402]
-  - Added JWT verification middleware  `backend` `security`
-  - Added Google Sign-In initialization  `frontend`
-
-- **Survey**
-  - Added survey start endpoint  `backend` `api`
-  - Added survey submission service  `backend` `database`
-```
-
-<div align="center">
-
-Features are **capabilities, not layers** —
-a feature spanning frontend and backend stays one node.
-
-Structure comes from static analysis.
-Labels are optional and come from an LLM you configure yourself.
-Without a key everything still works — nodes fall back to deterministic labels.
-
-### 🔒 PlanMap never sends your source code anywhere.
-
-Only extracted facts — `calls: [jwt.sign]`, `numbers: [3600] → [7200]` —
-and only if you enable labelling.
 
 ---
 
@@ -264,7 +328,7 @@ Nobody writes that rule.
 
 ## Status
 
-**v0.4.1** — working, in active development, dogfooded daily
+**v0.4** — working, in active development, dogfooded daily
 
 | | |
 |:--|:--|
