@@ -39,12 +39,17 @@ export function handleAdd(
 
             try {
 
-                await checkChangedFile(
-                    context.projectRoot,
-                    filePath,
-                    context.parseFile,
-                    context.lastSeen,
-                    context.lastSeenDeclarations
+                const recordedChanges =
+                    await checkChangedFile(
+                        context.projectRoot,
+                        filePath,
+                        context.parseFile,
+                        context.lastSeen,
+                        context.lastSeenDeclarations
+                    );
+
+                context.sessionManager.addEvents(
+                    recordedChanges
                 );
 
             } catch (error) {
@@ -87,12 +92,17 @@ export function handleChange(
 
             try {
 
-                await checkChangedFile(
-                    context.projectRoot,
-                    filePath,
-                    context.parseFile,
-                    context.lastSeen,
-                    context.lastSeenDeclarations
+                const recordedChanges =
+                    await checkChangedFile(
+                        context.projectRoot,
+                        filePath,
+                        context.parseFile,
+                        context.lastSeen,
+                        context.lastSeenDeclarations
+                    );
+
+                context.sessionManager.addEvents(
+                    recordedChanges
                 );
 
             } catch (error) {

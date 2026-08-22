@@ -8,6 +8,10 @@ import {
     shouldIgnore
 } from "./watcher/filters.js";
 
+import {
+    createSessionManager
+} from "./session-manager.js";
+
 
 // --------------------------------------------------
 // WATCH PROJECT
@@ -36,6 +40,11 @@ export function watchProject(
     const lastSeenDeclarations =
         new Map();
 
+    const sessionManager =
+        createSessionManager(
+            projectRoot
+        );
+
 
     // --------------------------------------------------
     // WATCHER CONTEXT
@@ -49,6 +58,8 @@ export function watchProject(
         lastSeen,
 
         lastSeenDeclarations,
+
+        sessionManager,
 
         debounceDelay:
             300

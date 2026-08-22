@@ -27,12 +27,24 @@ import {
 } from "./commands/watch.js";
 
 import {
+    runSeal
+} from "./commands/seal.js";
+
+import {
     runDiff
 } from "./commands/diff.js";
 
 import {
     runEvolution
 } from "./commands/evolution.js";
+
+import {
+    runStatus
+} from "./commands/status.js";
+
+import {
+    runName
+} from "./commands/name.js";
 
 
 // --------------------------------------------------
@@ -85,11 +97,23 @@ if (
     );
 
     console.error(
+        "  node src/cli.js seal <project-folder>"
+    );
+
+    console.error(
         "  node src/cli.js evolution <project-folder>"
     );
 
     console.error(
         "  node src/cli.js evolution <project-folder> --md"
+    );
+
+    console.error(
+        "  node src/cli.js status <project-folder>"
+    );
+
+    console.error(
+        "  node src/cli.js name <project-folder>"
     );
 
     process.exit(1);
@@ -157,6 +181,45 @@ else if (
     args[0] === "watch"
 ) {
     runWatch(
+        args[1]
+    );
+}
+
+
+// --------------------------------------------------
+// SEAL COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "seal"
+) {
+    runSeal(
+        args[1]
+    );
+}
+
+
+// --------------------------------------------------
+// STATUS COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "status"
+) {
+    runStatus(
+        args[1]
+    );
+}
+
+
+// --------------------------------------------------
+// NAME COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "name"
+) {
+    await runName(
         args[1]
     );
 }
