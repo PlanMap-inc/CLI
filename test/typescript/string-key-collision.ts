@@ -26,3 +26,7 @@ const second = {
 // RACE_FLUSH_TEST_3
 // FINAL_SESSION_TEST
 // FINAL_GIT_RACE_TEST
+
+function finalGitRaceTest() {
+    return "git-boundary";
+}
