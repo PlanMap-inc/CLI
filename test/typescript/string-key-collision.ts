@@ -28,5 +28,5 @@ const second = {
 // FINAL_GIT_RACE_TEST
 
 function finalGitRaceTest() {
-    return "git-boundary-1234";
+    return 1234;
 }
