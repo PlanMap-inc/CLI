@@ -70,7 +70,10 @@ export function createSessionManager(
     // SEAL CURRENT SESSION
     // --------------------------------------------------
 
-    function seal() {
+    function seal(
+        reason = "manual",
+        meta = {}
+    ) {
         if (
             !activeSession ||
             activeSession.sealed
@@ -78,8 +81,18 @@ export function createSessionManager(
             return null;
         }
 
+        // Never seal an empty session.
+        if (
+            !activeSession.events ||
+            activeSession.events.length === 0
+        ) {
+            return null;
+        }
+
         sealSession(
-            activeSession
+            activeSession,
+            reason,
+            meta
         );
 
         save();
@@ -96,9 +109,56 @@ export function createSessionManager(
 
         save();
 
-        resetIdleTimer();
-
         return sealedSession;
+    }
+
+    // --------------------------------------------------
+    // DISCARD CURRENT SESSION
+    // --------------------------------------------------
+    // Used when Git changes branches.
+    //
+    // A branch checkout is not completed work, so the
+    // current open session must not be sealed.
+    // --------------------------------------------------
+
+    function discard() {
+        if (
+            idleTimer
+        ) {
+            clearTimeout(
+                idleTimer
+            );
+
+            idleTimer =
+                null;
+        }
+
+        if (
+            activeSession
+        ) {
+            const index =
+                sessions.indexOf(
+                    activeSession
+                );
+
+            if (
+                index !== -1
+            ) {
+                sessions.splice(
+                    index,
+                    1
+                );
+            }
+        }
+
+        activeSession =
+            createSession();
+
+        sessions.push(
+            activeSession
+        );
+
+        save();
     }
 
 
@@ -193,6 +253,7 @@ export function createSessionManager(
     return {
         addEvents,
         seal,
+        discard,
         getStatus
     };
 }

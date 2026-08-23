@@ -16,7 +16,7 @@ import { watchProject } from "../watcher.js";
 // 7-Watches JavaScript files.
 // --------------------------------------------------
 
-export function runWatch(
+export async function runWatch(
     projectPath
 ) {
     if (
@@ -81,7 +81,7 @@ export function runWatch(
         `\nStarting watch: ${projectRoot}\n`
     );
 
-    watchProject(
+    await watchProject(
         projectRoot,
         parseFile
     );

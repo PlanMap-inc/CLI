@@ -1,17 +1,12 @@
 // --------------------------------------------------
 // DEBOUNCE FILE
 // --------------------------------------------------
-// 1-Receives a file path.
-// 2-Receives a callback.
-// 3-Clears any existing timer for the same file.
-// 4-Creates a new timer.
-// 5-Runs the callback after the delay.
-// 6-Prevents multiple rapid filesystem events
-//   from triggering repeated processing.
-// --------------------------------------------------
 
 const timers =
     new Map();
+
+const running =
+    new Set();
 
 
 // --------------------------------------------------
@@ -23,54 +18,77 @@ export function debounceFile(
     callback,
     delay = 150
 ) {
-    const existingTimer =
+    const existingEntry =
         timers.get(
             filePath
         );
 
     if (
-        existingTimer
+        existingEntry
     ) {
         clearTimeout(
-            existingTimer
+            existingEntry.timer
         );
     }
 
-    const timer =
-        setTimeout(
-            async () => {
+    let run;
+
+    run =
+        async () => {
+
+            console.log(
+                "DEBOUNCE FIRED:",
+                filePath
+            );
+
+            timers.delete(
+                filePath
+            );
+
+            const execution =
+                Promise.resolve().then(
+                    () => callback()
+                );
+
+            running.add(
+                execution
+            );
+
+            try {
+                await execution;
 
                 console.log(
-                    "DEBOUNCE FIRED:",
+                    "DEBOUNCE CALLBACK FINISHED:",
                     filePath
                 );
+            }
 
-                timers.delete(
-                    filePath
+            catch (error) {
+                console.error(
+                    "DEBOUNCE CALLBACK ERROR:",
+                    error
                 );
+            }
 
-                try {
-                    await callback();
+            finally {
+                running.delete(
+                    execution
+                );
+            }
+        };
 
-                    console.log(
-                        "DEBOUNCE CALLBACK FINISHED:",
-                        filePath
-                    );
-                }
-
-                catch (error) {
-                    console.error(
-                        "DEBOUNCE CALLBACK ERROR:",
-                        error
-                    );
-                }
-            },
+    const timer =
+        setTimeout(
+            run,
             delay
         );
 
     timers.set(
         filePath,
-        timer
+        {
+            timer,
+            run
+        }
     );
 }
 
@@ -78,27 +96,23 @@ export function debounceFile(
 // --------------------------------------------------
 // CLEAR DEBOUNCE
 // --------------------------------------------------
-// Removes a pending timer for one file.
-// Useful when a file is deleted or when the
-// watcher is shutting down.
-// --------------------------------------------------
 
 export function clearDebounce(
     filePath
 ) {
-    const timer =
+    const pending =
         timers.get(
             filePath
         );
 
     if (
-        !timer
+        !pending
     ) {
         return;
     }
 
     clearTimeout(
-        timer
+        pending.timer
     );
 
     timers.delete(
@@ -110,19 +124,67 @@ export function clearDebounce(
 // --------------------------------------------------
 // CLEAR ALL DEBOUNCES
 // --------------------------------------------------
-// Removes every pending timer.
-// Useful when the watcher stops.
-// --------------------------------------------------
 
 export function clearAllDebounces() {
+
     for (
-        const timer
+        const pending
         of timers.values()
     ) {
         clearTimeout(
-            timer
+            pending.timer
         );
     }
 
     timers.clear();
+}
+
+
+// --------------------------------------------------
+// FLUSH ALL PENDING DEBOUNCES
+// --------------------------------------------------
+// Immediately executes every pending callback.
+// Used before sealing a session at a Git boundary.
+// --------------------------------------------------
+
+export async function flushDebounces() {
+
+    while (
+        timers.size > 0 ||
+        running.size > 0
+    ) {
+
+        const pending =
+            Array.from(
+                timers.values()
+            );
+
+        for (
+            const entry
+            of pending
+        ) {
+            clearTimeout(
+                entry.timer
+            );
+        }
+
+        timers.clear();
+
+        await Promise.all(
+            pending.map(
+                entry =>
+                    entry.run()
+            )
+        );
+
+        if (
+            running.size > 0
+        ) {
+            await Promise.all(
+                Array.from(
+                    running
+                )
+            );
+        }
+    }
 }

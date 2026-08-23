@@ -316,13 +316,27 @@ function buildSessionEntries(
                 )
             );
 
+        const identityNetDelta =
+            netDelta[
+                identity
+            ] || {};
+
+        if (
+            type === "changed" &&
+            Object.keys(
+                identityNetDelta
+            ).length === 0
+        ) {
+            continue;
+        }
+
         entries.push({
             identity,
 
             type,
 
             netDelta:
-                netDelta[identity] || {},
+                identityNetDelta,
 
             significant,
 
@@ -342,7 +356,9 @@ function buildSessionEntries(
 // --------------------------------------------------
 
 export function sealSession(
-    session
+    session,
+    reason = "manual",
+    meta = {}
 ) {
     if (
         session.sealed
@@ -360,6 +376,16 @@ export function sealSession(
 
     session.sealedAt =
         new Date().toISOString();
+
+    session.sealedBy =
+        reason;
+
+    if (
+        meta.commit
+    ) {
+        session.commit =
+            meta.commit;
+    }
 
     session.netDelta =
         netDelta;
