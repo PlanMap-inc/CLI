@@ -12,6 +12,10 @@ import {
     createSessionManager
 } from "./session-manager.js";
 
+import {
+    watchGitBoundary
+} from "./git-watcher.js";
+
 
 // --------------------------------------------------
 // WATCH PROJECT
@@ -43,6 +47,29 @@ export function watchProject(
     const sessionManager =
         createSessionManager(
             projectRoot
+        );
+
+
+    // --------------------------------------------------
+    // GIT SESSION BOUNDARY
+    // --------------------------------------------------
+
+    const gitWatcher =
+        watchGitBoundary(
+            projectRoot,
+            () => {
+
+                const sealedSession =
+                    sessionManager.seal();
+
+                if (
+                    sealedSession
+                ) {
+                    console.log(
+                        `Session sealed by Git: ${sealedSession.id}`
+                    );
+                }
+            }
         );
 
 
@@ -202,6 +229,12 @@ export function watchProject(
             );
 
             await watcher.close();
+
+            if (
+                gitWatcher
+            ) {
+                gitWatcher.close();
+            }
 
             process.exit(
                 0
