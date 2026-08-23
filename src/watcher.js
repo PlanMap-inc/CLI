@@ -16,6 +16,10 @@ import {
     watchGitBoundary
 } from "./git-watcher.js";
 
+import {
+    flushDebounces
+} from "./watcher/debounce.js";
+
 
 // --------------------------------------------------
 // WATCH PROJECT
@@ -29,7 +33,7 @@ import {
 // 7-Closes the watcher cleanly on shutdown.
 // --------------------------------------------------
 
-export function watchProject(
+export async function watchProject(
     projectRoot,
     parseFile
 ) {
@@ -55,12 +59,72 @@ export function watchProject(
     // --------------------------------------------------
 
     const gitWatcher =
-        watchGitBoundary(
+        await watchGitBoundary(
             projectRoot,
-            () => {
+            async ({
+                type,
+                currentCommit,
+                previousCommit,
+                previousBranch,
+                currentBranch
+            }) => {
+
+                // Git can move HEAD before Chokidar has
+                // delivered the filesystem event generated
+                // by the commit. Give the filesystem watcher
+                // a short settle window first.
+                await new Promise(
+                    resolve =>
+                        setTimeout(
+                            resolve,
+                            500
+                        )
+                );
+
+                // Drain every debounce callback that is
+                // already queued or currently running.
+                await flushDebounces();
+
+                // A filesystem event can arrive during the
+                // first flush. Give Chokidar one more short
+                // window and drain again before sealing.
+                await new Promise(
+                    resolve =>
+                        setTimeout(
+                            resolve,
+                            100
+                        )
+                );
+
+                await flushDebounces();
+
+                if (
+                    type ===
+                    "branch-switch"
+                ) {
+                    console.log(
+                        `Git branch switched: ${previousBranch} -> ${currentBranch}`
+                    );
+
+                    console.log(
+                        "Discarding open PlanMap session."
+                    );
+
+                    sessionManager.discard();
+
+                    return;
+                }
 
                 const sealedSession =
-                    sessionManager.seal();
+                    sessionManager.seal(
+                        "git",
+                        {
+                            commit:
+                                currentCommit,
+
+                            previousCommit
+                        }
+                    );
 
                 if (
                     sealedSession
@@ -217,11 +281,10 @@ export function watchProject(
 
 
     // --------------------------------------------------
-    // HANDLE CTRL+C
+    // HANDLE WATCHER SHUTDOWN
     // --------------------------------------------------
 
-    process.once(
-        "SIGINT",
+    const shutdown =
         async () => {
 
             console.log(
@@ -239,6 +302,15 @@ export function watchProject(
             process.exit(
                 0
             );
-        }
+        };
+
+    process.once(
+        "SIGINT",
+        shutdown
+    );
+
+    process.once(
+        "SIGTERM",
+        shutdown
     );
 }

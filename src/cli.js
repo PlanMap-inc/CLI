@@ -182,6 +182,14 @@ else if (
 ) {
     runWatch(
         args[1]
+    ).catch(
+        error => {
+            console.error(
+                `Watch error: ${error.message}`
+            );
+
+            process.exit(1);
+        }
     );
 }
 
