@@ -41,7 +41,7 @@ function getEventsPath(
 // 5-Returns a compact delta object.
 // --------------------------------------------------
 
-function createCompactDelta(
+export function createCompactDelta(
     change
 ) {
     const delta = {};
