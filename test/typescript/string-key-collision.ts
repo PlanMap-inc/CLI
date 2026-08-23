@@ -22,3 +22,4 @@ const second = {
 // ASYNC_GIT_TEST
 // RACE_TEST_1
 // RACE_FLUSH_TEST
+// RACE_FLUSH_TEST_2
