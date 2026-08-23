@@ -21,3 +21,4 @@ const second = {
 // DISCARD_ME
 // ASYNC_GIT_TEST
 // RACE_TEST_1
+// RACE_FLUSH_TEST
