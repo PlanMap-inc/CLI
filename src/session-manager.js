@@ -6,6 +6,7 @@ import {
     loadSessions,
     saveSessions
 } from "./sessions.js";
+import { createCompactDelta } from "./events.js";
 
 
 // --------------------------------------------------
@@ -209,9 +210,24 @@ export function createSessionManager(
             const event
             of events
         ) {
+            const normalizedEvent = {
+                identity:
+                    event.identity,
+
+                type:
+                    event.type,
+
+                delta:
+                    event.type === "changed"
+                        ? createCompactDelta(
+                            event
+                        )
+                        : {}
+            };
+
             addEventToSession(
                 activeSession,
-                event
+                normalizedEvent
             );
         }
 
@@ -233,7 +249,6 @@ export function createSessionManager(
 
         return null;
     }
-
 
     // --------------------------------------------------
     // STATUS
