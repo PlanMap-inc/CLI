@@ -39,11 +39,31 @@ export function debounceFile(
     const timer =
         setTimeout(
             async () => {
+
+                console.log(
+                    "DEBOUNCE FIRED:",
+                    filePath
+                );
+
                 timers.delete(
                     filePath
                 );
 
-                await callback();
+                try {
+                    await callback();
+
+                    console.log(
+                        "DEBOUNCE CALLBACK FINISHED:",
+                        filePath
+                    );
+                }
+
+                catch (error) {
+                    console.error(
+                        "DEBOUNCE CALLBACK ERROR:",
+                        error
+                    );
+                }
             },
             delay
         );

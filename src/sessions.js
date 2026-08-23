@@ -240,6 +240,104 @@ export function calculateNetDelta(
 
 
 // --------------------------------------------------
+// BUILD COMPACT SESSION ENTRIES
+// --------------------------------------------------
+
+function buildSessionEntries(
+    session
+) {
+    const entries = [];
+
+    const netDelta =
+        session.netDelta || {};
+
+    const events =
+        session.events || [];
+
+    const eventCounts =
+        new Map();
+
+    const eventTypes =
+        new Map();
+
+    for (
+        const event
+        of events
+    ) {
+        const identity =
+            event.identity;
+
+        eventCounts.set(
+            identity,
+            (
+                eventCounts.get(
+                    identity
+                ) || 0
+            ) + 1
+        );
+
+        if (
+            !eventTypes.has(
+                identity
+            )
+        ) {
+            eventTypes.set(
+                identity,
+                event.type
+            );
+        }
+    }
+
+    const identities =
+        new Set([
+            ...eventTypes.keys(),
+            ...Object.keys(
+                netDelta
+            )
+        ]);
+
+    for (
+        const identity
+        of identities
+    ) {
+        const type =
+            eventTypes.get(
+                identity
+            ) || "changed";
+
+        const significant =
+            Boolean(
+                session.significance &&
+                session.significance.declarations &&
+                session.significance.declarations.some(
+                    declaration =>
+                        declaration.identity ===
+                        identity
+                )
+            );
+
+        entries.push({
+            identity,
+
+            type,
+
+            netDelta:
+                netDelta[identity] || {},
+
+            significant,
+
+            eventCount:
+                eventCounts.get(
+                    identity
+                ) || 0
+        });
+    }
+
+    return entries;
+}
+
+
+// --------------------------------------------------
 // SEAL
 // --------------------------------------------------
 
@@ -252,6 +350,11 @@ export function sealSession(
         return session;
     }
 
+    const netDelta =
+        calculateNetDelta(
+            session.events
+        );
+
     session.sealed =
         true;
 
@@ -259,18 +362,31 @@ export function sealSession(
         new Date().toISOString();
 
     session.netDelta =
-        calculateNetDelta(
-            session.events
-        );
+        netDelta;
 
     session.significance =
-        analyzeSignificance(
+        analyzeSignificance({
+            ...session,
+            netDelta
+        });
+
+    /*
+     * sessions.json stores only a compact derived summary.
+     *
+     * The complete event history remains in events.jsonl.
+     * Declaration objects, source locations and line numbers
+     * must never be duplicated into sessions.json.
+     */
+
+    session.entries =
+        buildSessionEntries(
             session
         );
 
+    delete session.events;
+
     return session;
 }
-
 
 // --------------------------------------------------
 // SAVE

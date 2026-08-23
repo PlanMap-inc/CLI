@@ -145,11 +145,21 @@ export function handleUnlink(
 
     try {
 
-        checkRemovedFile(
-            context.projectRoot,
-            filePath,
-            context.lastSeen
-        );
+        const recordedChanges =
+            checkRemovedFile(
+                context.projectRoot,
+                filePath,
+                context.lastSeen
+            );
+
+        if (
+            recordedChanges &&
+            recordedChanges.length > 0
+        ) {
+            context.sessionManager.addEvents(
+                recordedChanges
+            );
+        }
 
     } catch (error) {
 
