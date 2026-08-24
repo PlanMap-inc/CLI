@@ -28,5 +28,5 @@ const second = {
 // FINAL_GIT_RACE_TEST
 
 function finalGitRaceTest() {
-    return 5678;
+    return 9999;
 }
