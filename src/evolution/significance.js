@@ -9,18 +9,35 @@ const ALWAYS_SIGNIFICANT = new Set([
     "awaits"
 ]);
 
-const NOISE_CALL_PREFIXES = [
+const DEFAULT_NOISE_CALL_PREFIXES = [
     "console.",
     "logger.",
     "debug."
 ];
 
-function isNoiseCall(call) {
+function getNoiseCallPrefixes(session) {
+    const configured =
+        session?.config?.significance?.noiseCallPrefixes;
+
+    if (
+        Array.isArray(configured) &&
+        configured.length > 0
+    ) {
+        return configured;
+    }
+
+    return DEFAULT_NOISE_CALL_PREFIXES;
+}
+
+function isNoiseCall(
+    call,
+    prefixes
+) {
     if (typeof call !== "string") {
         return false;
     }
 
-    return NOISE_CALL_PREFIXES.some(
+    return prefixes.some(
         prefix =>
             call === prefix ||
             call.startsWith(prefix)
@@ -34,7 +51,11 @@ function changedValues(before, after) {
     );
 }
 
-function callsOnlyContainNoise(before, after) {
+function callsOnlyContainNoise(
+    before,
+    after,
+    prefixes
+) {
     const oldCalls =
         Array.isArray(before)
             ? before
@@ -61,13 +82,18 @@ function callsOnlyContainNoise(before, after) {
         ...removed,
         ...added
     ].every(
-        isNoiseCall
+        call =>
+            isNoiseCall(
+                call,
+                prefixes
+            )
     );
 }
 
 function isPropertySignificant(
     property,
-    change
+    change,
+    noisePrefixes
 ) {
     const before =
         change.before;
@@ -103,7 +129,8 @@ function isPropertySignificant(
     ) {
         return !callsOnlyContainNoise(
             before,
-            after
+            after,
+            noisePrefixes
         );
     }
 
@@ -120,6 +147,11 @@ export function analyzeSignificance(
 ) {
     const reasons = [];
     const declarations = [];
+
+    const noisePrefixes =
+        getNoiseCallPrefixes(
+            session
+        );
 
     for (
         const event
@@ -160,7 +192,8 @@ export function analyzeSignificance(
             if (
                 isPropertySignificant(
                     property,
-                    change
+                    change,
+                    noisePrefixes
                 )
             ) {
                 reasons.push({
@@ -176,6 +209,54 @@ export function analyzeSignificance(
             }
         }
     }
+
+    // --------------------------------------------------
+    // CHANGED DECLARATION SIGNIFICANCE
+    // --------------------------------------------------
+    //
+    // reasons already contains the identities whose
+    // changed properties were classified as significant.
+    //
+    // Keep declarations in sync so downstream session
+    // entries can correctly set entry.significant.
+    // --------------------------------------------------
+
+    const significantDeclarationIdentities =
+        new Set(
+            declarations.map(
+                declaration =>
+                    declaration.identity
+            )
+        );
+
+    for (
+        const reason
+        of reasons
+    ) {
+        if (
+            !reason ||
+            !reason.identity ||
+            significantDeclarationIdentities.has(
+                reason.identity
+            )
+        ) {
+            continue;
+        }
+
+        declarations.push({
+            identity:
+                reason.identity,
+
+            type:
+                "changed"
+        });
+
+        significantDeclarationIdentities.add(
+            reason.identity
+        );
+    }
+
+
 
     return {
         significant:
