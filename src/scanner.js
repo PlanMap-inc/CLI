@@ -1,6 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import {
+    parseFile
+} from "./parser.js";
+
 
 
 // --------------------------------------------------
@@ -157,8 +161,7 @@ function findSourceFiles(projectRoot) {
 // --------------------------------------------------
 
 export function scanProject(
-    projectRoot,
-    parseFile
+    projectRoot
 ) {
 
     const absoluteRoot =
