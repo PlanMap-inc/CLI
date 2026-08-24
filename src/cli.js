@@ -85,7 +85,7 @@ if (
     );
 
     console.error(
-        "  node src/cli.js check <project-folder>"
+        "  node src/cli.js check <project-folder> [--all]"
     );
 
     console.error(
@@ -154,8 +154,29 @@ else if (
 else if (
     args[0] === "check"
 ) {
+    if (
+        args[1] === "--help" ||
+        args[1] === "-h"
+    ) {
+        console.log(
+            "Usage: node src/cli.js check <project-folder> [--all]"
+        );
+
+        console.log(
+            "  --all    Show insignificant changes too"
+        );
+
+        process.exit(0);
+    }
+
     runProjectCheck(
-        args[1]
+        args[1],
+        {
+            all:
+                args.includes(
+                    "--all"
+                )
+        }
     );
 }
 

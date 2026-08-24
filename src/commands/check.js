@@ -1,42 +1,109 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parseFile } from "../parser.js";
-import { scanProject } from "../scanner.js";
 import {
     runCheck
 } from "../check.js";
+
+import {
+    scanProject
+} from "../scanner.js";
+
+import {
+    parseFile
+} from "../parser.js";
 
 import {
     diffDeclarations,
     formatDiff
 } from "../diff.js";
 
+import {
+    calculateNetDelta
+} from "../sessions.js";
+
+import {
+    analyzeSignificance
+} from "../evolution/significance.js";
+
+import {
+    loadConfig
+} from "../config.js";
+
+
+// --------------------------------------------------
+// BUILD SIGNIFICANCE SESSION
+// --------------------------------------------------
+
+function buildSignificanceSession(
+    changes,
+    config
+) {
+    const events = [];
+
+    for (
+        const change
+        of changes
+    ) {
+        if (
+            change.type === "unchanged"
+        ) {
+            continue;
+        }
+
+        const delta = {};
+
+        for (
+            const propertyChange
+            of change.changes || []
+        ) {
+            delta[propertyChange.property] = [
+                propertyChange.before,
+                propertyChange.after
+            ];
+        }
+
+        events.push({
+            identity:
+                change.identity,
+
+            type:
+                change.type,
+
+            delta
+        });
+    }
+
+    const netDelta =
+        calculateNetDelta(
+            events
+        );
+
+    return {
+        events,
+        netDelta,
+        config
+    };
+}
+
+
 // --------------------------------------------------
 // RUN PROJECT CHECK
-// 1-Receives the project folder path.
-// 2-Checks whether the project folder was provided.
-// 3-Converts the project path into an absolute path.
-// 4-Checks whether the project folder exists.
-// 5-Reads the stored baseline.
-// 6-Scans the current project.
-// 7-Compares current state with baseline.
-// 8-Prints detected changes.
-// 9-Only real changes affect the exit code.
-// 10-Does not update baseline.
 // --------------------------------------------------
 
 export function runProjectCheck(
-    projectPath
+    projectPath,
+    options = {}
 ) {
     if (
         !projectPath
     ) {
         console.error(
-            "Usage: node src/cli.js check <project-folder>"
+            "Usage: node src/cli.js check <project-folder> [--all]"
         );
 
-        process.exit(1);
+        process.exitCode = 1;
+        return;
     }
 
     const projectRoot =
@@ -53,7 +120,8 @@ export function runProjectCheck(
             `Project folder not found: ${projectPath}`
         );
 
-        process.exit(1);
+        process.exitCode = 1;
+        return;
     }
 
     if (
@@ -65,7 +133,8 @@ export function runProjectCheck(
             `Project path is not a folder: ${projectPath}`
         );
 
-        process.exit(1);
+        process.exitCode = 1;
+        return;
     }
 
     console.log(
@@ -94,15 +163,102 @@ export function runProjectCheck(
         );
 
         process.exitCode = 0;
-
         return;
     }
 
-    formatDiff(
-        changes,
-        "baseline",
-        "current"
+    const config =
+        loadConfig(
+            projectRoot
+        );
+
+    const session =
+        buildSignificanceSession(
+            changes,
+            config
+        );
+
+    const significance =
+        analyzeSignificance(
+            session
+        );
+
+    const significantIds =
+        new Set(
+            significance.declarations.map(
+                declaration =>
+                    declaration.identity
+            )
+        );
+
+    const significantChanges =
+        realChanges.filter(
+            change =>
+                significantIds.has(
+                    change.identity
+                )
+        );
+
+    const insignificantChanges =
+        realChanges.filter(
+            change =>
+                !significantIds.has(
+                    change.identity
+                )
+        );
+
+    console.log(
+        "\nPlanMap Check\n"
     );
 
-    process.exitCode = 1;
+    console.log(
+        `Changes: ${realChanges.length}`
+    );
+
+    console.log(
+        `Significant: ${significantChanges.length}`
+    );
+
+    console.log(
+        `Insignificant: ${insignificantChanges.length}`
+    );
+
+    if (
+        significantChanges.length > 0
+    ) {
+        console.log(
+            "\nSignificant changes:\n"
+        );
+
+        formatDiff(
+            significantChanges,
+            "baseline",
+            "current"
+        );
+    }
+
+    if (
+        options.all &&
+        insignificantChanges.length > 0
+    ) {
+        console.log(
+            "\nInsignificant changes:\n"
+        );
+
+        formatDiff(
+            insignificantChanges,
+            "baseline",
+            "current"
+        );
+    }
+
+    /*
+     * Normal check fails only when a meaningful
+     * semantic change exists.
+     *
+     * --all changes display only.
+     */
+    process.exitCode =
+        significantChanges.length > 0
+            ? 1
+            : 0;
 }
