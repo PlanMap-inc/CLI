@@ -282,37 +282,3 @@ export function findCallers(
 
     return results;
 }
-import {
-    resolveProjectImports
-} from "./resolver.js";
-
-for (
-    const name
-    of [
-        "named",
-        "default",
-        "namespace",
-        "cjs",
-        "cjs-destructured",
-        "reexport",
-        "external",
-        "missing"
-    ]
-) {
-    console.log("\n==============================");
-    console.log(name);
-    console.log("==============================");
-
-    const result =
-        resolveProjectImports(
-            `test/v0.5/deps/imports/${name}`
-        );
-
-    console.log(
-        JSON.stringify(
-            result.edges,
-            null,
-            2
-        )
-    );
-}

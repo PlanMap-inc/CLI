@@ -889,6 +889,17 @@ export function resolveFileImports(
 
     const edges = [];
 
+    /*
+     * Imports are currently extracted at file scope.
+     * Use the project-relative importer path as the source
+     * identity until declaration-level symbol ownership is joined.
+     */
+    const importerIdentity =
+        path.relative(
+            projectRoot,
+            absoluteImporter
+        );
+
     for (
         const importRecord
         of imports
@@ -908,7 +919,7 @@ export function resolveFileImports(
             ) {
                 edges.push({
                     from:
-                        null,
+                        importerIdentity,
 
                     to:
                         null,
@@ -924,6 +935,9 @@ export function resolveFileImports(
 
                     local:
                         specifier.local,
+
+                    kind:
+                        "import",
 
                     confidence:
                         "unresolved",
@@ -952,7 +966,7 @@ export function resolveFileImports(
             ) {
                 edges.push({
                     from:
-                        null,
+                        importerIdentity,
 
                     to:
                         path.relative(
@@ -1006,7 +1020,7 @@ export function resolveFileImports(
             ) {
                 edges.push({
                     from:
-                        null,
+                        importerIdentity,
 
                     to:
                         path.relative(
@@ -1058,6 +1072,9 @@ export function resolveFileImports(
                     specifier.imported
                 );
 
+            let isReExport =
+                false;
+
             /*
              * The resolved file may be a barrel that
              * re-exports the requested declaration.
@@ -1086,6 +1103,9 @@ export function resolveFileImports(
 
                     targetDeclaration =
                         reExport.declaration;
+
+                    isReExport =
+                        true;
                 }
             }
 
@@ -1094,7 +1114,7 @@ export function resolveFileImports(
             ) {
                 edges.push({
                     from:
-                        null,
+                        importerIdentity,
 
                     to:
                         null,
@@ -1111,6 +1131,9 @@ export function resolveFileImports(
                     local:
                         specifier.local,
 
+                    kind:
+                        "import",
+
                     confidence:
                         "unresolved",
 
@@ -1123,7 +1146,7 @@ export function resolveFileImports(
 
             edges.push({
                 from:
-                    null,
+                    importerIdentity,
 
                 to:
                     `${path.relative(
@@ -1142,6 +1165,11 @@ export function resolveFileImports(
 
                 local:
                     specifier.local,
+
+                kind:
+                    isReExport
+                        ? "reexport"
+                        : "import",
 
                 targetFile:
                     path.resolve(
