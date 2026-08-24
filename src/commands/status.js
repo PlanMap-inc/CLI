@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-    loadSessions
-} from "../sessions.js";
+    createSessionManager
+} from "../session-manager.js";
 
 
 // --------------------------------------------------
@@ -42,16 +42,13 @@ export function runStatus(
         return;
     }
 
-    const sessions =
-        loadSessions(
+    const manager =
+        createSessionManager(
             projectRoot
         );
 
     const activeSession =
-        sessions.find(
-            session =>
-                !session.sealed
-        );
+        manager.getActiveSession();
 
     if (
         !activeSession

@@ -174,6 +174,51 @@ export function appendEvent(
 }
 
 
+
+// --------------------------------------------------
+// APPEND SESSION MARKER
+// --------------------------------------------------
+// Durable boundary metadata for session recovery.
+// These markers are written to events.jsonl but are
+// never treated as declaration events.
+// --------------------------------------------------
+
+export function appendSessionMarker(
+    projectRoot,
+    type,
+    metadata = {}
+) {
+    if (
+        type !== "session_started" &&
+        type !== "session_sealed"
+    ) {
+        throw new Error(
+            `Invalid session marker type: ${type}`
+        );
+    }
+
+    const eventsPath =
+        getEventsPath(
+            projectRoot
+        );
+
+    const event = {
+        ts:
+            new Date().toISOString(),
+
+        type,
+
+        ...metadata
+    };
+
+    fs.appendFileSync(
+        eventsPath,
+        JSON.stringify(event) + "\n",
+        "utf8"
+    );
+}
+
+
 // --------------------------------------------------
 // APPEND INITIAL EVENTS
 // 1-Receives the project root and initial declarations.
