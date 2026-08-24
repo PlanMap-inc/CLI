@@ -2,7 +2,7 @@
 
 # PlanMap
 
-### Reads your codebase, learns what every function does,<br>and tracks how it changes.
+### PlanMap protects your own codebase from your agent.
 
 Local · no rules to write · no spec to maintain · works on any repo
 
