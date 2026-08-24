@@ -30,3 +30,8 @@ const second = {
 function finalGitRaceTest() {
     return 9999;
 }
+
+function significanceNoiseTest() {
+    console.log("noise-two");
+    return 1;
+}
