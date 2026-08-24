@@ -44,15 +44,63 @@ const callerIndex = {
 };
 
 
+const declarations = [
+    {
+        identity:
+            "auth.ts::loadSession:function",
+
+        file:
+            "auth.ts",
+
+        name:
+            "loadSession",
+
+        kind:
+            "function"
+    },
+
+    {
+        identity:
+            "auth.ts::verifyToken:function",
+
+        file:
+            "auth.ts",
+
+        name:
+            "verifyToken",
+
+        kind:
+            "function"
+    },
+
+    {
+        identity:
+            "orders.ts::createOrder:function",
+
+        file:
+            "orders.ts",
+
+        name:
+            "createOrder",
+
+        kind:
+            "function"
+    }
+];
+
+
 const joined =
     joinDependencies(
         resolverResult,
-        callerIndex
+        callerIndex,
+        declarations
     );
 
 
 /*
+ * ------------------------------------------------------------
  * IMPORT EDGE
+ * ------------------------------------------------------------
  */
 
 assert.ok(
@@ -72,7 +120,12 @@ assert.ok(
 
 
 /*
+ * ------------------------------------------------------------
  * CALL EDGE
+ * ------------------------------------------------------------
+ *
+ * The bare callee name must be upgraded to its declaration
+ * identity using the caller's file context.
  */
 
 assert.ok(
@@ -80,19 +133,42 @@ assert.ok(
         edge =>
             edge.from ===
                 "auth.ts::loadSession:function" &&
+
             edge.to ===
-                "verifyToken" &&
+                "auth.ts::verifyToken:function" &&
+
             edge.kind ===
                 "call" &&
+
             edge.confidence ===
                 "inferred"
     ),
-    "inferred caller edge must survive the join"
+    "caller edge must resolve to declaration identity"
 );
 
 
 /*
- * NO FABRICATED DECLARATION EDGE
+ * Bare names must not survive in canonical call edges.
+ */
+
+assert.equal(
+    joined.some(
+        edge =>
+            edge.kind ===
+                "call" &&
+
+            edge.to ===
+                "verifyToken"
+    ),
+    false,
+    "bare caller names must not survive the join"
+);
+
+
+/*
+ * ------------------------------------------------------------
+ * NO FABRICATED DECLARATION IMPORT EDGE
+ * ------------------------------------------------------------
  */
 
 assert.equal(
@@ -100,6 +176,7 @@ assert.equal(
         edge =>
             edge.from ===
                 "auth.ts::loadSession:function" &&
+
             edge.to ===
                 "source.ts::validate:function"
     ),
@@ -109,35 +186,10 @@ assert.equal(
 
 
 /*
+ * ------------------------------------------------------------
  * DECLARATION FILE INDEX
+ * ------------------------------------------------------------
  */
-
-const declarations = [
-    {
-        identity:
-            "auth.ts::loadSession:function",
-
-        file:
-            "auth.ts"
-    },
-
-    {
-        identity:
-            "auth.ts::verifyToken:function",
-
-        file:
-            "auth.ts"
-    },
-
-    {
-        identity:
-            "orders.ts::createOrder:function",
-
-        file:
-            "orders.ts"
-    }
-];
-
 
 const fileIndex =
     buildDeclarationFileIndex(
@@ -161,17 +213,22 @@ assert.deepEqual(
 
 
 /*
+ * ------------------------------------------------------------
  * DETERMINISM
+ * ------------------------------------------------------------
  */
 
 assert.deepEqual(
     joinDependencies(
         resolverResult,
-        callerIndex
+        callerIndex,
+        declarations
     ),
+
     joinDependencies(
         resolverResult,
-        callerIndex
+        callerIndex,
+        declarations
     )
 );
 

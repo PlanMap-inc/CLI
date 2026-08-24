@@ -41,9 +41,68 @@
  */
 
 function normalizeCallerEdges(
-    callerIndex
+    callerIndex,
+    declarations = []
 ) {
     const edges = [];
+
+    /*
+     * Build a deterministic name -> declaration identity index.
+     *
+     * The caller index currently stores callees by bare name:
+     *
+     *     loadSession
+     *
+     * The graph requires canonical declaration identity:
+     *
+     *     auth.ts::loadSession:function
+     *
+     * Do not guess across ambiguous declarations.
+     */
+    const declarationIndex =
+        new Map();
+
+    for (
+        const declaration
+        of declarations || []
+    ) {
+        const name =
+            declaration?.name;
+
+        const identity =
+            declaration?.identity;
+
+        if (
+            typeof name !== "string" ||
+            typeof identity !== "string"
+        ) {
+            continue;
+        }
+
+        const existing =
+            declarationIndex.get(name);
+
+        if (
+            existing === undefined
+        ) {
+            declarationIndex.set(
+                name,
+                identity
+            );
+        } else if (
+            existing !== identity
+        ) {
+            /*
+             * Multiple declarations share the same name.
+             * Mark the name ambiguous rather than inventing
+             * a target.
+             */
+            declarationIndex.set(
+                name,
+                null
+            );
+        }
+    }
 
     for (
         const callee
@@ -53,6 +112,11 @@ function normalizeCallerEdges(
     ) {
         const callers =
             callerIndex[callee] || [];
+
+        const resolvedCallee =
+            declarationIndex.has(callee)
+                ? declarationIndex.get(callee)
+                : null;
 
         for (
             const edge
@@ -70,14 +134,19 @@ function normalizeCallerEdges(
                     edge.caller,
 
                 to:
+                    resolvedCallee ||
                     callee,
 
                 kind:
                     "call",
 
                 confidence:
-                    edge.confidence ||
-                    "inferred"
+                    resolvedCallee
+                        ? (
+                            edge.confidence ||
+                            "inferred"
+                        )
+                        : "unresolved"
             });
         }
     }
@@ -146,7 +215,8 @@ function normalizeResolverEdges(
 
 export function joinDependencies(
     resolverResult,
-    callerIndex
+    callerIndex,
+    declarations = []
 ) {
     const importEdges =
         normalizeResolverEdges(
@@ -155,7 +225,8 @@ export function joinDependencies(
 
     const callEdges =
         normalizeCallerEdges(
-            callerIndex
+            callerIndex,
+            declarations
         );
 
     const edges = [
