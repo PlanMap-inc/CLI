@@ -11,6 +11,7 @@ import {
     appendSessionMarker
 } from "./events.js";
 import { analyzeSignificance } from "./evolution/significance.js";
+import { loadConfig } from "./config.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -551,6 +552,11 @@ function recoverActiveSession(
 export function createSessionManager(
     projectRoot
 ) {
+    const config =
+        loadConfig(
+            projectRoot
+        );
+
     const sessions =
         loadSessions(
             projectRoot
@@ -561,6 +567,13 @@ export function createSessionManager(
             projectRoot,
             sessions
         );
+
+    if (
+        activeSession
+    ) {
+        activeSession.config =
+            config;
+    }
 
 
     /*
@@ -630,6 +643,9 @@ export function createSessionManager(
     ) {
         activeSession =
             createSession();
+
+        activeSession.config =
+            config;
 
         sessions.push(
             activeSession
