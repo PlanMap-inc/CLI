@@ -32,6 +32,6 @@ function finalGitRaceTest() {
 }
 
 function significanceNoiseTest() {
-    console.log("noise-five");
+    logger.debug("noise-seven");
     return 1;
 }
