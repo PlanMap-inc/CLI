@@ -292,7 +292,8 @@ export function runProjectCheck(
                                 change =>
                                     change.identity
                                         .split("::")[1]
-                                        ?.split("#")[0] ===
+                                        ?.split("#")[0]
+                                        ?.split(":")[0] ===
                                     edge.to
                             );
 
