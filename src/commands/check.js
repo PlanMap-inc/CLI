@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-    runCheck
+    runCheck,
+    readBaseline
 } from "../check.js";
 
 import {
@@ -246,16 +247,116 @@ export function runProjectCheck(
                 declarations
             );
 
-        const joined =
+        let joined =
             joinDependencies(
                 resolved,
                 callerIndex,
                 declarations
             );
 
+        /*
+         * Deleted declarations no longer exist in the current
+         * declaration set. Caller analysis can therefore retain
+         * their target only as a bare symbol name.
+         *
+         * Re-anchor those unresolved caller edges to the
+         * deleted declaration's baseline identity so reverse
+         * impact analysis can still find its live callers.
+         *
+         * We deliberately preserve the original confidence.
+         * The target identity is recovered from the baseline,
+         * but the relationship itself was not resolved against
+         * a current declaration.
+         */
+        const deletedChanges =
+            significantChanges.filter(
+                change =>
+                    change.type === "deleted"
+            );
+
+        if (
+            deletedChanges.length > 0
+        ) {
+            joined =
+                joined.map(
+                    edge => {
+                        if (
+                            edge?.to === null ||
+                            typeof edge?.to !== "string"
+                        ) {
+                            return edge;
+                        }
+
+                        const deleted =
+                            deletedChanges.find(
+                                change =>
+                                    change.identity
+                                        .split("::")[1]
+                                        ?.split("#")[0] ===
+                                    edge.to
+                            );
+
+                        if (
+                            !deleted
+                        ) {
+                            return edge;
+                        }
+
+                        return {
+                            ...edge,
+                            to:
+                                deleted.identity
+                        };
+                    }
+                );
+        }
+
+        /*
+         * Include baseline declarations so deleted targets remain
+         * valid graph identities during this check.
+         */
+        const baseline =
+            readBaseline(
+                projectRoot
+            );
+
+        const baselineDeclarations =
+            Array.isArray(
+                baseline?.declarations
+            )
+                ? baseline.declarations
+                : [];
+
+        const declarationMap =
+            new Map();
+
+        for (
+            const declaration
+            of [
+                ...baselineDeclarations,
+                ...declarations
+            ]
+        ) {
+            if (
+                typeof declaration?.identity !==
+                    "string"
+            ) {
+                continue;
+            }
+
+            declarationMap.set(
+                declaration.identity,
+                declaration
+            );
+        }
+
         impactGraph =
             buildGraph({
-                declarations,
+                declarations:
+                    Array.from(
+                        declarationMap.values()
+                    ),
+
                 dependencyEdges:
                     joined
             });
