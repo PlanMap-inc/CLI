@@ -239,6 +239,70 @@ assert.deepEqual(
 );
 
 
+
+/*
+ * ------------------------------------------------------------
+ * UNRESOLVED EDGES
+ * ------------------------------------------------------------
+ */
+
+const unresolvedGraph =
+    buildGraph({
+        declarations,
+
+        dependencyEdges: [
+            {
+                from:
+                    "consumer.ts",
+
+                to:
+                    null,
+
+                kind:
+                    "import",
+
+                confidence:
+                    "unresolved",
+
+                reason:
+                    "module-not-found"
+            }
+        ]
+    });
+
+const unresolvedEdge =
+    unresolvedGraph.edges.find(
+        edge =>
+            edge.from ===
+                "consumer.ts"
+    );
+
+assert.ok(
+    unresolvedEdge,
+    "unresolved dependency edge must remain visible"
+);
+
+assert.equal(
+    unresolvedEdge.to,
+    null
+);
+
+assert.equal(
+    unresolvedEdge.kind,
+    "import"
+);
+
+assert.equal(
+    unresolvedEdge.confidence,
+    "unresolved"
+);
+
+assert.equal(
+    unresolvedEdge.reason,
+    "module-not-found"
+);
+
+
 console.log(
     "PASS: graph regression"
 );
