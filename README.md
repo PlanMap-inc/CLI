@@ -3,6 +3,7 @@
 # PlanMap
 
 ### PlanMap protects your own codebase from your agent.
+### HOW THE SYSTEM GOT HERE
 
 Local · no rules to write · no spec to maintain · works on any repo
 

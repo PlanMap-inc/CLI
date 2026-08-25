@@ -31,6 +31,26 @@ import {
 } from "../config.js";
 
 
+import {
+    resolveProjectImports
+} from "../dependencies/resolver.js";
+
+import {
+    buildCallerIndex
+} from "../dependencies/callers.js";
+
+import {
+    joinDependencies
+} from "../dependencies/join.js";
+
+import {
+    buildGraph
+} from "../dependencies/graph.js";
+
+import {
+    findImpact
+} from "../dependencies/impact.js";
+
 // --------------------------------------------------
 // BUILD SIGNIFICANCE SESSION
 // --------------------------------------------------
@@ -206,6 +226,41 @@ export function runProjectCheck(
                 )
         );
 
+    let impactGraph = null;
+
+    if (
+        significantChanges.length > 0
+    ) {
+        const declarations =
+            scanProject(
+                projectRoot
+            );
+
+        const resolved =
+            resolveProjectImports(
+                projectRoot
+            );
+
+        const callerIndex =
+            buildCallerIndex(
+                declarations
+            );
+
+        const joined =
+            joinDependencies(
+                resolved,
+                callerIndex,
+                declarations
+            );
+
+        impactGraph =
+            buildGraph({
+                declarations,
+                dependencyEdges:
+                    joined
+            });
+    }
+
     console.log(
         "\nPlanMap Check\n"
     );
@@ -234,6 +289,66 @@ export function runProjectCheck(
             "baseline",
             "current"
         );
+    }
+
+    if (
+        significantChanges.length > 0 &&
+        impactGraph
+    ) {
+        console.log(
+            "\nImpact analysis:\n"
+        );
+
+        for (
+            const change
+            of significantChanges
+        ) {
+            const impact =
+                findImpact(
+                    impactGraph,
+                    change.identity
+                );
+
+            console.log(
+                `\n${change.identity}`
+            );
+
+            if (
+                impact.affected.length === 0
+            ) {
+                console.log(
+                    "  No affected declarations found."
+                );
+            } else {
+                for (
+                    const affected
+                    of impact.affected
+                ) {
+                    console.log(
+                        `  depth ${affected.depth}  ` +
+                        `${affected.identity}  ` +
+                        `[${affected.kind}/${affected.confidence}]`
+                    );
+                }
+            }
+
+            if (
+                impact.unresolved > 0
+            ) {
+                console.log(
+                    `  unresolved graph edges: ` +
+                    `${impact.unresolved}`
+                );
+            }
+
+            if (
+                impact.truncated
+            ) {
+                console.log(
+                    "  impact results truncated."
+                );
+            }
+        }
     }
 
     if (
