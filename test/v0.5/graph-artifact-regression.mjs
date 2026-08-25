@@ -196,6 +196,80 @@ assert.equal(
 );
 
 
+/*
+ * ------------------------------------------------------------
+ * MISSING ARTIFACT
+ * ------------------------------------------------------------
+ */
+
+fs.rmSync(
+    graphPath,
+    {
+        force:
+            true
+    }
+);
+
+assert.equal(
+    readGraphArtifact(
+        projectRoot
+    ),
+    null,
+    "missing graph artifact must return null"
+);
+
+
+/*
+ * ------------------------------------------------------------
+ * INVALID ARTIFACT
+ * ------------------------------------------------------------
+ */
+
+fs.mkdirSync(
+    path.dirname(
+        graphPath
+    ),
+    {
+        recursive:
+            true
+    }
+);
+
+fs.writeFileSync(
+    graphPath,
+    "{ invalid json",
+    "utf8"
+);
+
+assert.equal(
+    readGraphArtifact(
+        projectRoot
+    ),
+    null,
+    "invalid graph artifact must return null"
+);
+
+
+/*
+ * ------------------------------------------------------------
+ * REGENERATE AFTER INVALID ARTIFACT
+ * ------------------------------------------------------------
+ */
+
+writeGraphArtifact(
+    projectRoot,
+    graph
+);
+
+assert.deepEqual(
+    readGraphArtifact(
+        projectRoot
+    ),
+    graph,
+    "valid artifact must remain readable after regeneration"
+);
+
+
 console.log(
     "PASS: graph artifact regression"
 );

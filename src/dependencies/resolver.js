@@ -815,10 +815,16 @@ function resolveReExport(
                         return;
                     }
 
-                    const parsedTarget =
-                        parseFile(
-                            resolution.path
-                        );
+                    let parsedTarget;
+
+                    try {
+                        parsedTarget =
+                            parseFile(
+                                resolution.path
+                            );
+                    } catch {
+                        return;
+                    }
 
                     const declaration =
                         findExportedDeclaration(
@@ -877,10 +883,22 @@ export function resolveFileImports(
             filePath
         );
 
-    const parsedImporter =
-        parseFile(
-            absoluteImporter
-        );
+    let parsedImporter;
+
+    try {
+        parsedImporter =
+            parseFile(
+                absoluteImporter
+            );
+    } catch {
+        return {
+            filePath:
+                absoluteImporter,
+
+            edges:
+                []
+        };
+    }
 
     const imports =
         extractImports(
@@ -1058,10 +1076,55 @@ export function resolveFileImports(
                 continue;
             }
 
-            const parsedTarget =
-                parseFile(
-                    resolution.path
-                );
+            let isReExport =
+                false;
+
+            let parsedTarget;
+
+            try {
+                parsedTarget =
+                    parseFile(
+                        resolution.path
+                    );
+            } catch {
+                edges.push({
+                    from:
+                        importerIdentity,
+
+                    to:
+                        null,
+
+                    importer:
+                        absoluteImporter,
+
+                    source:
+                        importRecord.source,
+
+                    imported:
+                        specifier.imported,
+
+                    local:
+                        specifier.local,
+
+                    kind:
+                        isReExport
+                            ? "reexport"
+                            : "import",
+
+                    targetFile:
+                        path.resolve(
+                            resolution.path
+                        ),
+
+                    confidence:
+                        "unresolved",
+
+                    reason:
+                        "target-parse-failed"
+                });
+
+                continue;
+            }
 
             let targetPath =
                 resolution.path;
@@ -1071,9 +1134,6 @@ export function resolveFileImports(
                     parsedTarget,
                     specifier.imported
                 );
-
-            let isReExport =
-                false;
 
             /*
              * The resolved file may be a barrel that

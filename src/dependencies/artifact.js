@@ -94,10 +94,34 @@ export function readGraphArtifact(
             "graph.json"
         );
 
-    return JSON.parse(
-        fs.readFileSync(
-            graphPath,
-            "utf8"
-        )
-    );
+    let contents;
+
+    try {
+        contents =
+            fs.readFileSync(
+                graphPath,
+                "utf8"
+            );
+    } catch (error) {
+        if (
+            error?.code ===
+            "ENOENT"
+        ) {
+            return null;
+        }
+
+        throw error;
+    }
+
+    try {
+        return JSON.parse(
+            contents
+        );
+    } catch (error) {
+        console.warn(
+            `PlanMap: invalid graph artifact at ${graphPath}; rebuild required.`
+        );
+
+        return null;
+    }
 }

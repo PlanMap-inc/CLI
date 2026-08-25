@@ -109,8 +109,11 @@ function normalizeEdge(
     }
 
     if (
-        typeof edge.to !== "string" ||
-        edge.to.length === 0
+        edge.to !== null &&
+        (
+            typeof edge.to !== "string" ||
+            edge.to.length === 0
+        )
     ) {
         return null;
     }
@@ -120,7 +123,7 @@ function normalizeEdge(
             edge.from,
 
         to:
-            edge.to,
+            edge.to ?? null,
 
         kind:
             edge.kind ||
@@ -128,7 +131,14 @@ function normalizeEdge(
 
         confidence:
             edge.confidence ||
-            "unresolved"
+            "unresolved",
+
+        ...(edge.reason
+            ? {
+                reason:
+                    edge.reason
+            }
+            : {})
     };
 }
 
@@ -197,9 +207,15 @@ function sortEdges(
                 return from;
             }
 
+            const leftTo =
+                left.to ?? "";
+
+            const rightTo =
+                right.to ?? "";
+
             const to =
-                left.to.localeCompare(
-                    right.to
+                leftTo.localeCompare(
+                    rightTo
                 );
 
             if (
