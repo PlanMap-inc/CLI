@@ -220,6 +220,68 @@ assert.equal(
 );
 
 
+/*
+ * ------------------------------------------------------------
+ * DELETED DECLARATIONS ARE NOT IMPLEMENTED
+ * ------------------------------------------------------------
+ */
+
+assert.equal(
+    deriveEvolutionStatus({
+        identity:
+            "src/auth.js::verifyToken:function",
+
+        type:
+            "deleted"
+    }),
+    "deleted"
+);
+
+
+const deletedEvolution =
+    applyEvolutionStatus({
+        version:
+            1,
+
+        nodes: [
+            {
+                id:
+                    "evolution_deleted_001",
+
+                identity:
+                    "src/auth.js::verifyToken:function",
+
+                type:
+                    "deleted"
+            }
+        ]
+    });
+
+
+assert.equal(
+    deletedEvolution.nodes[0].status,
+    "deleted"
+);
+
+
+/*
+ * ------------------------------------------------------------
+ * NON-DELETED NODES REMAIN IMPLEMENTED
+ * ------------------------------------------------------------
+ */
+
+assert.equal(
+    deriveEvolutionStatus({
+        identity:
+            "src/auth.js::verifyToken:function",
+
+        type:
+            "changed"
+    }),
+    "implemented"
+);
+
+
 console.log(
     "PASS: evolution status regression"
 );

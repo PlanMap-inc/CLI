@@ -56,6 +56,20 @@ export function deriveEvolutionStatus(
     node,
     planRule = null
 ) {
+    /*
+     * A deleted declaration is a reality-side fact.
+     *
+     * It must never be reported as "implemented", even when
+     * there is no Plan rule. Drift is a Plan-vs-reality result
+     * and belongs to Layer 3; deletion itself is already known
+     * from the Evolution event.
+     */
+    if (
+        node?.type === "deleted"
+    ) {
+        return "deleted";
+    }
+
     if (
         !planRule ||
         planRule.approved !== true
