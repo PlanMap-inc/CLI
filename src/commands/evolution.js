@@ -33,6 +33,10 @@ import {
     writeEvolutionMarkdown
 } from "../evolution/markdown.js";
 
+import {
+    applyEvolutionStatus
+} from "../evolution/status.js";
+
 
 // --------------------------------------------------
 // EVOLUTION BATCH CONFIGURATION
@@ -684,6 +688,16 @@ export async function runEvolution(
             );
         }
     }
+
+
+    // --------------------------------------------------
+    // DERIVE EVOLUTION STATUS
+    // --------------------------------------------------
+
+    updatedEvolution =
+        applyEvolutionStatus(
+            updatedEvolution
+        );
 
 
     // --------------------------------------------------
