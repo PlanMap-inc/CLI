@@ -3,8 +3,8 @@
   "version": "0.4.0",
   "description": "Catches the code changes that compile, pass tests, and pass review. Local semantic change detection for JavaScript.",
   "type": "module",
-  "license": "MIT",
-  "author": "Sambhav",
+  "license": "BUSL-1.1",
+  "author": "The PlanMap Authors",
   "bin": {
     "planmap": "src/cli.js"
   },
@@ -34,12 +34,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/its-sambhav/PLAN_MAP.git"
+    "url": "git+https://github.com/PlanMap-inc/CLI.git"
   },
   "bugs": {
-    "url": "https://github.com/its-sambhav/PLAN_MAP/issues"
+    "url": "https://github.com/PlanMap-inc/CLI/issues"
   },
-  "homepage": "https://github.com/its-sambhav/PLAN_MAP#readme",
+  "homepage": "https://github.com/PlanMap-inc/CLI#readme",
   "dependencies": {
     "chokidar": "^5.0.0",
     "tree-sitter-javascript": "^0.25.0",
