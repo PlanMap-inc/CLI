@@ -37,6 +37,10 @@ import {
     applyEvolutionStatus
 } from "../evolution/status.js";
 
+import {
+    loadSessions
+} from "../sessions.js";
+
 
 // --------------------------------------------------
 // EVOLUTION BATCH CONFIGURATION
@@ -63,6 +67,120 @@ function getEventKey(
 // --------------------------------------------------
 // GET EVENT DIRECTORY
 // --------------------------------------------------
+
+function getSessionEvolutionEvents(
+    events,
+    sessions
+) {
+    const eventsByIdentity =
+        new Map();
+
+    for (
+        const event
+        of events
+    ) {
+        if (
+            typeof event?.identity !== "string" ||
+            event.identity.length === 0
+        ) {
+            continue;
+        }
+
+        if (
+            event.type !== "added" &&
+            event.type !== "changed" &&
+            event.type !== "deleted"
+        ) {
+            continue;
+        }
+
+        if (
+            !eventsByIdentity.has(
+                event.identity
+            )
+        ) {
+            eventsByIdentity.set(
+                event.identity,
+                []
+            );
+        }
+
+        eventsByIdentity
+            .get(event.identity)
+            .push(event);
+    }
+
+    const result =
+        [];
+
+    for (
+        const session
+        of sessions
+    ) {
+        if (
+            session?.sealed !== true
+        ) {
+            continue;
+        }
+
+        for (
+            const entry
+            of session.entries || []
+        ) {
+            const candidates =
+                eventsByIdentity.get(
+                    entry.identity
+                ) || [];
+
+            const matching =
+                candidates.filter(
+                    event =>
+                        event.type ===
+                            entry.type &&
+                        event.ts >=
+                            session.openedAt &&
+                        event.ts <=
+                            session.sealedAt
+                );
+
+            const latest =
+                matching[
+                    matching.length - 1
+                ];
+
+            if (
+                latest
+            ) {
+                result.push({
+                    ...latest,
+
+                    delta:
+                        entry.type === "changed"
+                            ? Object.fromEntries(
+                                Object.entries(
+                                    entry.netDelta || {}
+                                ).map(
+                                    ([property, value]) => [
+                                        property,
+                                        [
+                                            value.before,
+                                            value.after
+                                        ]
+                                    ]
+                                )
+                            )
+                            : (
+                                latest.delta ||
+                                {}
+                            )
+                });
+            }
+        }
+    }
+
+    return result;
+}
+
 
 function getEventDirectory(
     event
@@ -397,6 +515,11 @@ export async function runEvolution(
             projectRoot
         );
 
+    const sessions =
+        loadSessions(
+            projectRoot
+        );
+
     const timeGroups =
         groupTimeGroups(
             events
@@ -417,11 +540,25 @@ export async function runEvolution(
     // FIND NEW EVENTS
     // --------------------------------------------------
 
+    const sessionEvents =
+        getSessionEvolutionEvents(
+            events,
+            sessions
+        );
+
     const newEvents =
         getNewEvolutionEvents(
-            events,
+            sessionEvents,
             evolution
         );
+
+    /*
+     * Evolution is rebuilt from sealed session entries.
+     *
+     * Existing nodes are retained for historical continuity,
+     * but raw watcher events that were never represented by a
+     * sealed session entry are never added.
+     */
 
 
     // --------------------------------------------------
