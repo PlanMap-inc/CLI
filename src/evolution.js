@@ -117,7 +117,14 @@ export function updateEvolution(
                 event.ts,
 
             delta:
-                event.delta || {}
+                event.delta || {},
+
+            ...(event.origin
+                ? {
+                    origin:
+                        event.origin
+                }
+                : {})
         };
 
         evolution.nodes.push(
