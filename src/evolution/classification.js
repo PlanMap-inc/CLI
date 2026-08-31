@@ -290,6 +290,28 @@ export function getNewEvolutionEvents(
     return events.filter(
         event => {
 
+            /*
+             * Evolution only consumes declaration events.
+             *
+             * Session lifecycle events such as
+             * "session_started" do not have an identity
+             * and must never enter the Evolution pipeline.
+             */
+            if (
+                event?.type !== "added" &&
+                event?.type !== "changed" &&
+                event?.type !== "deleted"
+            ) {
+                return false;
+            }
+
+            if (
+                typeof event?.identity !== "string" ||
+                event.identity.length === 0
+            ) {
+                return false;
+            }
+
             const key =
                 `${event.ts}|${event.type}|${event.identity}`;
 
