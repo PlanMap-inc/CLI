@@ -182,6 +182,97 @@ function getSessionEvolutionEvents(
 }
 
 
+function readEvolutionBaseline(
+    projectRoot
+) {
+    const baselinePath =
+        path.join(
+            projectRoot,
+            ".planmap",
+            "baseline.json"
+        );
+
+    if (
+        !fs.existsSync(
+            baselinePath
+        )
+    ) {
+        return {
+            declarations: []
+        };
+    }
+
+    try {
+        const content =
+            fs.readFileSync(
+                baselinePath,
+                "utf8"
+            );
+
+        const baseline =
+            JSON.parse(
+                content
+            );
+
+        if (
+            !Array.isArray(
+                baseline?.declarations
+            )
+        ) {
+            return {
+                declarations: []
+            };
+        }
+
+        return baseline;
+
+    } catch (
+        error
+    ) {
+        console.error(
+            `Warning: could not read baseline.json: ${error.message}`
+        );
+
+        return {
+            declarations: []
+        };
+    }
+}
+
+
+function buildGenesisEvents(
+    baseline
+) {
+    const declarations =
+        baseline?.declarations || [];
+
+    const ts =
+        baseline?.createdAt ||
+        baseline?.timestamp ||
+        new Date(0).toISOString();
+
+    return declarations
+        .filter(
+            declaration =>
+                typeof declaration?.identity === "string" &&
+                declaration.identity.length > 0
+        )
+        .map(
+            declaration => ({
+                ts,
+                identity:
+                    declaration.identity,
+                type:
+                    "added",
+                delta:
+                    {},
+                origin:
+                    "baseline"
+            })
+        );
+}
+
+
 function getEventDirectory(
     event
 ) {
@@ -520,6 +611,16 @@ export async function runEvolution(
             projectRoot
         );
 
+    const baseline =
+        readEvolutionBaseline(
+            projectRoot
+        );
+
+    const genesisEvents =
+        buildGenesisEvents(
+            baseline
+        );
+
     const timeGroups =
         groupTimeGroups(
             events
@@ -546,9 +647,15 @@ export async function runEvolution(
             sessions
         );
 
+    const evolutionEvents =
+        [
+            ...genesisEvents,
+            ...sessionEvents
+        ];
+
     const newEvents =
         getNewEvolutionEvents(
-            sessionEvents,
+            evolutionEvents,
             evolution
         );
 
