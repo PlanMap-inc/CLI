@@ -19,7 +19,8 @@ export function buildEvolutionPrompt(
     events,
     existingFeatures,
     existingTags,
-    maxTags
+    maxTags,
+    authoritative = false
 ) {
 
     return `
@@ -401,6 +402,20 @@ The vocabulary must remain small.
 Prefer existing tags.
 
 Do not create synonyms.
+
+${authoritative ? `
+--------------------------------------------------
+AUTHORITATIVE PLAN TAG VOCABULARY
+--------------------------------------------------
+
+The supplied tag vocabulary comes from the approved Plan.
+
+Use ONLY the supplied existing tags.
+
+Do NOT invent new tags.
+
+Do NOT rename, modify, or create synonyms for the supplied tags.
+` : ""}
 
 
 --------------------------------------------------
