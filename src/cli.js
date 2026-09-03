@@ -39,6 +39,11 @@ import {
 } from "./commands/evolution.js";
 
 import {
+    runPlanList,
+    runPlanShow
+} from "./commands/plan.js";
+
+import {
     runStatus
 } from "./commands/status.js";
 
@@ -267,6 +272,45 @@ else if (
             "--md"
         )
     );
+}
+
+
+// --------------------------------------------------
+// PLAN COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "plan"
+) {
+    const subcommand =
+        args[1];
+
+    if (
+        subcommand === "list"
+    ) {
+        runPlanList(
+            args[2]
+        );
+    }
+
+    else if (
+        subcommand === "show"
+    ) {
+        runPlanShow(
+            args[2],
+            args[3]
+        );
+    }
+
+    else {
+        console.error(
+            "Usage: planmap plan list <project>"
+        );
+
+        console.error(
+            "Usage: planmap plan show <project> <identity>"
+        );
+    }
 }
 
 
