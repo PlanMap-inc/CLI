@@ -205,16 +205,30 @@ export function applyEvolutionStatus(
             .push(rule);
     }
 
+    /*
+     * ------------------------------------------------------------
+     * APPLY STATUS METADATA
+     * ------------------------------------------------------------
+     *
+     * Layer 0 records the derived status together with
+     * its source and the time the status was verified.
+     *
+     * "derived" means the status came from PlanMap's
+     * deterministic reality-side derivation.
+     * ------------------------------------------------------------
+     */
+
+    const lastVerified =
+        new Date().toISOString();
+
     const nodes =
         Array.isArray(
             evolution.nodes
         )
             ? evolution.nodes
                 .map(
-                    node => ({
-                        ...node,
-
-                        status:
+                    node => {
+                        const status =
                             deriveEvolutionStatus(
                                 node,
                                 (
@@ -226,8 +240,16 @@ export function applyEvolutionStatus(
                                     rule =>
                                         rule?.approved === true
                                 ) || null
-                            )
-                    })
+                            );
+
+                        return {
+                            ...node,
+                            status,
+                            statusSource:
+                                "derived",
+                            lastVerified
+                        };
+                    }
                 )
             : [];
 
