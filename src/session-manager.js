@@ -938,6 +938,96 @@ export function createSessionManager(
     }
 
     // --------------------------------------------------
+    // RECORD ONE-SHOT SESSION
+    // 1-Creates an isolated session for a single command.
+    // 2-Adds the supplied declaration events.
+    // 3-Seals the session immediately.
+    // 4-Persists the sealed session without touching
+    //   the current active watch session.
+    // --------------------------------------------------
+
+    function recordOneShotSession(
+        events,
+        reason = "manual"
+    ) {
+        if (
+            !events ||
+            events.length === 0
+        ) {
+            return null;
+        }
+
+        const session =
+            createSession();
+
+        appendSessionMarker(
+            projectRoot,
+            "session_started",
+            {
+                sessionId:
+                    session.id
+            }
+        );
+
+        for (
+            const event
+            of events
+        ) {
+            const normalizedEvent = {
+                identity:
+                    event.identity,
+
+                type:
+                    event.type,
+
+                delta:
+                    event.type === "changed"
+                        ? createCompactDelta(
+                            event
+                        )
+                        : {}
+            };
+
+            addEventToSession(
+                session,
+                normalizedEvent
+            );
+        }
+
+        const sealedSession =
+            sealSession(
+                session,
+                reason
+            );
+
+        appendSessionMarker(
+            projectRoot,
+            "session_sealed",
+            {
+                sessionId:
+                    sealedSession.id,
+
+                reason,
+
+                commit:
+                    null
+            }
+        );
+
+        sessions.push(
+            sealedSession
+        );
+
+        saveSessions(
+            projectRoot,
+            sessions
+        );
+
+        return sealedSession;
+    }
+
+
+    // --------------------------------------------------
     // STATUS
     // --------------------------------------------------
 
@@ -954,6 +1044,7 @@ export function createSessionManager(
 
     return {
         addEvents,
+        recordOneShotSession,
         seal,
         discard,
         getStatus,

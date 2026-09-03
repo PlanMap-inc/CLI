@@ -144,5 +144,35 @@ export function runCheck(
         );
     }
 
+    // --------------------------------------------------
+    // RECORD CHECK SESSION
+    // --------------------------------------------------
+    // A check invocation is a one-shot session boundary.
+    // It must not merge its changes into an active
+    // watch session.
+    // --------------------------------------------------
+
+    const realChanges =
+        changes.filter(
+            change =>
+                change.type === "changed" ||
+                change.type === "added" ||
+                change.type === "deleted"
+        );
+
+    if (
+        realChanges.length > 0
+    ) {
+        const sessionManager =
+            createSessionManager(
+                projectRoot
+            );
+
+        sessionManager.recordOneShotSession(
+            realChanges,
+            "check"
+        );
+    }
+
     return changes;
 }
