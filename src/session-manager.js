@@ -948,7 +948,8 @@ export function createSessionManager(
 
     function recordOneShotSession(
         events,
-        reason = "manual"
+        reason = "manual",
+        afterAdd = null
     ) {
         if (
             !events ||
@@ -992,6 +993,12 @@ export function createSessionManager(
                 session,
                 normalizedEvent
             );
+        }
+
+        if (
+            typeof afterAdd === "function"
+        ) {
+            afterAdd();
         }
 
         const sealedSession =
