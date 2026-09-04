@@ -141,8 +141,22 @@ export function appendEvent(
          * Lifecycle markers are audit metadata.
          * They must not break declaration-event deduplication.
          *
-         * Find the LAST declaration event rather than
-         * blindly comparing against the last physical line.
+         * Find the LAST declaration event for THIS identity.
+         *
+         * Deduplication is intentionally scoped per identity.
+         *
+         * This prevents interleaved declarations from defeating
+         * deduplication:
+         *
+         *   f: 200 → 203
+         *   g: ...
+         *   f: 200 → 203
+         *
+         * while still allowing a legitimate later recurrence:
+         *
+         *   f: 200 → 203
+         *   f: 203 → 200
+         *   f: 200 → 203
          */
 
         const lifecycleEventTypes =
@@ -151,7 +165,7 @@ export function appendEvent(
                 "session_sealed"
             ]);
 
-        let lastDeclarationEvent =
+        let lastEventForIdentity =
             null;
 
         for (
@@ -168,11 +182,13 @@ export function appendEvent(
 
                 if (
                     candidate &&
+                    candidate.identity ===
+                        event.identity &&
                     !lifecycleEventTypes.has(
                         candidate.type
                     )
                 ) {
-                    lastDeclarationEvent =
+                    lastEventForIdentity =
                         candidate;
 
                     break;
@@ -183,15 +199,13 @@ export function appendEvent(
         }
 
         if (
-            lastDeclarationEvent
+            lastEventForIdentity
         ) {
             const sameEvent =
-                lastDeclarationEvent.identity ===
-                    event.identity &&
-                lastDeclarationEvent.type ===
+                lastEventForIdentity.type ===
                     event.type &&
                 JSON.stringify(
-                    lastDeclarationEvent.delta || {}
+                    lastEventForIdentity.delta || {}
                 ) ===
                     JSON.stringify(
                         event.delta || {}
