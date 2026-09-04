@@ -84,7 +84,7 @@ export function appendEvent(
         change.type !== "added" &&
         change.type !== "deleted"
     ) {
-        return;
+        return false;
     }
 
     const eventsPath =
@@ -198,7 +198,7 @@ export function appendEvent(
                     );
 
             if (sameEvent) {
-                return;
+                return false;
             }
         }
     }
@@ -208,6 +208,8 @@ export function appendEvent(
         JSON.stringify(event) + "\n",
         "utf8"
     );
+
+    return true;
 }
 
 

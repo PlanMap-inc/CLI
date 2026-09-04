@@ -1130,7 +1130,29 @@ export function createSessionManager(
             }
         );
 
-        for (const event of events) {
+        let sessionEvents =
+            events;
+
+        if (
+            typeof afterAdd === "function"
+        ) {
+            const appendedEvents =
+                afterAdd();
+
+            if (
+                Array.isArray(
+                    appendedEvents
+                )
+            ) {
+                sessionEvents =
+                    appendedEvents;
+            }
+        }
+
+        for (
+            const event
+            of sessionEvents
+        ) {
             const normalizedEvent = {
                 identity:
                     event.identity,
@@ -1151,9 +1173,9 @@ export function createSessionManager(
         }
 
         if (
-            typeof afterAdd === "function"
+            sessionEvents.length === 0
         ) {
-            afterAdd();
+            return null;
         }
 
         const sealedSession =
