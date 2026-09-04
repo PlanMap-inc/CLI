@@ -1,3 +1,7 @@
+import {
+    createSessionManager
+} from "./session-manager.js";
+
 import fs from "node:fs";
 import path from "node:path";
 import { appendEvent } from "./events.js";
@@ -123,33 +127,15 @@ export function runCheck(
         );
 
     // --------------------------------------------------
-    // RECORD REAL CHANGES
-    // --------------------------------------------------
-    // appendEvent() already ignores "unchanged"
-    // results and records:
-    //   - changed
-    //   - added
-    //   - deleted
-    //
-    // The baseline is NOT modified here.
-    // --------------------------------------------------
-
-    for (
-        const change
-        of changes
-    ) {
-        appendEvent(
-            projectRoot,
-            change
-        );
-    }
-
-    // --------------------------------------------------
     // RECORD CHECK SESSION
     // --------------------------------------------------
     // A check invocation is a one-shot session boundary.
     // It must not merge its changes into an active
     // watch session.
+    //
+    // The session must be opened before events are
+    // appended so the event timestamps fall inside
+    // the session time window used by evolution.
     // --------------------------------------------------
 
     const realChanges =
@@ -170,7 +156,27 @@ export function runCheck(
 
         sessionManager.recordOneShotSession(
             realChanges,
-            "check"
+            "check",
+            () => {
+                // --------------------------------------------------
+                // RECORD REAL CHANGES
+                // --------------------------------------------------
+                // appendEvent() writes the durable audit event
+                // while the isolated check session is still open.
+                //
+                // The baseline is NOT modified here.
+                // --------------------------------------------------
+
+                for (
+                    const change
+                    of realChanges
+                ) {
+                    appendEvent(
+                        projectRoot,
+                        change
+                    );
+                }
+            }
         );
     }
 
