@@ -171,15 +171,25 @@ export function runCheck(
                 // The baseline is NOT modified here.
                 // --------------------------------------------------
 
+                const appendedChanges = [];
+
                 for (
                     const change
                     of realChanges
                 ) {
-                    appendEvent(
-                        projectRoot,
-                        change
-                    );
+                    if (
+                        appendEvent(
+                            projectRoot,
+                            change
+                        ) === true
+                    ) {
+                        appendedChanges.push(
+                            change
+                        );
+                    }
                 }
+
+                return appendedChanges;
             }
         );
     }
