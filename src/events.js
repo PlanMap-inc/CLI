@@ -137,31 +137,68 @@ export function appendEvent(
                         line.trim()
                 );
 
-        if (lines.length > 0) {
+        /*
+         * Lifecycle markers are audit metadata.
+         * They must not break declaration-event deduplication.
+         *
+         * Find the LAST declaration event rather than
+         * blindly comparing against the last physical line.
+         */
+
+        const lifecycleEventTypes =
+            new Set([
+                "session_started",
+                "session_sealed"
+            ]);
+
+        let lastDeclarationEvent =
+            null;
+
+        for (
+            let index =
+                lines.length - 1;
+            index >= 0;
+            index--
+        ) {
             try {
-                const lastEvent =
+                const candidate =
                     JSON.parse(
-                        lines[lines.length - 1]
+                        lines[index]
                     );
 
-                const sameEvent =
-                    lastEvent.identity ===
-                        event.identity &&
-                    lastEvent.type ===
-                        event.type &&
-                    JSON.stringify(
-                        lastEvent.delta || {}
-                    ) ===
-                        JSON.stringify(
-                            event.delta || {}
-                        );
+                if (
+                    candidate &&
+                    !lifecycleEventTypes.has(
+                        candidate.type
+                    )
+                ) {
+                    lastDeclarationEvent =
+                        candidate;
 
-                if (sameEvent) {
-                    return;
+                    break;
                 }
             } catch {
                 // Ignore malformed historical lines.
-                // The new event can still be appended.
+            }
+        }
+
+        if (
+            lastDeclarationEvent
+        ) {
+            const sameEvent =
+                lastDeclarationEvent.identity ===
+                    event.identity &&
+                lastDeclarationEvent.type ===
+                    event.type &&
+                JSON.stringify(
+                    lastDeclarationEvent.delta || {}
+                ) ===
+                    JSON.stringify(
+                        event.delta || {}
+                    );
+
+            if (sameEvent) {
+                return;
             }
         }
     }

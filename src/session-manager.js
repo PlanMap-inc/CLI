@@ -550,7 +550,8 @@ function recoverActiveSession(
 // --------------------------------------------------
 
 export function createSessionManager(
-    projectRoot
+    projectRoot,
+    options = {}
 ) {
     const config =
         loadConfig(
@@ -561,6 +562,9 @@ export function createSessionManager(
         loadSessions(
             projectRoot
         );
+
+    const createActiveSession =
+        options.createActiveSession !== false;
 
     let activeSession =
         recoverActiveSession(
@@ -639,7 +643,8 @@ export function createSessionManager(
     }
 
     if (
-        !activeSession
+        !activeSession &&
+        createActiveSession
     ) {
         activeSession =
             createSession();
@@ -666,6 +671,7 @@ export function createSessionManager(
         );
     }
     else if (
+        activeSession &&
         !sessions.includes(
             activeSession
         )
@@ -951,9 +957,163 @@ export function createSessionManager(
         reason = "manual",
         afterAdd = null
     ) {
+        if (!events || events.length === 0) {
+            return null;
+        }
+
+        /*
+         * Prevent identical one-shot sessions.
+         *
+         * planmap check may run repeatedly while the same
+         * drift remains unchanged. Do not create another
+         * session for the exact same declaration events.
+         */
+
+        function normalizeEvent(event) {
+            return {
+                identity:
+                    event.identity,
+
+                type:
+                    event.type,
+
+                delta:
+                    event.type === "changed"
+                        ? createCompactDelta(event)
+                        : {}
+            };
+        }
+
+        const normalizedEvents =
+            events.map(
+                normalizeEvent
+            );
+
+        /*
+         * sessions.json stores sealed sessions as
+         * compact entries, not raw events.
+         *
+         * Compare the incoming declaration event
+         * against that persisted representation.
+         */
+        const sameEvents =
+            (sessionEntries) => {
+                if (
+                    !Array.isArray(
+                        sessionEntries
+                    ) ||
+                    sessionEntries.length !==
+                        normalizedEvents.length
+                ) {
+                    return false;
+                }
+
+                return normalizedEvents.every(
+                    event => {
+                        const entry =
+                            sessionEntries.find(
+                                candidate =>
+                                    candidate &&
+                                    candidate.identity ===
+                                        event.identity &&
+                                    candidate.type ===
+                                        event.type
+                            );
+
+                        if (!entry) {
+                            return false;
+                        }
+
+                        if (
+                            event.type !==
+                            "changed"
+                        ) {
+                            return true;
+                        }
+
+                        const entryDelta =
+                            entry.netDelta ||
+                            {};
+
+                        const eventDelta =
+                            event.delta ||
+                            {};
+
+                        const eventProperties =
+                            Object.keys(
+                                eventDelta
+                            );
+
+                        const entryProperties =
+                            Object.keys(
+                                entryDelta
+                            );
+
+                        if (
+                            eventProperties.length !==
+                            entryProperties.length
+                        ) {
+                            return false;
+                        }
+
+                        return eventProperties.every(
+                            property => {
+                                const values =
+                                    eventDelta[
+                                        property
+                                    ];
+
+                                const stored =
+                                    entryDelta[
+                                        property
+                                    ];
+
+                                if (
+                                    !stored ||
+                                    !Array.isArray(
+                                        values
+                                    ) ||
+                                    values.length <
+                                    2
+                                ) {
+                                    return false;
+                                }
+
+                                return (
+                                    JSON.stringify(
+                                        stored.before
+                                    ) ===
+                                    JSON.stringify(
+                                        values[0]
+                                    ) &&
+                                    JSON.stringify(
+                                        stored.after
+                                    ) ===
+                                    JSON.stringify(
+                                        values[1]
+                                    )
+                                );
+                            }
+                        );
+                    }
+                );
+            };
+
+
+        const previousOneShot =
+            [...sessions]
+                .reverse()
+                .find(
+                    session =>
+                        session.sealed &&
+                        session.sealedBy === reason &&
+                        sameEvents(
+                            session.entries
+                        )
+                );
+
         if (
-            !events ||
-            events.length === 0
+            previousOneShot
         ) {
             return null;
         }
@@ -970,10 +1130,7 @@ export function createSessionManager(
             }
         );
 
-        for (
-            const event
-            of events
-        ) {
+        for (const event of events) {
             const normalizedEvent = {
                 identity:
                     event.identity,
@@ -983,9 +1140,7 @@ export function createSessionManager(
 
                 delta:
                     event.type === "changed"
-                        ? createCompactDelta(
-                            event
-                        )
+                        ? createCompactDelta(event)
                         : {}
             };
 
@@ -1013,9 +1168,7 @@ export function createSessionManager(
             {
                 sessionId:
                     sealedSession.id,
-
                 reason,
-
                 commit:
                     null
             }

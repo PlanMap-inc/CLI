@@ -151,7 +151,11 @@ export function runCheck(
     ) {
         const sessionManager =
             createSessionManager(
-                projectRoot
+                projectRoot,
+                {
+                    createActiveSession:
+                        false
+                }
             );
 
         sessionManager.recordOneShotSession(
