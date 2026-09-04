@@ -121,6 +121,14 @@ if (
         "  node src/cli.js name <project-folder>"
     );
 
+    console.error(
+        "  node src/cli.js plan list <project-folder>"
+    );
+
+    console.error(
+        "  node src/cli.js plan show <project-folder> <identity>"
+    );
+
     process.exit(1);
 }
 
