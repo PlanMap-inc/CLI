@@ -20,7 +20,7 @@
   ],
   "scripts": {
     "planmap": "node src/cli.js",
-    "test:v1": "node src/cli.js parse test/v0.1/test.js",
+    "test:v1": "node src/cli.js test/v0.1/test.js",
     "test:v2": "node src/cli.js diff test/v0.2/before.js test/v0.2/after.js",
     "test:v0.6": "node test/v0.6/plan-draft-regression.mjs"
   },
