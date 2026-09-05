@@ -40,7 +40,8 @@ import {
 
 import {
     runPlanList,
-    runPlanShow
+    runPlanShow,
+    runPlanDraft
 } from "./commands/plan.js";
 
 import {
@@ -294,6 +295,23 @@ else if (
         args[1];
 
     if (
+        subcommand === "draft"
+    ) {
+        const fromIndex =
+            args.indexOf("--from");
+
+        const description =
+            fromIndex !== -1
+                ? args[fromIndex + 1]
+                : null;
+
+        await runPlanDraft(
+            args[2],
+            description
+        );
+    }
+
+    else if (
         subcommand === "list"
     ) {
         runPlanList(
