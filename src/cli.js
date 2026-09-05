@@ -123,6 +123,14 @@ if (
     );
 
     console.error(
+        "  node src/cli.js plan draft <project-folder>"
+    );
+
+    console.error(
+        "  node src/cli.js plan draft <project-folder> --from \"<description>\""
+    );
+
+    console.error(
         "  node src/cli.js plan list <project-folder>"
     );
 
