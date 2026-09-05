@@ -164,6 +164,35 @@ export async function runPlanDraft(
     } catch (
         error
     ) {
+        if (
+            error.message ===
+            "OPENROUTER_API_KEY is not configured."
+        ) {
+            console.error(
+                "Cannot draft: OPENROUTER_API_KEY is not configured."
+            );
+
+            console.error(
+                "Set it, or write .planmap/plan.json by hand."
+            );
+
+            process.exitCode = 2;
+            return;
+        }
+
+        if (
+            error.message.startsWith(
+                "Cannot draft: no evolution history found."
+            )
+        ) {
+            console.error(
+                error.message
+            );
+
+            process.exitCode = 2;
+            return;
+        }
+
         console.error(
             `Plan draft failed: ${error.message}`
         );

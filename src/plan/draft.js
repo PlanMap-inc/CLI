@@ -1006,6 +1006,23 @@ function ensureBrownfieldVocabulary(
 export async function draftBrownfield(
     projectRoot
 ) {
+    requireOpenRouterApiKey();
+
+    const evolution =
+        readEvolution(
+            projectRoot
+        );
+
+    if (
+        !Array.isArray(evolution?.nodes) ||
+        evolution.nodes.length === 0
+    ) {
+        throw new Error(
+            "Cannot draft: no evolution history found. " +
+            "Run 'planmap evolution <project>' first."
+        );
+    }
+
     const candidates =
         collectBrownfieldCandidates(
             projectRoot
@@ -1025,11 +1042,6 @@ export async function draftBrownfield(
 
     const plan =
         readPlan(
-            projectRoot
-        );
-
-    const evolution =
-        readEvolution(
             projectRoot
         );
 
@@ -1923,6 +1935,8 @@ export async function draftGreenfield(
             "Greenfield drafting requires a description."
         );
     }
+
+    requireOpenRouterApiKey();
 
     const existingPlan =
         readPlan(
