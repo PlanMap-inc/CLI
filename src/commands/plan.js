@@ -193,6 +193,19 @@ export async function runPlanDraft(
             return;
         }
 
+        if (
+            error.message.startsWith(
+                "Cannot draft: no features found in the evolution graph."
+            )
+        ) {
+            console.error(
+                error.message
+            );
+
+            process.exitCode = 2;
+            return;
+        }
+
         console.error(
             `Plan draft failed: ${error.message}`
         );

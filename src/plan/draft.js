@@ -1051,6 +1051,18 @@ export async function draftBrownfield(
             plan
         );
 
+    if (
+        !Array.isArray(
+            vocabulary.features
+        ) ||
+        vocabulary.features.length === 0
+    ) {
+        throw new Error(
+            "Cannot draft: no features found in the evolution graph. " +
+            "Run 'planmap evolution <project>' with OPENROUTER_API_KEY set to label it first."
+        );
+    }
+
     ensureBrownfieldVocabulary(
         plan,
         vocabulary
