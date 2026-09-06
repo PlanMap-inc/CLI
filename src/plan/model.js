@@ -575,6 +575,25 @@ function validateRule(
                     rule.assert
                 )
             ) {
+                if (rule.kind === "structure") {
+                    if (
+                        field !== "mustNotImport" &&
+                        field !== "mustImport"
+                    ) {
+                        errors.push(
+                            `${prefix}.assert.${field} is not a supported structure assertion`
+                        );
+                    }
+
+                    if (typeof clause !== "string" && !Array.isArray(clause)) {
+                        errors.push(
+                            `${prefix}.assert.${field} must be a string or array`
+                        );
+                    }
+
+                    continue;
+                }
+
                 if (
                     !VALID_FACT_FIELDS.includes(
                         field

@@ -478,38 +478,6 @@ export function verifyPlan(
                 node
             );
 
-        if (
-            unsupported.length > 0
-        ) {
-            const impactResult =
-                findImpact(
-                    impactGraph,
-                    node.identity,
-                    {
-                        maxDepth:
-                            options.maxDepth ?? 3,
-
-                        maxResults:
-                            options.maxResults ?? 25
-                    }
-                );
-
-            results.push(
-                createResult(
-                    node,
-                    plan,
-                    "unsupported",
-                    {
-                        unsupported,
-                        impact:
-                            impactResult.affected ?? []
-                    }
-                )
-            );
-
-            continue;
-        }
-
         const evaluation =
             evaluateBehaviourRules(
                 node,
@@ -598,8 +566,8 @@ export function verifyPlan(
         unsupported:
             results.filter(
                 result =>
-                    result.status ===
-                    "unsupported"
+                    Array.isArray(result.unsupported) &&
+                    result.unsupported.length > 0
             ).length
     };
 
