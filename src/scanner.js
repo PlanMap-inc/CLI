@@ -166,7 +166,7 @@ function emitScanWarnings(warningState, projectRoot, options = {}) {
         if (options.verbose) {
             for (const skipped of warningState.skipped) {
                 console.warn(
-                    `  skipped: ${path.relative(path.resolve(projectRoot), skipped.file)}`
+                    `  skipped: ${skipped.file}`
                 );
             }
         }
