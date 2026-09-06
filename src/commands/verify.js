@@ -244,6 +244,8 @@ export async function runVerify(
                     drifted: 0,
                     errors: 0,
                     unsupported: 0,
+                    timestamp: new Date().toISOString(),
+                    project: projectRoot,
                     message
                 })
             );
@@ -276,6 +278,8 @@ export async function runVerify(
                     drifted: 0,
                     errors: 0,
                     unsupported: 0,
+                    timestamp: new Date().toISOString(),
+                    project: projectRoot,
                     message
                 })
             );
@@ -329,6 +333,20 @@ export async function runVerify(
     const results =
         verification.results ?? [];
 
+    if (results.length === 0) {
+        if (options.identity) {
+            console.log(
+                `No approved plan node matches identity '${options.identity}'.`
+            );
+        } else if (options.lens) {
+            console.log(
+                `No approved plan nodes carry lens '${options.lens}'.`
+            );
+        }
+        process.exitCode = 2;
+        return;
+    }
+
     const summary =
         summarize(results);
 
@@ -353,6 +371,8 @@ export async function runVerify(
             JSON.stringify(
                 {
                     ...summary,
+                    timestamp: new Date().toISOString(),
+                    project: projectRoot,
                     results
                 },
                 null,
