@@ -217,11 +217,15 @@ else if (
         args[1] === "-h"
     ) {
         console.log(
-            "Usage: node src/cli.js check <project-folder> [--all]"
+            "Usage: node src/cli.js check <project-folder> [--all] [--json]"
         );
 
         console.log(
             "  --all    Show insignificant changes too"
+        );
+
+        console.log(
+            "  --json   Output machine-readable JSON"
         );
 
         process.exit(0);
@@ -233,6 +237,10 @@ else if (
             all:
                 args.includes(
                     "--all"
+                ),
+            json:
+                args.includes(
+                    "--json"
                 )
         }
     );
@@ -307,6 +315,9 @@ else if (
         {
             json:
                 args.includes("--json"),
+
+            md:
+                args.includes("--md"),
 
             lens:
                 lensIndex !== -1

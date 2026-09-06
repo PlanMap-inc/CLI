@@ -158,16 +158,21 @@ export function runProjectCheck(
         return;
     }
 
-    console.log(
-        `\nChecking project: ${projectRoot}\n`
-    );
+    if (!options.json) {
+        console.log(
+            `\nChecking project: ${projectRoot}\n`
+        );
+    }
 
     const changes =
         runCheck(
             projectRoot,
             scanProject,
             parseFile,
-            diffDeclarations
+            diffDeclarations,
+            {
+                quiet: options.json
+            }
         );
 
     const realChanges =
@@ -179,9 +184,33 @@ export function runProjectCheck(
     if (
         realChanges.length === 0
     ) {
-        console.log(
-            "No changes detected."
-        );
+        if (options.json) {
+            console.log(
+                JSON.stringify(
+                    {
+                        schema: 1,
+                        generatedAt:
+                            new Date().toISOString(),
+                        project:
+                            projectRoot,
+                        summary: {
+                            changes: 0,
+                            significant: 0,
+                            insignificant: 0,
+                            added: 0,
+                            deleted: 0
+                        },
+                        changes: []
+                    },
+                    null,
+                    2
+                )
+            );
+        } else {
+            console.log(
+                "No changes detected."
+            );
+        }
 
         process.exitCode = 0;
         return;
@@ -234,7 +263,11 @@ export function runProjectCheck(
     ) {
         const declarations =
             scanProject(
-                projectRoot
+                projectRoot,
+                {
+                    quiet:
+                        options.json
+                }
             );
 
         const resolved =
@@ -361,6 +394,104 @@ export function runProjectCheck(
                 dependencyEdges:
                     joined
             });
+    }
+
+    if (options.json) {
+        const reportChanges =
+            realChanges.map(
+                change => {
+                    const delta = {};
+
+                    for (
+                        const entry
+                        of change.changes
+                    ) {
+                        delta[entry.property] = {
+                            before:
+                                entry.before,
+                            after:
+                                entry.after
+                        };
+                    }
+
+                    const reportChange = {
+                        identity:
+                            change.identity,
+                        type:
+                            change.type,
+                        significant:
+                            significantIds.has(
+                                change.identity
+                            ),
+                        delta
+                    };
+
+                    if (
+                        reportChange.significant &&
+                        impactGraph
+                    ) {
+                        const impact =
+                            findImpact(
+                                impactGraph,
+                                change.identity
+                            );
+
+                        reportChange.impact = {
+                            affected:
+                                impact.affected,
+                            unresolved:
+                                impact.unresolved,
+                            truncated:
+                                impact.truncated
+                        };
+                    }
+
+                    return reportChange;
+                }
+            );
+
+        console.log(
+            JSON.stringify(
+                {
+                    schema: 1,
+                    generatedAt:
+                        new Date().toISOString(),
+                    project:
+                        projectRoot,
+                    summary: {
+                        changes:
+                            realChanges.length,
+                        significant:
+                            significantChanges.length,
+                        insignificant:
+                            insignificantChanges.length,
+                        added:
+                            realChanges.filter(
+                                change =>
+                                    change.type ===
+                                    "added"
+                            ).length,
+                        deleted:
+                            realChanges.filter(
+                                change =>
+                                    change.type ===
+                                    "deleted"
+                            ).length
+                    },
+                    changes:
+                        reportChanges
+                },
+                null,
+                2
+            )
+        );
+
+        process.exitCode =
+            significantChanges.length > 0
+                ? 1
+                : 0;
+
+        return;
     }
 
     console.log(
