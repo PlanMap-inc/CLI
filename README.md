@@ -445,3 +445,28 @@ Issues welcome — especially
 **BUSL-1.1** · built by the PlanMap team
 
 </div>
+## Report formats
+
+`verify` and `check` support machine-readable JSON reports.
+
+### JSON contract
+
+Both commands include:
+
+- `schema`: report schema version, currently `1`
+- `generatedAt`: ISO 8601 report generation timestamp
+- `project`: absolute project path
+- `summary`: aggregate counts
+- command-specific results in `results` for `verify` and `changes` for `check`
+
+`verify --json` reports verification results. `check --json` reports declaration changes and preserves the same envelope shape.
+
+JSON output contains no ANSI terminal formatting. `--json` changes output only; command exit codes remain unchanged.
+
+### Markdown verification report
+
+`planmap verify --md` writes `VERIFY.md` at the project root.
+
+The report contains the verification summary and includes sections for Drifted, Errors, and Unsupported only when those sections contain results. Drifted entries include intent, violations, and available impact information.
+
+Using `--md` with `--json` produces both reports independently.

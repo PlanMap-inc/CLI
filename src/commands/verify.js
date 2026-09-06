@@ -13,6 +13,9 @@ import {
 import {
     applyVerificationStatus
 } from "../evolution/status.js";
+import {
+    writeVerifyMarkdown
+} from "./verify-markdown.js";
 
 function relativeDate(iso) {
     if (!iso) {
@@ -40,6 +43,18 @@ function relativeDate(iso) {
     }
 
     return `${days} days ago`;
+}
+
+function removeVerifyMarkdown(projectRoot) {
+    const markdownPath =
+        path.join(
+            projectRoot,
+            "VERIFY.md"
+        );
+
+    if (fs.existsSync(markdownPath)) {
+        fs.unlinkSync(markdownPath);
+    }
 }
 
 function summarize(results) {
@@ -208,7 +223,7 @@ export async function runVerify(
 ) {
     if (!projectPath) {
         console.error(
-            "Usage: node src/cli.js verify <project-folder> [--json] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
+            "Usage: node src/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
         );
 
         process.exitCode = 1;
@@ -239,18 +254,25 @@ export async function runVerify(
         if (options.json) {
             console.log(
                 JSON.stringify({
-                    approved: 0,
-                    verified: 0,
-                    drifted: 0,
-                    errors: 0,
-                    unsupported: 0,
-                    timestamp: new Date().toISOString(),
+                    schema: 1,
+                    generatedAt: new Date().toISOString(),
                     project: projectRoot,
+                    summary: {
+                        approved: 0,
+                        verified: 0,
+                        drifted: 0,
+                        errors: 0,
+                        unsupported: 0
+                    },
                     message
                 })
             );
         } else {
             console.log(message);
+        }
+
+        if (options.md) {
+            removeVerifyMarkdown(projectRoot);
         }
 
         process.exitCode = 2;
@@ -273,18 +295,25 @@ export async function runVerify(
         if (options.json) {
             console.log(
                 JSON.stringify({
-                    approved: 0,
-                    verified: 0,
-                    drifted: 0,
-                    errors: 0,
-                    unsupported: 0,
-                    timestamp: new Date().toISOString(),
+                    schema: 1,
+                    generatedAt: new Date().toISOString(),
                     project: projectRoot,
+                    summary: {
+                        approved: 0,
+                        verified: 0,
+                        drifted: 0,
+                        errors: 0,
+                        unsupported: 0
+                    },
                     message
                 })
             );
         } else {
             console.log(message);
+        }
+
+        if (options.md) {
+            removeVerifyMarkdown(projectRoot);
         }
 
         process.exitCode = 2;
@@ -305,16 +334,25 @@ export async function runVerify(
         if (options.json) {
             console.log(
                 JSON.stringify({
-                    approved: approvedNodes.length,
-                    verified: 0,
-                    drifted: 0,
-                    errors: 0,
-                    unsupported: 0,
+                    schema: 1,
+                    generatedAt: new Date().toISOString(),
+                    project: projectRoot,
+                    summary: {
+                        approved: approvedNodes.length,
+                        verified: 0,
+                        drifted: 0,
+                        errors: 0,
+                        unsupported: 0
+                    },
                     message
                 })
             );
         } else {
             console.log(message);
+        }
+
+        if (options.md) {
+            removeVerifyMarkdown(projectRoot);
         }
 
         process.exitCode = 2;
@@ -334,21 +372,63 @@ export async function runVerify(
         verification.results ?? [];
 
     if (results.length === 0) {
-        if (options.identity) {
+        const message =
+            options.identity
+                ? `No approved plan node matches identity '${options.identity}'.`
+                : options.lens
+                    ? `No approved plan nodes carry lens '${options.lens}'.`
+                    : "No verification results.";
+
+        if (options.json) {
             console.log(
-                `No approved plan node matches identity '${options.identity}'.`
+                JSON.stringify({
+                    schema: 1,
+                    generatedAt: new Date().toISOString(),
+                    project: projectRoot,
+                    summary: {
+                        approved: approvedNodes.length,
+                        verified: 0,
+                        drifted: 0,
+                        errors: 0,
+                        unsupported: 0
+                    },
+                    message
+                })
             );
-        } else if (options.lens) {
-            console.log(
-                `No approved plan nodes carry lens '${options.lens}'.`
-            );
+        } else {
+            console.log(message);
         }
+
+        if (options.md) {
+            const markdownPath =
+                path.join(
+                    projectRoot,
+                    "VERIFY.md"
+                );
+
+            if (fs.existsSync(markdownPath)) {
+                fs.unlinkSync(markdownPath);
+            }
+        }
+
         process.exitCode = 2;
         return;
     }
 
     const summary =
         summarize(results);
+
+    const generatedAt =
+        new Date().toISOString();
+
+    if (options.md) {
+        writeVerifyMarkdown(
+            projectRoot,
+            generatedAt,
+            summary,
+            results
+        );
+    }
 
     const evolution =
         readEvolution(
@@ -370,9 +450,10 @@ export async function runVerify(
         console.log(
             JSON.stringify(
                 {
-                    ...summary,
-                    timestamp: new Date().toISOString(),
+                    schema: 1,
+                    generatedAt,
                     project: projectRoot,
+                    summary,
                     results
                 },
                 null,

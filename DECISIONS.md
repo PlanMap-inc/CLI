@@ -592,3 +592,14 @@ Results:
 ---
 
 *Updated when reality changes — the same discipline the product enforces.*
+## Layer 7 report contract
+
+**Decision:** CLI reports use a versioned JSON envelope. `verify --json` and `check --json` expose `schema: 1`, `generatedAt`, `project`, and a nested `summary`. Verification payloads use `results`; check payloads use `changes`.
+
+**Why:** Consumers need a stable machine-readable contract without coupling to human terminal formatting. The schema version allows future report changes to be explicit.
+
+**Decision:** `verify --md` writes `VERIFY.md` at the project root. Empty Drifted, Errors, and Unsupported sections are omitted, and stale `VERIFY.md` files are removed when a Markdown verification run cannot produce a report.
+
+**Why:** Markdown provides a durable human-readable verification artifact while avoiding empty report noise and stale results.
+
+**Verified in:** `src/commands/verify.js`, `src/commands/check.js`, `src/commands/verify-markdown.js`, `test/v0.6/report-regression.mjs`.

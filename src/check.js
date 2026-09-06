@@ -103,7 +103,8 @@ export function runCheck(
     projectRoot,
     scanProject,
     parseFile,
-    diffDeclarations
+    diffDeclarations,
+    scanOptions = {}
 ) {
     const baseline =
         readBaseline(
@@ -117,7 +118,10 @@ export function runCheck(
     const currentDeclarations =
         scanProject(
             projectRoot,
-            parseFile
+            {
+                ...scanOptions,
+                parseFile
+            }
         );
 
     const changes =

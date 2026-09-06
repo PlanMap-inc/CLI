@@ -361,15 +361,19 @@ function readEvolution(root) {
 
     const parsed = JSON.parse(result.stdout);
 
-    assert.equal(parsed.approved, 1);
-    assert.equal(parsed.verified, 1);
-    assert.equal(parsed.drifted, 0);
-    assert.equal(parsed.errors, 0);
-    assert.equal(parsed.unsupported, 0);
-    assert.ok(Array.isArray(parsed.results));
-    assert.equal(typeof parsed.timestamp, "string");
-    assert.ok(!Number.isNaN(Date.parse(parsed.timestamp)));
+    assert.equal(parsed.schema, 1);
+    assert.equal(typeof parsed.generatedAt, "string");
+    assert.ok(!Number.isNaN(Date.parse(parsed.generatedAt)));
     assert.equal(parsed.project, root);
+    assert.deepEqual(parsed.summary, {
+        approved: 1,
+        verified: 1,
+        drifted: 0,
+        errors: 0,
+        unsupported: 0
+    });
+    assert.ok(Array.isArray(parsed.results));
+    assert.equal(parsed.timestamp, undefined);
 }
 
 /*
