@@ -150,6 +150,22 @@ if (
         "  node src/cli.js plan show <project-folder> <identity>"
     );
 
+    console.error(
+        "  node src/cli.js approve <project-folder> [identity]"
+    );
+
+    console.error(
+        "  node src/cli.js approve <project-folder> --all | --lens <id> | --feature <name>"
+    );
+
+    console.error(
+        "  node src/cli.js reject <project-folder> <identity> [--force]"
+    );
+
+    console.error(
+        "  node src/cli.js plan revise <project-folder> <identity>"
+    );
+
     process.exit(1);
 }
 

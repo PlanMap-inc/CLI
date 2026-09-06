@@ -12,6 +12,9 @@ import {
     selectNodes
 } from "../plan/approval.js";
 
+import { execFileSync } from "node:child_process";
+import { userInfo } from "node:os";
+
 
 // --------------------------------------------------
 // PLAN APPROVE COMMAND
@@ -132,7 +135,23 @@ export function runPlanApprove(
     }
 
     const approvedBy =
-        process.env.USER ||
+        process.env.PLANMAP_USER?.trim() ||
+        (() => {
+            try {
+                return execFileSync(
+                    "git",
+                    ["config", "user.name"],
+                    {
+                        cwd: projectRoot,
+                        encoding: "utf8",
+                        stdio: ["ignore", "pipe", "ignore"]
+                    }
+                ).trim() || null;
+            } catch {
+                return null;
+            }
+        })() ||
+        userInfo().username ||
         "unknown";
 
     const approvedAt =
