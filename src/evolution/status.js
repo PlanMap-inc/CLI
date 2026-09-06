@@ -164,6 +164,110 @@ export function buildEvolutionIdentityIndex(
  * ------------------------------------------------------------
  */
 
+export function applyVerificationStatus(
+    evolution = {},
+    results = []
+) {
+    const resultByIdentity =
+        new Map();
+
+    for (const result of Array.isArray(results) ? results : []) {
+        if (
+            typeof result?.identity !== "string" ||
+            result.identity.length === 0
+        ) {
+            continue;
+        }
+
+        resultByIdentity.set(
+            result.identity,
+            result
+        );
+    }
+
+    const index =
+        buildEvolutionIdentityIndex(
+            evolution
+        );
+
+    const nodes =
+        Array.isArray(evolution.nodes)
+            ? evolution.nodes.map(
+                node => ({
+                    ...node
+                })
+            )
+            : [];
+
+    for (const [, identityNodes] of index) {
+        const sorted =
+            [...identityNodes]
+                .sort(
+                    (left, right) =>
+                        String(left.ts ?? "")
+                            .localeCompare(
+                                String(right.ts ?? "")
+                            )
+                );
+
+        const latest =
+            sorted[sorted.length - 1];
+
+        for (const node of sorted.slice(0, -1)) {
+            const copy =
+                nodes.find(
+                    candidate =>
+                        candidate?.id === node?.id
+                );
+
+            if (copy) {
+                copy.status =
+                    "superseded";
+
+                copy.statusSource =
+                    "verified";
+            }
+        }
+
+        const result =
+            resultByIdentity.get(
+                latest?.identity
+            );
+
+        if (!result) {
+            continue;
+        }
+
+        const copy =
+            nodes.find(
+                candidate =>
+                    candidate?.id === latest?.id
+            );
+
+        if (!copy) {
+            continue;
+        }
+
+        copy.status =
+            result.status;
+
+        copy.statusSource =
+            "verified";
+
+        copy.lastVerified =
+            new Date().toISOString();
+
+        copy.verifiedAgainst =
+            `${result.planNodeId}@${result.planVersion ?? 1}`;
+    }
+
+    return {
+        ...evolution,
+        nodes
+    };
+}
+
+
 export function applyEvolutionStatus(
     evolution = {},
     planRules = []
