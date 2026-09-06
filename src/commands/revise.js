@@ -148,7 +148,28 @@ export function runPlanRevise(
         version:
             previousVersion + 1,
         supersedes:
-            node.id
+            node.id,
+        history: [
+            ...(Array.isArray(node.history)
+                ? node.history
+                : []),
+            {
+                id:
+                    node.id,
+                version:
+                    previousVersion,
+                identity:
+                    node.identity,
+                title:
+                    node.title,
+                intent:
+                    node.intent,
+                status:
+                    node.status,
+                origin:
+                    node.origin
+            }
+        ]
     };
 
     const nextPlan = {
