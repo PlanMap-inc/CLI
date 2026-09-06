@@ -157,7 +157,7 @@ function findSourceFiles(projectRoot) {
 
 
 
-function emitScanWarnings(warningState, options = {}) {
+function emitScanWarnings(warningState, projectRoot, options = {}) {
     if (warningState.skipped.length > 0) {
         console.warn(
             `⚠ ${warningState.skipped.length} files skipped (parse errors)`
@@ -166,7 +166,7 @@ function emitScanWarnings(warningState, options = {}) {
         if (options.verbose) {
             for (const skipped of warningState.skipped) {
                 console.warn(
-                    `  skipped: ${skipped.file}`
+                    `  skipped: ${path.relative(path.resolve(projectRoot), skipped.file)}`
                 );
             }
         }
@@ -299,6 +299,7 @@ export function scanProject(
     if (!quiet && options.emitWarnings !== false && options.warningState === undefined) {
         emitScanWarnings(
             warningState,
+            absoluteRoot,
             { verbose }
         );
     }

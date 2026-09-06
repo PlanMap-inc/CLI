@@ -103,7 +103,7 @@ if (
     );
 
     console.error(
-        "  node src/cli.js init <project-folder>"
+        "  node src/cli.js init <project-folder> [--verbose]"
     );
 
     console.error(
@@ -111,7 +111,7 @@ if (
     );
 
     console.error(
-        "  node src/cli.js accept <project-folder>"
+        "  node src/cli.js accept <project-folder> [--verbose]"
     );
 
     console.error(
@@ -200,7 +200,10 @@ else if (
     args[0] === "init"
 ) {
     runInit(
-        args[1]
+        args[1],
+        {
+            verbose: args.includes("--verbose")
+        }
     );
 }
 
@@ -263,7 +266,10 @@ else if (
     args[0] === "accept"
 ) {
     runAccept(
-        args[1]
+        args[1],
+        {
+            verbose: args.includes("--verbose")
+        }
     );
 }
 
