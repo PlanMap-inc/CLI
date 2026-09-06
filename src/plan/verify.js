@@ -440,6 +440,23 @@ export function verifyPlan(
         }
 
         if (
+            options.lens &&
+            !(
+                Array.isArray(node.lensTags) &&
+                node.lensTags.includes(options.lens)
+            )
+        ) {
+            continue;
+        }
+
+        if (
+            options.identity &&
+            node.identity !== options.identity
+        ) {
+            continue;
+        }
+
+        if (
             !hasIdentity(node)
         ) {
             continue;

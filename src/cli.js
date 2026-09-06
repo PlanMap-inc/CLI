@@ -64,6 +64,10 @@ import {
     runName
 } from "./commands/name.js";
 
+import {
+    runVerify
+} from "./commands/verify.js";
+
 
 // --------------------------------------------------
 // MAIN CLI
@@ -164,6 +168,10 @@ if (
 
     console.error(
         "  node src/cli.js plan revise <project-folder> <identity>"
+    );
+
+    console.error(
+        "  node src/cli.js verify <project-folder> [--json] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
     );
 
     process.exit(1);
@@ -277,6 +285,49 @@ else if (
     );
 }
 
+
+// --------------------------------------------------
+// VERIFY COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "verify"
+) {
+    const lensIndex =
+        args.indexOf("--lens");
+
+    const identityIndex =
+        args.indexOf("--identity");
+
+    const onlyIndex =
+        args.indexOf("--only");
+
+    await runVerify(
+        args[1],
+        {
+            json:
+                args.includes("--json"),
+
+            lens:
+                lensIndex !== -1
+                    ? args[lensIndex + 1]
+                    : undefined,
+
+            identity:
+                identityIndex !== -1
+                    ? args[identityIndex + 1]
+                    : undefined,
+
+            only:
+                onlyIndex !== -1
+                    ? args[onlyIndex + 1]
+                    : undefined,
+
+            strict:
+                args.includes("--strict")
+        }
+    );
+}
 
 // --------------------------------------------------
 // STATUS COMMAND
