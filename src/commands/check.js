@@ -178,9 +178,18 @@ export function runProjectCheck(
             {
                 quiet: options.json,
                 warningState,
-                emitWarnings: false
+                emitWarnings: false,
+                verbose: options.verbose
             }
         );
+
+    if (!options.json && options.verbose && warningState.skipped.length > 0) {
+        for (const skipped of warningState.skipped) {
+            console.warn(
+                `  skipped: ${path.relative(projectRoot, skipped.file)}`
+            );
+        }
+    }
 
     const realChanges =
         changes.filter(

@@ -107,7 +107,7 @@ if (
     );
 
     console.error(
-        "  node src/cli.js check <project-folder> [--all] [--json]"
+        "  node src/cli.js check <project-folder> [--all] [--json] [--verbose]"
     );
 
     console.error(
@@ -217,7 +217,7 @@ else if (
         args[1] === "-h"
     ) {
         console.log(
-            "Usage: node src/cli.js check <project-folder> [--all] [--json]"
+            "Usage: node src/cli.js check <project-folder> [--all] [--json] [--verbose]"
         );
 
         console.log(
@@ -226,6 +226,10 @@ else if (
 
         console.log(
             "  --json   Output machine-readable JSON"
+        );
+
+        console.log(
+            "  --verbose Show skipped file paths"
         );
 
         process.exit(0);
@@ -241,6 +245,10 @@ else if (
             json:
                 args.includes(
                     "--json"
+                ),
+            verbose:
+                args.includes(
+                    "--verbose"
                 )
         }
     );

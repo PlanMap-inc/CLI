@@ -157,11 +157,19 @@ function findSourceFiles(projectRoot) {
 
 
 
-function emitScanWarnings(warningState) {
+function emitScanWarnings(warningState, options = {}) {
     if (warningState.skipped.length > 0) {
         console.warn(
-            `⚠ ${warningState.skipped.length} files skipped (parse errors) — run with --verbose for detail`
+            `⚠ ${warningState.skipped.length} files skipped (parse errors)`
         );
+
+        if (options.verbose) {
+            for (const skipped of warningState.skipped) {
+                console.warn(
+                    `  skipped: ${skipped.file}`
+                );
+            }
+        }
     }
 
     if (warningState.disambiguated > 0) {
@@ -185,6 +193,9 @@ export function scanProject(
 
     const quiet =
         options.quiet === true;
+
+    const verbose =
+        options.verbose === true;
 
     const warningState =
         options.warningState ?? {
@@ -286,7 +297,10 @@ export function scanProject(
     warningState.disambiguated += totalDisambiguated;
 
     if (!quiet && options.emitWarnings !== false && options.warningState === undefined) {
-        emitScanWarnings(warningState);
+        emitScanWarnings(
+            warningState,
+            { verbose }
+        );
     }
 
     return declarations;
