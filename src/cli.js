@@ -107,7 +107,7 @@ if (
     );
 
     console.error(
-        "  node src/cli.js check <project-folder> [--all]"
+        "  node src/cli.js check <project-folder> [--all] [--json]"
     );
 
     console.error(
@@ -171,7 +171,7 @@ if (
     );
 
     console.error(
-        "  node src/cli.js verify <project-folder> [--json] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
+        "  node src/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
     );
 
     process.exit(1);

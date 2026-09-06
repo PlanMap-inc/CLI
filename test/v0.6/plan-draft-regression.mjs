@@ -2,75 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-
-const HERE = path.dirname(
-    fileURLToPath(import.meta.url)
-);
-
-const ROOT = path.resolve(
-    HERE,
-    "../.."
-);
-
-const CLI = path.join(
-    ROOT,
-    "src",
-    "cli.js"
-);
-
-const MOCK = path.join(
-    ROOT,
-    "test",
-    "helpers",
-    "mock-openrouter.mjs"
-);
-
-function runCli(
-    args,
-    cwd,
-    {
-        apiKey = "",
-        response = null,
-        mock = false
-    } = {}
-) {
-    const env = {
-        ...process.env,
-        OPENROUTER_API_KEY: apiKey
-    };
-
-    if (response !== null) {
-        env.PLANMAP_TEST_RESPONSE =
-            response;
-    }
-
-    if (mock) {
-        env.NODE_OPTIONS = [
-            env.NODE_OPTIONS || "",
-            `--import=${MOCK}`
-        ]
-            .filter(Boolean)
-            .join(" ");
-    }
-
-    const result = spawnSync(
-        process.execPath,
-        [CLI, ...args],
-        {
-            cwd,
-            env,
-            encoding: "utf8"
-        }
-    );
-
-    return {
-        code: result.status,
-        stdout: result.stdout || "",
-        stderr: result.stderr || ""
-    };
-}
+import { runCli, ROOT } from "../helpers/run-cli.mjs";
 
 function project() {
     const root =

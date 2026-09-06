@@ -164,6 +164,11 @@ export function runProjectCheck(
         );
     }
 
+    const warningState = {
+        skipped: [],
+        disambiguated: 0
+    };
+
     const changes =
         runCheck(
             projectRoot,
@@ -171,7 +176,9 @@ export function runProjectCheck(
             parseFile,
             diffDeclarations,
             {
-                quiet: options.json
+                quiet: options.json,
+                warningState,
+                emitWarnings: false
             }
         );
 
@@ -258,6 +265,23 @@ export function runProjectCheck(
 
     let impactGraph = null;
 
+    if (!options.json) {
+        if (warningState.skipped.length > 0) {
+            console.warn(
+                `⚠ ${warningState.skipped.length} files skipped (parse errors)`
+            );
+        }
+
+        if (warningState.disambiguated > 0) {
+            console.warn(
+                `⚠ ${warningState.disambiguated} duplicate identities disambiguated with #N suffixes`
+            );
+            console.warn(
+                "  See DECISIONS.md §10.1."
+            );
+        }
+    }
+
     if (
         significantChanges.length > 0
     ) {
@@ -265,8 +289,9 @@ export function runProjectCheck(
             scanProject(
                 projectRoot,
                 {
-                    quiet:
-                        options.json
+                    quiet: options.json,
+                    warningState,
+                    emitWarnings: false
                 }
             );
 

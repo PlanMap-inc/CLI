@@ -156,6 +156,24 @@ function findSourceFiles(projectRoot) {
 
 
 
+
+function emitScanWarnings(warningState) {
+    if (warningState.skipped.length > 0) {
+        console.warn(
+            `⚠ ${warningState.skipped.length} files skipped (parse errors) — run with --verbose for detail`
+        );
+    }
+
+    if (warningState.disambiguated > 0) {
+        console.warn(
+            `⚠ ${warningState.disambiguated} duplicate identities disambiguated with #N suffixes`
+        );
+        console.warn(
+            "  See DECISIONS.md §10.1."
+        );
+    }
+}
+
 // --------------------------------------------------
 // SCAN PROJECT
 // --------------------------------------------------
@@ -167,6 +185,12 @@ export function scanProject(
 
     const quiet =
         options.quiet === true;
+
+    const warningState =
+        options.warningState ?? {
+            skipped: [],
+            disambiguated: 0
+        };
 
     const absoluteRoot =
         path.resolve(
@@ -230,11 +254,10 @@ export function scanProject(
             totalDisambiguated +=
                 result.disambiguatedCount ?? 0;
         } catch (error) {
-            if (!quiet) {
-                console.warn(
-                    `Skipping ${relativeFile}: ${error.message}`
-                );
-            }
+            warningState.skipped.push({
+                file: relativeFile,
+                message: error.message
+            });
 
             continue;
         }
@@ -260,15 +283,11 @@ export function scanProject(
     }
 
 
-    if (totalDisambiguated > 0 && !quiet) {
-        console.warn(
-            `⚠ ${totalDisambiguated} duplicate identities disambiguated with #N suffixes`
-        );
-        console.warn(
-            "  See DECISIONS.md §10.1."
-        );
-    }
+    warningState.disambiguated += totalDisambiguated;
 
+    if (!quiet && options.emitWarnings !== false && options.warningState === undefined) {
+        emitScanWarnings(warningState);
+    }
 
     return declarations;
 }
