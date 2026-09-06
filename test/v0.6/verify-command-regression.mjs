@@ -367,6 +367,9 @@ function readEvolution(root) {
     assert.equal(parsed.errors, 0);
     assert.equal(parsed.unsupported, 0);
     assert.ok(Array.isArray(parsed.results));
+    assert.equal(typeof parsed.timestamp, "string");
+    assert.ok(!Number.isNaN(Date.parse(parsed.timestamp)));
+    assert.equal(parsed.project, root);
 }
 
 /*
@@ -867,4 +870,83 @@ function readEvolution(root) {
     assert.match(result.stdout, /Confidence:/);
 }
 
-console.log("PASS: Layer 6 verify command regression suite (15 scenarios)");
+/*
+ * 16. Unmatched --identity exits 2.
+ */
+{
+    const root = project();
+    const identity = "src/filter.js::filter:function";
+
+    writeSource(
+        root,
+        "src/filter.js",
+        "export function filter() { return true; }\\n"
+    );
+
+    writePlan(root, [
+        node({
+            id: "filter-node",
+            identity
+        })
+    ]);
+
+    writeBaseline(root, [
+        declaration(identity)
+    ]);
+
+    const result = runCli(
+        ["verify", root, "--identity", "nope::x:function"],
+        ROOT
+    );
+
+    assert.equal(result.code, 2);
+    assert.match(
+        result.stdout,
+        /No approved plan node matches identity/
+    );
+}
+
+/*
+ * 17. Unmatched --lens exits 2.
+ */
+{
+    const root = project();
+    const identity = "src/lens.js::lens:function";
+
+    writeSource(
+        root,
+        "src/lens.js",
+        "export function lens() { return true; }\\n"
+    );
+
+    writePlan(
+        root,
+        [
+            node({
+                id: "lens-node",
+                identity,
+                lensTags: ["security"]
+            })
+        ],
+        [
+            { id: "security", label: "security" }
+        ]
+    );
+
+    writeBaseline(root, [
+        declaration(identity)
+    ]);
+
+    const result = runCli(
+        ["verify", root, "--lens", "doesnotexist"],
+        ROOT
+    );
+
+    assert.equal(result.code, 2);
+    assert.match(
+        result.stdout,
+        /No approved plan nodes carry lens/
+    );
+}
+
+console.log("PASS: Layer 6 verify command regression suite (17 scenarios)");
