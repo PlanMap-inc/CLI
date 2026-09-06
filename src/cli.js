@@ -45,6 +45,18 @@ import {
 } from "./commands/plan.js";
 
 import {
+    runPlanApprove
+} from "./commands/approve.js";
+
+import {
+    runPlanReject
+} from "./commands/reject.js";
+
+import {
+    runPlanRevise
+} from "./commands/revise.js";
+
+import {
     runStatus
 } from "./commands/status.js";
 
@@ -288,6 +300,91 @@ else if (
         args.includes(
             "--md"
         )
+    );
+}
+
+
+// --------------------------------------------------
+// REJECT COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "plan" &&
+    args[1] === "revise"
+) {
+    const projectRoot =
+        args[2];
+
+    const identity =
+        args[3];
+
+    runPlanRevise(
+        projectRoot,
+        identity
+    );
+}
+
+else if (
+    args[0] === "reject"
+) {
+    const projectRoot =
+        args[1];
+
+    const target =
+        args[2] &&
+        !args[2].startsWith("--")
+            ? args[2]
+            : null;
+
+    await runPlanReject(
+        projectRoot,
+        target,
+        {
+            force:
+                args.includes("--force")
+        }
+    );
+}
+
+// --------------------------------------------------
+// APPROVE COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "approve"
+) {
+    const projectRoot =
+        args[1];
+
+    const target =
+        args[2] &&
+        !args[2].startsWith("--")
+            ? args[2]
+            : null;
+
+    const lensIndex =
+        args.indexOf("--lens");
+
+    const featureIndex =
+        args.indexOf("--feature");
+
+    await runPlanApprove(
+        projectRoot,
+        target,
+        {
+            all:
+                args.includes("--all"),
+
+            lens:
+                lensIndex !== -1
+                    ? args[lensIndex + 1]
+                    : null,
+
+            feature:
+                featureIndex !== -1
+                    ? args[featureIndex + 1]
+                    : null
+        }
     );
 }
 
