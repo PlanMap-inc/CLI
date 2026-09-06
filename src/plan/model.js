@@ -24,7 +24,8 @@ const VALID_NODE_STATUSES = [
     "approved",
     "implemented",
     "drifted",
-    "error"
+    "error",
+    "superseded"
 ];
 
 const VALID_RULE_KINDS = [
@@ -359,6 +360,28 @@ function validateNode(
         `${prefix}.intent`,
         errors
     );
+
+    if (
+        node.version !== undefined &&
+        (
+            typeof node.version !== "number" ||
+            !Number.isInteger(node.version) ||
+            node.version < 1
+        )
+    ) {
+        errors.push(
+            `${prefix}.version must be a positive integer`
+        );
+    }
+
+    if (
+        node.supersedes !== undefined &&
+        typeof node.supersedes !== "string"
+    ) {
+        errors.push(
+            `${prefix}.supersedes must be a string`
+        );
+    }
 
     if (
         node.feature !== undefined &&

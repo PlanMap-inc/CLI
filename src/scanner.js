@@ -161,8 +161,12 @@ function findSourceFiles(projectRoot) {
 // --------------------------------------------------
 
 export function scanProject(
-    projectRoot
+    projectRoot,
+    options = {}
 ) {
+
+    const quiet =
+        options.quiet === true;
 
     const absoluteRoot =
         path.resolve(
@@ -208,9 +212,11 @@ export function scanProject(
                 .join("/");
 
 
-        console.log(
-            `Scanning: ${relativeFile}`
-        );
+        if (!quiet) {
+            console.log(
+                `Scanning: ${relativeFile}`
+            );
+        }
 
 
         let result;
@@ -224,9 +230,11 @@ export function scanProject(
             totalDisambiguated +=
                 result.disambiguatedCount ?? 0;
         } catch (error) {
-            console.warn(
-                `Skipping ${relativeFile}: ${error.message}`
-            );
+            if (!quiet) {
+                console.warn(
+                    `Skipping ${relativeFile}: ${error.message}`
+                );
+            }
 
             continue;
         }
@@ -252,7 +260,7 @@ export function scanProject(
     }
 
 
-    if (totalDisambiguated > 0) {
+    if (totalDisambiguated > 0 && !quiet) {
         console.warn(
             `⚠ ${totalDisambiguated} duplicate identities disambiguated with #N suffixes`
         );

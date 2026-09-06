@@ -48,12 +48,20 @@ export function runPlanRevise(
         return;
     }
 
-    const index =
-        plan.nodes.findIndex(
-            node =>
-                node.identity ===
-                identity
-        );
+    let index = -1;
+
+    for (
+        let nodeIndex = 0;
+        nodeIndex < plan.nodes.length;
+        nodeIndex += 1
+    ) {
+        if (
+            plan.nodes[nodeIndex]?.identity ===
+            identity
+        ) {
+            index = nodeIndex;
+        }
+    }
 
     if (
         index === -1
@@ -99,21 +107,58 @@ export function runPlanRevise(
         return;
     }
 
-    const nextNodes =
-        plan.nodes.map(
-            (
-                currentNode,
-                nodeIndex
-            ) =>
-                nodeIndex === index
-                    ? result.node
-                    : currentNode
-        );
+    let maximumNodeNumber = 0;
+
+    for (
+        const currentNode of plan.nodes
+    ) {
+        const match =
+            /^plan_(\d+)$/.exec(
+                currentNode?.id || ""
+            );
+
+        if (
+            match
+        ) {
+            maximumNodeNumber =
+                Math.max(
+                    maximumNodeNumber,
+                    Number(match[1])
+                );
+        }
+    }
+
+    const nextNodeId =
+        `plan_${String(
+            maximumNodeNumber + 1
+        ).padStart(
+            4,
+            "0"
+        )}`;
+
+    const previousVersion =
+        Number.isInteger(node.version)
+            ? node.version
+            : 1;
+
+    const nextNode = {
+        ...result.node,
+        id:
+            nextNodeId,
+        version:
+            previousVersion + 1,
+        supersedes:
+            node.id
+    };
 
     const nextPlan = {
         ...plan,
-        nodes:
-            nextNodes
+        nodes: plan.nodes.map(
+            (currentNode, currentIndex) =>
+                currentIndex === index
+                    ? nextNode
+                    : currentNode
+        )
     };
 
     try {
