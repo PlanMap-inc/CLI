@@ -41,6 +41,31 @@ export function runPlanList(
         `Nodes: ${plan.nodes.length}`
     );
 
+    const statusCounts = {
+        intended: 0,
+        approved: 0,
+        implemented: 0,
+        drifted: 0,
+        error: 0
+    };
+
+    for (
+        const node of plan.nodes
+    ) {
+        if (
+            Object.prototype.hasOwnProperty.call(
+                statusCounts,
+                node.status
+            )
+        ) {
+            statusCounts[node.status] += 1;
+        }
+    }
+
+    console.log(
+        `Status: intended=${statusCounts.intended} approved=${statusCounts.approved} implemented=${statusCounts.implemented} drifted=${statusCounts.drifted} error=${statusCounts.error}`
+    );
+
     for (
         const node of plan.nodes
     ) {
