@@ -214,6 +214,20 @@ function evaluateBehaviourRules(
             continue;
         }
 
+        if (
+            typeof rule.target === "string" &&
+            rule.target !== node.identity
+        ) {
+            errors.push({
+                target: rule.target,
+                field: null,
+                message:
+                    `rule target ${rule.target} does not match node identity ${node.identity}`
+            });
+
+            continue;
+        }
+
         for (
             const [
                 field,
