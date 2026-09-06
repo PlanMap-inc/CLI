@@ -102,12 +102,18 @@ export function evaluateClause(
 
         const expected = clause.value;
 
-        if (
-            typeof expected !== "string"
-        ) {
+        const expectedValid =
+            field === "numbers"
+                ? typeof expected === "number" &&
+                  !Number.isNaN(expected)
+                : typeof expected === "string";
+
+        if (!expectedValid) {
             return {
                 error:
-                    `${field} contains operators require a string value`
+                    field === "numbers"
+                        ? `${field} contains operators require a numeric value`
+                        : `${field} contains operators require a string value`
             };
         }
 
