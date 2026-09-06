@@ -2,14 +2,14 @@
 
 # PlanMap
 
-### Reads your codebase, learns what every function does,<br>and tells you what breaks when that changes.
+### Your agent writes the code.<br>PlanMap makes sure it wrote what you approved.
 
-Local · no rules to write · no spec to maintain · works on any repo
+Local · no rules to write · no spec to maintain · works on any JS/TS repo
 
-[![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-1f6feb.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-1f6feb.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A518-3fb950.svg)](https://nodejs.org)
 [![Language](https://img.shields.io/badge/JavaScript%20%C2%B7%20TypeScript-3fb950.svg)](#what-gets-tracked)
-[![Status](https://img.shields.io/badge/status-v0.5%20active-d29922.svg)](#status)
+[![Version](https://img.shields.io/badge/v0.6-complete-3fb950.svg)](#status)
 
 </div>
 
@@ -17,49 +17,11 @@ Local · no rules to write · no spec to maintain · works on any repo
 
 ---
 
-## Three things it does
+## The problem
 
 </div>
 
-<table>
-<tr>
-<td width="33%" valign="top">
-
-### 🔴 Detects behavioural change
-
-Not "this file changed" — **this function stopped throwing**.
-
-Reformat or rename → silent.
-Remove error handling → reported.
-
-</td>
-<td width="33%" valign="top">
-
-### 💥 Tells you what breaks
-
-Traces which other functions depend on the one that changed, and how far the damage reaches.
-
-Honest about what's proven and what's inferred.
-
-</td>
-<td width="33%" valign="top">
-
-### 🌲 Builds a feature history
-
-Turns those changes into a readable tree, grouped by
-**what the feature does** — not which folder it's in.
-
-</td>
-</tr>
-</table>
-
-<div align="center">
-
----
-
-## The change that started this
-
-</div>
+Here is a two-line change an AI assistant might make:
 
 ```diff
   function validateScore(raw) {
@@ -73,24 +35,127 @@ Turns those changes into a readable tree, grouped by
 
 **Compiler passed · Tests passed · ESLint passed · AI review said nothing**
 
+</div>
+
 Every caller that relied on catching that error now silently receives `null`.
-Nothing crashes. The behaviour is just wrong from here on.
+Nothing crashes. The behaviour is simply wrong from here on.
+
+This is the most common way AI-written code fails. Not crashes — **silent behaviour
+changes that look reasonable in isolation.**
+
+<div align="center">
 
 ---
 
-## Install
+## The idea
+
+</div>
+
+Software has two sides:
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 📐 Intent
+
+**What you meant it to do.**
+
+You write it down once, in plain words, and approve it:
+
+> *"This must throw on an invalid token.
+> Callers rely on the exception."*
+
+</td>
+<td width="50%" valign="top">
+
+### 🔬 Reality
+
+**What the code actually does.**
+
+PlanMap reads your real code and records
+the facts — does it throw, does it return
+null, what does it call, what limits does
+it enforce.
+
+</td>
+</tr>
+</table>
+
+<div align="center">
+
+They start the same and slowly drift apart.
+**PlanMap keeps them tied together and tells you the moment they diverge.**
+
+---
+
+## Try it
 
 </div>
 
 ```bash
-npx planmap init        # learn the codebase
-npx planmap watch       # report behavioural changes as they happen
-npx planmap check       # one-off check, exits non-zero on real change
+npx planmap init .        # learn the codebase
+npx planmap check .       # what changed?
+npx planmap verify .      # does it still match what you approved?
 ```
 
 <div align="center">
 
 **No API key · No account · No config · Nothing leaves your machine**
+
+---
+
+## What it looks like
+
+</div>
+
+**Something changed:**
+
+```console
+$ planmap check .
+
+PlanMap Check
+
+Changes: 1     Significant: 1     Insignificant: 0
+
+  src/auth/token.ts::verifyToken:function CHANGED
+      throws           1 → 0
+      throwTypes       [AuthError] → []
+      returnsNullish   0 → 1
+
+Impact analysis:
+  depth 1  src/auth/session.ts::loadSession:function   [call/inferred]
+  depth 2  src/orders/create.ts                        [import/certain]
+  depth 3  src/api/routes.ts::handleOrder:function     [call/inferred]
+```
+
+**And it broke a promise you made:**
+
+```console
+$ planmap verify .
+
+PlanMap Verify
+
+Approved: 12   Verified: 11   Drifted: 1   Errors: 0
+
+DRIFTED
+  src/auth/token.ts::verifyToken:function
+    Intent: Must throw on an invalid token. Callers rely on the exception.
+    Approver: Sambhav Jain
+    Approved: 12 days ago
+    Violation: throws does not satisfy >=
+
+    3 declarations depend on this:
+      loadSession    direct           inferred
+      createOrder    direct           inferred
+      handleOrder    via loadSession  inferred
+```
+
+<div align="center">
+
+Exit code `1`. In CI, that fails the build.
+
+**No other tool can print that middle line** — *"you approved that this must throw."*
 
 ---
 
@@ -100,91 +165,85 @@ npx planmap check       # one-off check, exits non-zero on real change
 
 ```mermaid
 flowchart TD
-    A["📁 Your project"] --> B["🌳 Parse every file"]
-    B --> C["🔎 Find every function"]
-    C --> D["📊 Record 10 behavioural facts"]
-    D --> E["💾 Save as baseline"]
-    E --> F{"✏️ You edit a file"}
-    F -->|"formatting only"| G["🟢 Silent"]
-    F -->|"noise, e.g. a removed console.log"| G
-    F -->|"behaviour changed"| H["🔴 Reported"]
-    H --> I["💥 Trace what depends on it"]
-    I --> J["📜 Added to history"]
-    J --> K["🌲 Feature tree"]
+    A["📁 Your code"] --> B["🌳 Read every function<br/>with a real parser"]
+    B --> C["📊 Record 10 behavioural facts<br/>per function"]
+    C --> D[("💾 Baseline<br/>the approved state")]
+
+    D --> E{"✏️ You or your agent<br/>edits a file"}
+    E -->|"formatting only"| F["🟢 Silent"]
+    E -->|"noise, e.g. a console.log"| F
+    E -->|"behaviour changed"| G["🔴 Reported"]
+
+    G --> H["💥 Trace what depends on it"]
+    H --> I[("📜 History")]
+    I --> J["🌲 Feature tree"]
+
+    D --> K["📐 You write down what<br/>a function SHOULD do"]
+    K --> L["✍️ You approve it"]
+    L --> M{"⚖️ Verify"}
+    C --> M
+    M -->|"matches"| N["✅ implemented"]
+    M -->|"diverged"| O["⚠️ drifted"]
 ```
 
 <div align="center">
 
 ---
 
-## What it looks like
+## The five things it does
 
 </div>
 
-**A behavioural change, with its blast radius**
+### 1 · Reads your code properly
 
-```console
-$ planmap check .
+Not by searching text. A real parser (tree-sitter) that understands
+**JavaScript, TypeScript, JSX, and TSX** — classes, private `#` members, namespaces,
+decorators, generics, getters and setters.
 
-PlanMap Check
+Every function gets a stable, unique name:
 
-Changes: 1
-Significant: 1
-Insignificant: 0
-
-  src/auth/token.ts::verifyToken:function CHANGED
-      throws           1 → 0
-      throwTypes       [AuthError] → []
-      returnsNullish   0 → 1
-
-Impact analysis:
-
-src/auth/token.ts::verifyToken:function
-  depth 1  src/auth/session.ts::loadSession:function   [call/inferred]
-  depth 2  src/orders/create.ts                        [import/certain]
-  depth 2  src/orders/create.ts::createOrder:function  [call/inferred]
-  depth 3  src/api/routes.ts::handleOrder:function     [call/inferred]
+```
+src/auth/token.ts::UserService.validate:method
 ```
 
-Exit code `1`. In CI, that fails the build.
+*Validated on real projects — zod (2,449 declarations), ky (547), zustand (428).
+**Zero naming collisions.***
 
-**A deleted function reports what will now break**
+### 2 · Records what each function *does*
 
-```console
-  src/auth/token.ts::verifyToken:function DELETED
+Ten facts per function:
 
-Impact analysis:
-  depth 1  src/auth/session.ts::loadSession:function   [call/unresolved]
+| | |
+|:--|:--|
+| `throws` · `throwTypes` | Does it raise errors, and which kinds |
+| `returns` · `returnsNullish` | Does it return nothing |
+| `calls` | What it depends on |
+| `numbers` | Limits, timeouts, retries, status codes |
+| `awaits` | Sync or async |
+| `catches` · `emptyCatches` | Errors handled, or silently swallowed |
+| `params` | Its signature |
+
+**Text inside strings is deliberately ignored** — error messages get reworded
+constantly and would create false alarms.
+
+### 3 · Tells you when behaviour changes
+
+- **Reformat, rename a variable, add a comment** → silent
+- **Remove error handling, change a limit, swallow an exception** → reported
+
+It also ignores noise. Delete a `console.log` and PlanMap stays quiet — a real
+change, but not one worth interrupting you for. Configurable:
+
+```json
+{ "significance": { "noiseCallPrefixes": ["console.", "logger.", "debug."] } }
 ```
 
-**Feature history** — `planmap evolution`
+### 4 · Tells you what else breaks
 
-```markdown
-- **Login**
-  - Added authentication start endpoint  `backend` `api`
-    - Updated authentication response status
-      - numbers [200,401] → [200,402]
-  - Added JWT verification middleware  `backend` `security`
-  - Added Google Sign-In initialization  `frontend`
+PlanMap reads your `import` statements to work out which file each call actually
+points at. If two files both export `validate`, it knows which one you meant.
 
-- **Survey**
-  - Added survey start endpoint  `backend` `api`
-  - Added survey submission service  `backend` `database`
-```
-
-<div align="center">
-
----
-
-## Impact analysis
-
-**Which functions break when this one changes.**
-
-</div>
-
-PlanMap reads your `import` statements to work out which file each call actually points at. If two files both export `validate`, it knows which one you meant.
-
-It is explicit about certainty, and never guesses:
+It is explicit about certainty and never guesses:
 
 | | |
 |:--|:--|
@@ -192,61 +251,76 @@ It is explicit about certainty, and never guesses:
 | **inferred** | Names match, but not proven |
 | **unresolved** | Can't tell — dynamic dispatch, external package |
 
-A confidently wrong answer is worse than an admitted gap, because you would act on it.
+> A confidently wrong answer is worse than an admitted gap, because you'd act on it.
 
-Handles named, default, and namespace imports, CommonJS `require`, destructured `require`, and re-exports. External packages and missing modules are reported as `unresolved` with a reason, never as broken internal dependencies.
+### 5 · Checks the code against what you approved ⭐
+
+This is the part nothing else does.
+
+You write down what a function must do, and approve it:
+
+```json
+{
+  "identity": "src/auth/token.ts::verifyToken:function",
+  "intent": "Must throw on an invalid token. Callers rely on the exception.",
+  "rules": [{ "assert": { "throws": { "op": ">=", "value": 1 } } }]
+}
+```
+
+```bash
+planmap approve .
+```
+
+From then on, `planmap verify` checks the real code against that decision.
+
+**It is arithmetic, not an opinion.** No AI decides pass or fail — a model can't
+gate a build. And PlanMap only ever checks rules a **human approved**, so an agent
+that writes both the code and the intent can never mark its own homework.
 
 <div align="center">
 
 ---
 
-## Sessions
-
-**Five saves on one function is one piece of work, not five.**
+## Sessions — five saves is one piece of work
 
 </div>
 
-PlanMap collects your saves and closes the batch when you `git commit` — or after 30 minutes idle, or once 20 functions have been touched.
+PlanMap collects your saves and closes the batch when you `git commit` — or after
+30 minutes idle, or once 20 functions have been touched.
 
 ```
 you saved:   200 → 201 → 202 → 203
 it records:  200 → 203        (eventCount: 3)
 ```
 
-Change something and change it back in the same session, and **nothing is recorded**. You tried something and undid it.
-
-Sealing never advances the baseline. A commit is not an approval — only `accept` is.
+Change something and change it back in the same session, and **nothing is recorded.**
+You tried something and undid it.
 
 <div align="center">
 
 ---
 
-## Significance
-
-**Removing a `console.log` is a real change. It is not a change worth interrupting you for.**
+## A readable history
 
 </div>
 
-Always significant — these change the contract a caller depends on:
-
-```
-throws · throwTypes · returns · returnsNullish
-catches · emptyCatches · params · awaits
+```bash
+planmap evolution . --md
 ```
 
-Conditional: a `calls` change is noise only if **every** added and removed call is on the noise list. Remove a `console.log` *and* a `throw` in one edit and the whole change is significant.
+```markdown
+- **Login**
+  - ● Added JWT verification middleware  `backend` `security`
+  - ⚠ Added remember me  `frontend`          ← drifted
+  - ◌ Added promo code field                 ← planned, not built
 
-Configure it in `.planmap/config.json`:
-
-```json
-{
-  "significance": {
-    "noiseCallPrefixes": ["console.", "logger.", "debug."]
-  }
-}
+- **Checkout**
+  - ● Stripe integration  `backend`
+  - ✕ Order confirmation email               ← linked code is broken
 ```
 
-Nothing is ever discarded. Everything is recorded; significance is a filter applied when reading. `planmap check --all` shows what was filtered.
+Generated from the code, so it can't fall out of date. Grouped by **what the
+feature does**, not which folder it lives in.
 
 <div align="center">
 
@@ -254,42 +328,114 @@ Nothing is ever discarded. Everything is recorded; significance is a filter appl
 
 ## Commands
 
+</div>
+
+**Getting started**
+
 | | |
 |:--|:--|
-| `init` | Scan the project and write `.planmap/baseline.json` |
-| `watch` | Watch files; report changes as they happen |
-| `check` | Compare against the baseline. Exits non-zero on significant change. |
-| `check --all` | Include insignificant changes |
-| `accept` | Approve the current state as the new baseline |
-| `seal` | Close the open session manually |
-| `status` | Show pending sessions |
-| `evolution` | Render the change history as a feature tree |
-| `name` | Label the history with an LLM — **the only command that costs money** |
-| `diff <a> <b>` | Compare two files directly |
+| `init <project>` | Scan and write the baseline |
+| `check <project>` | What changed? Exits non-zero on significant change |
+| `accept <project>` | Approve the current state as the new baseline |
+| `watch <project>` | Watch continuously as you work |
 
-> Only `init` and `accept` ever write the baseline. The watcher never does —
-> otherwise a change would erase its own evidence.
+**Intent**
+
+| | |
+|:--|:--|
+| `plan draft <project>` | AI proposes rules by reading your code |
+| `plan draft <project> --from "..."` | Draft from a description, before any code |
+| `plan list` · `plan show <identity>` | Inspect the plan |
+| `approve <project> [identity]` | Sign off a rule — `--all`, `--lens`, `--feature` |
+| `reject <project> <identity>` | Remove a rule — `--force` if approved |
+| `plan revise <project> <identity>` | Change your mind; the old version is archived |
+| **`verify <project>`** | **Does the code still match what you approved?** |
+
+**History**
+
+| | |
+|:--|:--|
+| `evolution <project> [--md]` | Render the feature tree |
+| `name <project>` | Label the history with an LLM — **the only command that costs money** |
+| `status` · `seal` | Inspect and close the current session |
+
+**Useful flags**
+
+`--json` machine-readable · `--md` write a report file · `--verbose` show skipped files
+`--lens <id>` check one lens · `--only drifted` filter output · `--strict` fail on unsupported rules
+
+<div align="center">
 
 ---
 
-## What gets tracked
-
-**JavaScript · TypeScript · JSX · TSX** — ten facts per function
-
-| | |
-|:--|:--|
-| `throws` · `throwTypes` | Error handling removed or changed |
-| `returns` · `returnsNullish` | A function that threw now returns nothing |
-| `calls` | A dependency added or dropped |
-| `numbers` | Limits, timeouts, retries, status codes |
-| `awaits` | Sync/async behaviour changed |
-| `catches` · `emptyCatches` | Errors newly swallowed |
-| `params` | Signature changed |
-
-**String text is not recorded** — error messages get reworded constantly
-and would create false alarms.
+## Exit codes
 
 </div>
+
+| Code | Meaning |
+|:--:|:--|
+| **0** | Everything verified |
+| **1** | Something drifted or errored |
+| **2** | Nothing to verify — no plan, or nothing approved |
+
+> Code `2` matters. *"Nothing drifted"* and *"nothing was ever approved"* must never
+> both look green, or a team runs on an empty plan for months believing they're covered.
+
+<div align="center">
+
+---
+
+## Machine-readable output
+
+</div>
+
+```bash
+planmap verify . --json
+```
+
+```json
+{
+  "schema": 1,
+  "generatedAt": "2026-09-06T20:26:48.736Z",
+  "project": "/your/project",
+  "summary": { "approved": 12, "verified": 11, "drifted": 1, "errors": 0, "unsupported": 0 },
+  "results": [
+    {
+      "identity": "src/auth/token.ts::verifyToken:function",
+      "status": "drifted",
+      "intent": "Must throw on an invalid token.",
+      "approvedBy": "Sambhav Jain",
+      "violations": [{ "field": "throws", "expected": 1, "actual": 0 }],
+      "impact": [{ "identity": "...", "depth": 1, "confidence": "inferred" }]
+    }
+  ]
+}
+```
+
+A stable, versioned contract. `--md` writes the same data to `VERIFY.md`,
+committable alongside your code.
+
+<div align="center">
+
+---
+
+## How it compares
+
+| | Linters | AI reviewers | **PlanMap** |
+|:--|:--:|:--:|:--:|
+| Needs rules written first | ✅ | ❌ | ❌ |
+| Sees changes between commits | ❌ | ❌ | **✅** |
+| Sends your code to a server | ❌ | ⚠️ | **❌** |
+| Deterministic | ✅ | ❌ | **✅** |
+| Knows what the code did yesterday | ❌ | ❌ | **✅** |
+| **Knows what you decided it should do** | ❌ | ❌ | **✅** |
+
+</div>
+
+A pattern-matching scanner catches the example at the top **only if someone wrote a
+rule** saying that function must throw. Nobody writes that rule for every function.
+PlanMap learns the current behaviour automatically, and you only write down the
+handful of rules that actually matter.
 
 <details>
 <summary><b>Why facts and not hashes?</b></summary>
@@ -299,7 +445,7 @@ and would create false alarms.
 | Edit | Hash | Facts |
 |:--|:--:|:--:|
 | Reformat | 🔴 fires | 🟢 silent |
-| Rename a local | 🔴 fires | 🟢 silent |
+| Rename a local variable | 🔴 fires | 🟢 silent |
 | Add a comment | 🔴 fires | 🟢 silent |
 | `throw` → `return null` | 🔴 fires | 🔴 `throws: 1 → 0` |
 
@@ -308,69 +454,54 @@ A hash tells you *something* changed. Facts tell you **what**.
 </details>
 
 <details>
-<summary><b>TypeScript specifics</b></summary>
-
-<br>
-
-`.ts` and `.tsx` use separate grammars — in `.tsx`, `<Foo>` is JSX;
-in `.ts` it's a type assertion.
-
-Handled: classes, abstract classes, namespaces, decorators, generics,
-overloads, getters and setters, `static` and `#private` members,
-parameter properties, `satisfies`, and class fields holding functions.
-
-`.d.ts` files are skipped, as are `dist`, `build`, `out`, and `.next` —
-otherwise compiled output gets parsed alongside its source.
-
-</details>
-
-<details>
 <summary><b>Files on disk</b></summary>
 
 <br>
 
-| File | Written by | Recoverable |
-|:--|:--|:--|
-| `baseline.json` | `init`, `accept` only | Yes — rescan |
-| `events.jsonl` | `check`, `watch` | **No — the one irreplaceable artifact** |
-| `sessions.json` | `watch`, `seal` | Yes — rebuilt from events |
-| `graph.json` | `check` | Yes — safe to delete |
-| `evolution.json` | `evolution`, `name` | Yes — replay events |
+All plain JSON in `.planmap/`.
 
-All plain JSON in `.planmap/`. A truncated or malformed file is reported
-and skipped, never fatal.
+| File | Written by | Recoverable | Commit it? |
+|:--|:--|:--|:--:|
+| `baseline.json` | `init`, `accept` only | yes — rescan | ✅ |
+| `events.jsonl` | `check`, `watch` | **no — the one irreplaceable file** | ✅ |
+| `plan.json` | plan commands | **no — you wrote it** | ✅ |
+| `sessions.json` | `watch`, `seal` | yes — rebuilt from events | ❌ |
+| `graph.json` | `check` | yes — safe to delete | ❌ |
+| `evolution.json` | `evolution`, `name` | yes — replay events | ❌ |
+
+A truncated or malformed file is reported and skipped, never fatal.
+
+**Two rules that shape everything:**
+
+Only `init` and `accept` write the baseline — the watcher never does, or a change
+would erase its own evidence.
+
+Record everything; filter when reading. Nothing is discarded at extraction, so a
+filter rule that turns out wrong can be changed without losing history.
+
+</details>
+
+<details>
+<summary><b>TypeScript specifics</b></summary>
+
+<br>
+
+`.ts` and `.tsx` use separate grammars — in `.tsx`, `<Foo>` is JSX; in `.ts` it's a
+type assertion.
+
+Handled: classes, abstract classes, namespaces, decorators, generics, overloads,
+getters and setters, `static` and `#private` members, parameter properties,
+`satisfies`, and class fields holding functions.
+
+`.d.ts` files are skipped, as are `dist`, `build`, `out`, and `.next` — otherwise
+compiled output gets parsed alongside its source.
+
+A file that fails to parse is skipped and reported. One unsupported construct does
+not cost you the other 900 files. Run with `--verbose` to see which files were skipped.
 
 </details>
 
 <div align="center">
-
----
-
-## Validated on real code
-
-Run across **9 open-source TypeScript repositories**
-
-**16,328** declarations · **0** identity collisions · **9/9** repos scanned
-
-*TanStack Query · tRPC · Zod · Remeda · type-fest · got · ky · Zustand · ofetch*
-
-A file that fails to parse is skipped and reported — never fatal.
-One unsupported construct does not cost you the other 900 files.
-
----
-
-## How it compares
-
-| | Linters | AI reviewers | **PlanMap** |
-|:--|:--:|:--:|:--:|
-| Needs rules | ✅ | ❌ | ❌ |
-| Sees between commits | ❌ | ❌ | **✅** |
-| Sends code to a server | ❌ | ⚠️ | **❌** |
-| Deterministic | ✅ | ❌ | **✅** |
-| Knows what the code did yesterday | ❌ | ❌ | **✅** |
-
-A pattern-matching scanner catches the example above **only if someone
-wrote a rule** saying that function must throw. Nobody writes that rule.
 
 ---
 
@@ -382,13 +513,13 @@ wrote a rule** saying that function must throw. Nobody writes that rule.
 
 **Not a security scanner**
 
-**Not a spec tool** — nothing to write, nothing to maintain
+**Not a spec tool** — nothing to write upfront, nothing to keep in sync
 
 ---
 
 ## Status
 
-**v0.5** — working, in active development, dogfooded daily
+**v0.6 — complete.** The full engine works end to end.
 
 | | |
 |:--|:--|
@@ -400,34 +531,25 @@ wrote a rule** saying that function must throw. Nobody writes that rule.
 | ✅ | Dependency map — imports resolved with confidence tiers |
 | ✅ | Impact analysis — what breaks when something changes |
 | ✅ | Evolution graph with batched labelling |
-| 🔨 | Intent — say what a function *should* do, and verify it |
+| ✅ | **Intent — write down what code should do, and approve it** |
+| ✅ | **Verification — deterministic drift detection** |
+| ✅ | JSON + markdown reports |
 | 📋 | Visual plan graph |
+| 📋 | Editor and agent integration |
 | 📋 | Python |
 
-**Next release** adds the half PlanMap is missing
-
-</div>
-
-```console
-  src/auth/token.ts::verifyToken:function  DRIFTED
-    intent     Must throw on an invalid token. Callers rely on it.
-    approved   12 days ago
-    violation  throws — expected >= 1, actual 0
-```
-
-<div align="center">
-
-Today PlanMap knows what your code **does**.
-Next it will know what your code was **supposed to do**.
+**22 test suites** · validated on zod, ky, and zustand · **0 identity collisions
+across 3,424 declarations**
 
 ---
 
 ## Tech
 
-Node ESM, no build step · [`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter) for parsing · `chokidar` for watching
-Storage is plain JSON in `.planmap/`, committable to git
+Node ESM, no build step · [`web-tree-sitter`](https://github.com/tree-sitter/tree-sitter)
+for parsing · `chokidar` for watching
+Storage is plain JSON in `.planmap/`
 
-Design decisions and reasoning: [`DECISIONS.md`](DECISIONS.md)
+Design decisions and the reasoning behind them: [`DECISIONS.md`](DECISIONS.md)
 
 ---
 
@@ -438,35 +560,12 @@ Issues welcome — especially
 > 🐛 **A behavioural change PlanMap missed**
 > 🔇 **A change it reported that didn't matter**
 
+Both make the tool better in ways that are hard to find alone.
+
 ---
 
 <br>
 
-**BUSL-1.1** · built by the PlanMap team
+**MIT** · built by [@its-sambhav](https://github.com/its-sambhav)
 
 </div>
-## Report formats
-
-`verify` and `check` support machine-readable JSON reports.
-
-### JSON contract
-
-Both commands include:
-
-- `schema`: report schema version, currently `1`
-- `generatedAt`: ISO 8601 report generation timestamp
-- `project`: absolute project path
-- `summary`: aggregate counts
-- command-specific results in `results` for `verify` and `changes` for `check`
-
-`verify --json` reports verification results. `check --json` reports declaration changes and preserves the same envelope shape.
-
-JSON output contains no ANSI terminal formatting. `--json` changes output only; command exit codes remain unchanged.
-
-### Markdown verification report
-
-`planmap verify --md` writes `VERIFY.md` at the project root.
-
-The report contains the verification summary and includes sections for Drifted, Errors, and Unsupported only when those sections contain results. Drifted entries include intent, violations, and available impact information.
-
-Using `--md` with `--json` produces both reports independently.
