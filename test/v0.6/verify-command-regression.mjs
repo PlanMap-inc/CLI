@@ -2,30 +2,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { runCli, ROOT } from "../helpers/run-cli.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(HERE, "../..");
-const CLI = path.join(ROOT, "src", "cli.js");
 
-function runCli(args, cwd) {
-    const result = spawnSync(
-        process.execPath,
-        [CLI, ...args],
-        {
-            cwd,
-            env: { ...process.env },
-            encoding: "utf8"
-        }
-    );
 
-    return {
-        code: result.status,
-        stdout: result.stdout || "",
-        stderr: result.stderr || ""
-    };
-}
 
 function project() {
     const root = fs.mkdtempSync(
