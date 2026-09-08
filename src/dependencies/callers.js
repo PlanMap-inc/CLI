@@ -61,7 +61,13 @@ function normalizeCalls(
 export function buildCallerIndex(
     declarations
 ) {
-    const callers = {};
+    /*
+     * Prototype-less: callee names are arbitrary source identifiers, and
+     * `constructor`, `toString`, `valueOf` and friends are inherited members
+     * on a plain object. `!callers[callee]` would read as already-present and
+     * skip initialising the array, leaving a function where a list belongs.
+     */
+    const callers = Object.create(null);
 
     for (
         const declaration
