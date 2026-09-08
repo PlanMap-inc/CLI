@@ -110,14 +110,18 @@ export async function classifyEvolutionEvents(
                         // --------------------------------------------------
                         // BATCHED REQUEST CEILING
                         // --------------------------------------------------
-                        // Evolution events are now processed in batches
-                        // of 30. A 2500-token ceiling gives each batch
-                        // enough room without reserving the old 8000-token
-                        // maximum for every request.
+                        // Evolution events are processed in batches
+                        // of 30 (BATCH_SIZE, commands/evolution.js). A
+                        // 2500-token ceiling was too small: batches of 30
+                        // axios declarations truncate mid-string at ~1900
+                        // tokens, producing invalid JSON and halting
+                        // classification. Restored to the former 8000.
+                        // Raise this if BATCH_SIZE grows, or if a subject
+                        // with longer identity strings truncates again.
                         // --------------------------------------------------
 
                         max_tokens:
-                            2500
+                            8000
                     })
             }
         );
