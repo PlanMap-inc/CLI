@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parseFile } from "../parser.js";
-import { watchProject } from "../watcher.js";
+import { parseFile } from "../../baseline/parser.js";
+import { watchProject } from "../../watching/watcher.js";
 
 
 // --------------------------------------------------
@@ -23,7 +23,7 @@ export async function runWatch(
         !projectPath
     ) {
         console.error(
-            "Usage: node src/cli.js watch <project-folder>"
+            "Usage: node src/cli/cli.js watch <project-folder>"
         );
 
         process.exit(1);

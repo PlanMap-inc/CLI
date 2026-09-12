@@ -1,6 +1,6 @@
 import {
     createSessionManager
-} from "../session-manager.js";
+} from "../../watching/session-manager.js";
 
 
 // --------------------------------------------------
@@ -14,7 +14,7 @@ export function runSeal(
         !projectRoot
     ) {
         console.error(
-            "Usage: node src/cli.js seal <project-folder>"
+            "Usage: node src/cli/cli.js seal <project-folder>"
         );
 
         process.exit(1);

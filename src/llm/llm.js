@@ -2,20 +2,20 @@ import {
     loadOpenRouterApiKey,
     OPENROUTER_MODEL,
     OPENROUTER_ENDPOINT
-} from "./llm/config.js";
+} from "./config.js";
 
 import {
     buildEvolutionPrompt
-} from "./llm/prompts.js";
+} from "./prompts.js";
 
 import {
     extractOpenRouterText,
     parseOpenRouterJson
-} from "./llm/response.js";
+} from "./response.js";
 
 import {
     validateClassification
-} from "./llm/validation.js";
+} from "./validation.js";
 
 
 // --------------------------------------------------

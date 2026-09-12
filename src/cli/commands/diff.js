@@ -1,9 +1,9 @@
-import { parseFile } from "../parser.js";
+import { parseFile } from "../../baseline/parser.js";
 
 import {
     diffDeclarations,
     formatDiff
-} from "../diff.js";
+} from "../../changes/diff.js";
 
 // --------------------------------------------------
 // RUN DIFF
@@ -24,7 +24,7 @@ export function runDiff(
         !afterPath
     ) {
         console.error(
-            "Usage: node src/cli.js diff <before> <after>"
+            "Usage: node src/cli/cli.js diff <before> <after>"
         );
 
         process.exit(1);

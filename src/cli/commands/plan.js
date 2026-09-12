@@ -1,12 +1,12 @@
 import {
     readPlan,
     writePlan
-} from "../plan/storage.js";
+} from "../../plan/storage.js";
 
 import {
     draftBrownfield,
     draftGreenfield
-} from "../plan/draft.js";
+} from "../../plan/draft.js";
 
 
 // --------------------------------------------------
@@ -130,7 +130,7 @@ export async function runPlanDraft(
         !projectRoot
     ) {
         console.error(
-            "Usage: node src/cli.js plan draft <project> [--from \"<description>\"]"
+            "Usage: node src/cli/cli.js plan draft <project> [--from \"<description>\"]"
         );
 
         process.exitCode = 1;

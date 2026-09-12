@@ -4,18 +4,18 @@ import path from "node:path";
 import {
     readPlan,
     getPlanPath
-} from "../plan/storage.js";
-import { verifyPlan } from "../plan/verify.js";
+} from "../../plan/storage.js";
+import { verifyPlan } from "../../verification/engine.js";
 import {
     readEvolution,
     writeEvolution
-} from "../evolution/storage.js";
+} from "../../evolution/storage.js";
 import {
     applyVerificationStatus
-} from "../evolution/status.js";
+} from "../../evolution/status.js";
 import {
     writeVerifyMarkdown
-} from "./verify-markdown.js";
+} from "../../storage/output/verify-markdown.js";
 
 function relativeDate(iso) {
     if (!iso) {
@@ -223,7 +223,7 @@ export async function runVerify(
 ) {
     if (!projectPath) {
         console.error(
-            "Usage: node src/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
+            "Usage: node src/cli/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
         );
 
         process.exitCode = 1;

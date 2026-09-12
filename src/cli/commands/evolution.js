@@ -5,16 +5,16 @@ import {
     readEvents,
     groupTimeGroups,
     buildLineage
-} from "../evolution/events.js";
+} from "../../evolution/events.js";
 
 import {
     readEvolution,
     writeEvolution
-} from "../evolution/storage.js";
+} from "../../evolution/storage.js";
 
 import {
     updateEvolution
-} from "../evolution.js";
+} from "../../evolution/evolution.js";
 
 import {
     getEvolutionFacts,
@@ -22,24 +22,24 @@ import {
     getNewEvolutionEvents,
     getFallbackTags,
     applyEvolutionClassification
-} from "../evolution/classification.js";
+} from "../../evolution/classification.js";
 
 import {
     getPathCategory
-} from "../evolution/identity.js";
+} from "../../evolution/identity.js";
 
 import {
     getEvolutionLabel,
     writeEvolutionMarkdown
-} from "../evolution/markdown.js";
+} from "../../evolution/markdown.js";
 
 import {
     applyEvolutionStatus
-} from "../evolution/status.js";
+} from "../../evolution/status.js";
 
 import {
     loadSessions
-} from "../sessions.js";
+} from "../../watching/sessions.js";
 
 
 // --------------------------------------------------
@@ -596,7 +596,7 @@ export async function runEvolution(
     ) {
 
         console.error(
-            "Usage: node src/cli.js evolution <project-folder> [--md]"
+            "Usage: node src/cli/cli.js evolution <project-folder> [--md]"
         );
 
         process.exit(

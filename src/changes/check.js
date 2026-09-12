@@ -1,10 +1,10 @@
 import {
     createSessionManager
-} from "./session-manager.js";
+} from "../watching/session-manager.js";
 
 import fs from "node:fs";
 import path from "node:path";
-import { appendEvent } from "./events.js";
+import { appendEvent } from "../watching/events.js";
 
 
 // --------------------------------------------------

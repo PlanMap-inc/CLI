@@ -1,11 +1,11 @@
 import {
     buildLineage
-} from "./evolution/events.js";
+} from "./events.js";
 
 import {
     createEventKey,
     createNodeId
-} from "./evolution/storage.js";
+} from "./storage.js";
 
 
 // --------------------------------------------------

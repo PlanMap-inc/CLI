@@ -12,7 +12,7 @@ import {
 
 import {
     readBaseline
-} from "../check.js";
+} from "../changes/check.js";
 
 import {
     readEvolution
@@ -20,7 +20,7 @@ import {
 
 import {
     loadSessions
-} from "../sessions.js";
+} from "../watching/sessions.js";
 
 import {
     getEvolutionFacts

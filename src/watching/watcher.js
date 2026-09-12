@@ -2,11 +2,11 @@ import chokidar from "chokidar";
 
 import {
     createWatcherHandlers
-} from "./watcher/handlers.js";
+} from "./handlers.js";
 
 import {
     shouldIgnore
-} from "./watcher/filters.js";
+} from "./filters.js";
 
 import {
     createSessionManager
@@ -18,7 +18,7 @@ import {
 
 import {
     flushDebounces
-} from "./watcher/debounce.js";
+} from "./debounce.js";
 
 
 // --------------------------------------------------
