@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 import {
     Parser,
@@ -13,22 +13,21 @@ import { walk } from "../walk.js";
 // --------------------------------------------------
 // GRAMMAR PATHS
 // --------------------------------------------------
+// Resolved via Node's module resolution (package-relative),
+// not a hard-coded "../.." depth from this file's location.
+// --------------------------------------------------
 
-const __dirname =
-    path.dirname(
-        fileURLToPath(import.meta.url)
-    );
+const require =
+    createRequire(import.meta.url);
 
 const typescriptWasmPath =
-    path.resolve(
-        __dirname,
-        "../../../node_modules/tree-sitter-typescript/tree-sitter-typescript.wasm"
+    require.resolve(
+        "tree-sitter-typescript/tree-sitter-typescript.wasm"
     );
 
 const tsxWasmPath =
-    path.resolve(
-        __dirname,
-        "../../../node_modules/tree-sitter-typescript/tree-sitter-tsx.wasm"
+    require.resolve(
+        "tree-sitter-typescript/tree-sitter-tsx.wasm"
     );
 
 
