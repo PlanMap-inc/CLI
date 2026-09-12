@@ -122,8 +122,82 @@ export function getEvolutionFacts(
 // --------------------------------------------------
 
 export function getEvolutionVocabulary(
-    evolution
+    evolution,
+    plan = null
 ) {
+
+    /*
+     * --------------------------------------------------
+     * PLAN VOCABULARY AUTHORITY
+     * --------------------------------------------------
+     *
+     * When plan.json contains lenses, the Plan owns
+     * the vocabulary used by Evolution classification.
+     *
+     * Evolution must reuse these values and must not
+     * invent replacement tags.
+     * --------------------------------------------------
+     */
+
+    if (
+        Array.isArray(
+            plan?.lenses
+        ) &&
+        plan.lenses.length > 0
+    ) {
+
+        const features =
+            Array.isArray(
+                plan.features
+            )
+                ? plan.features
+                    .map(
+                        feature =>
+                            typeof feature === "string"
+                                ? feature.trim()
+                                : feature?.name?.trim()
+                    )
+                    .filter(
+                        Boolean
+                    )
+                : [];
+
+        const tags =
+            plan.lenses
+                .map(
+                    lens =>
+                        typeof lens === "string"
+                            ? lens.trim()
+                            : lens?.id?.trim()
+                )
+                .filter(
+                    Boolean
+                );
+
+        return {
+
+            features,
+
+            categories:
+                features,
+
+            tags,
+
+            authoritative:
+                true
+        };
+    }
+
+
+    /*
+     * --------------------------------------------------
+     * DERIVED VOCABULARY
+     * --------------------------------------------------
+     *
+     * No authoritative Plan means preserve the existing
+     * Layer 0 behaviour exactly as before.
+     * --------------------------------------------------
+     */
 
     const features =
         [];
@@ -156,6 +230,7 @@ export function getEvolutionVocabulary(
         ) {
             continue;
         }
+
 
         const feature =
             node.feature ||
@@ -239,10 +314,12 @@ export function getEvolutionVocabulary(
         categories:
             features,
 
-        tags
+        tags,
+
+        authoritative:
+            false
     };
 }
-
 
 
 // --------------------------------------------------

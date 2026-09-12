@@ -39,12 +39,34 @@ import {
 } from "./commands/evolution.js";
 
 import {
+    runPlanList,
+    runPlanShow,
+    runPlanDraft
+} from "./commands/plan.js";
+
+import {
+    runPlanApprove
+} from "./commands/approve.js";
+
+import {
+    runPlanReject
+} from "./commands/reject.js";
+
+import {
+    runPlanRevise
+} from "./commands/revise.js";
+
+import {
     runStatus
 } from "./commands/status.js";
 
 import {
     runName
 } from "./commands/name.js";
+
+import {
+    runVerify
+} from "./commands/verify.js";
 
 
 // --------------------------------------------------
@@ -81,15 +103,15 @@ if (
     );
 
     console.error(
-        "  node src/cli.js init <project-folder>"
+        "  node src/cli.js init <project-folder> [--verbose]"
     );
 
     console.error(
-        "  node src/cli.js check <project-folder> [--all]"
+        "  node src/cli.js check <project-folder> [--all] [--json] [--verbose]"
     );
 
     console.error(
-        "  node src/cli.js accept <project-folder>"
+        "  node src/cli.js accept <project-folder> [--verbose]"
     );
 
     console.error(
@@ -114,6 +136,42 @@ if (
 
     console.error(
         "  node src/cli.js name <project-folder>"
+    );
+
+    console.error(
+        "  node src/cli.js plan draft <project-folder>"
+    );
+
+    console.error(
+        "  node src/cli.js plan draft <project-folder> --from \"<description>\""
+    );
+
+    console.error(
+        "  node src/cli.js plan list <project-folder>"
+    );
+
+    console.error(
+        "  node src/cli.js plan show <project-folder> <identity>"
+    );
+
+    console.error(
+        "  node src/cli.js approve <project-folder> [identity]"
+    );
+
+    console.error(
+        "  node src/cli.js approve <project-folder> --all | --lens <id> | --feature <name>"
+    );
+
+    console.error(
+        "  node src/cli.js reject <project-folder> <identity> [--force]"
+    );
+
+    console.error(
+        "  node src/cli.js plan revise <project-folder> <identity>"
+    );
+
+    console.error(
+        "  node src/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
     );
 
     process.exit(1);
@@ -142,7 +200,10 @@ else if (
     args[0] === "init"
 ) {
     runInit(
-        args[1]
+        args[1],
+        {
+            verbose: args.includes("--verbose")
+        }
     );
 }
 
@@ -159,11 +220,19 @@ else if (
         args[1] === "-h"
     ) {
         console.log(
-            "Usage: node src/cli.js check <project-folder> [--all]"
+            "Usage: node src/cli.js check <project-folder> [--all] [--json] [--verbose]"
         );
 
         console.log(
             "  --all    Show insignificant changes too"
+        );
+
+        console.log(
+            "  --json   Output machine-readable JSON"
+        );
+
+        console.log(
+            "  --verbose Show skipped file paths"
         );
 
         process.exit(0);
@@ -175,6 +244,14 @@ else if (
             all:
                 args.includes(
                     "--all"
+                ),
+            json:
+                args.includes(
+                    "--json"
+                ),
+            verbose:
+                args.includes(
+                    "--verbose"
                 )
         }
     );
@@ -189,7 +266,10 @@ else if (
     args[0] === "accept"
 ) {
     runAccept(
-        args[1]
+        args[1],
+        {
+            verbose: args.includes("--verbose")
+        }
     );
 }
 
@@ -227,6 +307,52 @@ else if (
     );
 }
 
+
+// --------------------------------------------------
+// VERIFY COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "verify"
+) {
+    const lensIndex =
+        args.indexOf("--lens");
+
+    const identityIndex =
+        args.indexOf("--identity");
+
+    const onlyIndex =
+        args.indexOf("--only");
+
+    await runVerify(
+        args[1],
+        {
+            json:
+                args.includes("--json"),
+
+            md:
+                args.includes("--md"),
+
+            lens:
+                lensIndex !== -1
+                    ? args[lensIndex + 1]
+                    : undefined,
+
+            identity:
+                identityIndex !== -1
+                    ? args[identityIndex + 1]
+                    : undefined,
+
+            only:
+                onlyIndex !== -1
+                    ? args[onlyIndex + 1]
+                    : undefined,
+
+            strict:
+                args.includes("--strict")
+        }
+    );
+}
 
 // --------------------------------------------------
 // STATUS COMMAND
@@ -267,6 +393,147 @@ else if (
             "--md"
         )
     );
+}
+
+
+// --------------------------------------------------
+// REJECT COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "plan" &&
+    args[1] === "revise"
+) {
+    const projectRoot =
+        args[2];
+
+    const identity =
+        args[3];
+
+    runPlanRevise(
+        projectRoot,
+        identity
+    );
+}
+
+else if (
+    args[0] === "reject"
+) {
+    const projectRoot =
+        args[1];
+
+    const target =
+        args[2] &&
+        !args[2].startsWith("--")
+            ? args[2]
+            : null;
+
+    await runPlanReject(
+        projectRoot,
+        target,
+        {
+            force:
+                args.includes("--force")
+        }
+    );
+}
+
+// --------------------------------------------------
+// APPROVE COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "approve"
+) {
+    const projectRoot =
+        args[1];
+
+    const target =
+        args[2] &&
+        !args[2].startsWith("--")
+            ? args[2]
+            : null;
+
+    const lensIndex =
+        args.indexOf("--lens");
+
+    const featureIndex =
+        args.indexOf("--feature");
+
+    await runPlanApprove(
+        projectRoot,
+        target,
+        {
+            all:
+                args.includes("--all"),
+
+            lens:
+                lensIndex !== -1
+                    ? args[lensIndex + 1]
+                    : null,
+
+            feature:
+                featureIndex !== -1
+                    ? args[featureIndex + 1]
+                    : null
+        }
+    );
+}
+
+
+// --------------------------------------------------
+// PLAN COMMAND
+// --------------------------------------------------
+
+else if (
+    args[0] === "plan"
+) {
+    const subcommand =
+        args[1];
+
+    if (
+        subcommand === "draft"
+    ) {
+        const fromIndex =
+            args.indexOf("--from");
+
+        const description =
+            fromIndex !== -1
+                ? args[fromIndex + 1]
+                : null;
+
+        await runPlanDraft(
+            args[2],
+            description
+        );
+    }
+
+    else if (
+        subcommand === "list"
+    ) {
+        runPlanList(
+            args[2]
+        );
+    }
+
+    else if (
+        subcommand === "show"
+    ) {
+        runPlanShow(
+            args[2],
+            args[3]
+        );
+    }
+
+    else {
+        console.error(
+            "Usage: planmap plan list <project>"
+        );
+
+        console.error(
+            "Usage: planmap plan show <project> <identity>"
+        );
+    }
 }
 
 
