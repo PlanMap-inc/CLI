@@ -1,14 +1,14 @@
 import {
     readPlan
-} from "./storage.js";
+} from "../plan/storage.js";
 
 import {
     readBaseline
-} from "../check.js";
+} from "../changes/check.js";
 
 import {
     scanProject
-} from "../scanner.js";
+} from "../baseline/scanner.js";
 
 import {
     resolveProjectImports
@@ -28,11 +28,11 @@ import {
 
 import {
     findImpact
-} from "../dependencies/impact.js";
+} from "../impact/analysis.js";
 
 import {
     evaluateClause
-} from "./evaluate.js";
+} from "../plan/evaluate.js";
 
 
 function getDeclarationMap(

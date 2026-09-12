@@ -1,6 +1,6 @@
 import {
     isSourceFile
-} from "../scanner.js";
+} from "../baseline/scanner.js";
 
 
 // --------------------------------------------------

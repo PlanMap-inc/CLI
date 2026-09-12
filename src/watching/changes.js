@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { readBaseline } from "../check.js";
-import { formatDiff, diffDeclarations } from "../diff.js";
-import { appendEvent } from "../events.js";
+import { readBaseline } from "../changes/check.js";
+import { formatDiff, diffDeclarations } from "../changes/diff.js";
+import { appendEvent } from "./events.js";
 
 
 // --------------------------------------------------

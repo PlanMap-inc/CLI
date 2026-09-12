@@ -10,8 +10,8 @@ import {
     createCompactDelta,
     appendSessionMarker
 } from "./events.js";
-import { analyzeSignificance } from "./evolution/significance.js";
-import { loadConfig } from "./config.js";
+import { analyzeSignificance } from "../changes/significance.js";
+import { loadConfig } from "../storage/config.js";
 import fs from "node:fs";
 import path from "node:path";
 

@@ -3,7 +3,7 @@ import path from "node:path";
 
 import {
     loadSessions
-} from "../sessions.js";
+} from "../../watching/sessions.js";
 
 
 // --------------------------------------------------
@@ -23,7 +23,7 @@ export async function runName(
         !projectPath
     ) {
         console.error(
-            "Usage: node src/cli.js name <project-folder>"
+            "Usage: node src/cli/cli.js name <project-folder>"
         );
 
         process.exitCode = 1;

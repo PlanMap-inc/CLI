@@ -1,16 +1,16 @@
 import {
     readPlan,
     writePlan
-} from "../plan/storage.js";
+} from "../../plan/storage.js";
 
 import {
     readBaseline
-} from "../check.js";
+} from "../../changes/check.js";
 
 import {
     approveNode,
     selectNodes
-} from "../plan/approval.js";
+} from "../../plan/approval.js";
 
 import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";

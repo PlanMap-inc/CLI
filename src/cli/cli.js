@@ -1,14 +1,14 @@
 import {
     parseFile
-} from "./parser.js";
+} from "../baseline/parser.js";
 
 import {
     checkDuplicates
-} from "./declarations/utils.js";
+} from "../baseline/declarations/utils.js";
 
 import {
     printDeclarations
-} from "./output/declarations.js";
+} from "../storage/output/declarations.js";
 
 import {
     runInit
@@ -91,87 +91,87 @@ if (
     );
 
     console.error(
-        "  node src/cli.js <file>"
+        "  node src/cli/cli.js <file>"
     );
 
     console.error(
-        "  node src/cli.js <file> --json"
+        "  node src/cli/cli.js <file> --json"
     );
 
     console.error(
-        "  node src/cli.js diff <before> <after>"
+        "  node src/cli/cli.js diff <before> <after>"
     );
 
     console.error(
-        "  node src/cli.js init <project-folder> [--verbose]"
+        "  node src/cli/cli.js init <project-folder> [--verbose]"
     );
 
     console.error(
-        "  node src/cli.js check <project-folder> [--all] [--json] [--verbose]"
+        "  node src/cli/cli.js check <project-folder> [--all] [--json] [--verbose]"
     );
 
     console.error(
-        "  node src/cli.js accept <project-folder> [--verbose]"
+        "  node src/cli/cli.js accept <project-folder> [--verbose]"
     );
 
     console.error(
-        "  node src/cli.js watch <project-folder>"
+        "  node src/cli/cli.js watch <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js seal <project-folder>"
+        "  node src/cli/cli.js seal <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js evolution <project-folder>"
+        "  node src/cli/cli.js evolution <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js evolution <project-folder> --md"
+        "  node src/cli/cli.js evolution <project-folder> --md"
     );
 
     console.error(
-        "  node src/cli.js status <project-folder>"
+        "  node src/cli/cli.js status <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js name <project-folder>"
+        "  node src/cli/cli.js name <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js plan draft <project-folder>"
+        "  node src/cli/cli.js plan draft <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js plan draft <project-folder> --from \"<description>\""
+        "  node src/cli/cli.js plan draft <project-folder> --from \"<description>\""
     );
 
     console.error(
-        "  node src/cli.js plan list <project-folder>"
+        "  node src/cli/cli.js plan list <project-folder>"
     );
 
     console.error(
-        "  node src/cli.js plan show <project-folder> <identity>"
+        "  node src/cli/cli.js plan show <project-folder> <identity>"
     );
 
     console.error(
-        "  node src/cli.js approve <project-folder> [identity]"
+        "  node src/cli/cli.js approve <project-folder> [identity]"
     );
 
     console.error(
-        "  node src/cli.js approve <project-folder> --all | --lens <id> | --feature <name>"
+        "  node src/cli/cli.js approve <project-folder> --all | --lens <id> | --feature <name>"
     );
 
     console.error(
-        "  node src/cli.js reject <project-folder> <identity> [--force]"
+        "  node src/cli/cli.js reject <project-folder> <identity> [--force]"
     );
 
     console.error(
-        "  node src/cli.js plan revise <project-folder> <identity>"
+        "  node src/cli/cli.js plan revise <project-folder> <identity>"
     );
 
     console.error(
-        "  node src/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
+        "  node src/cli/cli.js verify <project-folder> [--json] [--md] [--lens <id>] [--identity <id>] [--only drifted] [--strict]"
     );
 
     process.exit(1);
@@ -220,7 +220,7 @@ else if (
         args[1] === "-h"
     ) {
         console.log(
-            "Usage: node src/cli.js check <project-folder> [--all] [--json] [--verbose]"
+            "Usage: node src/cli/cli.js check <project-folder> [--all] [--json] [--verbose]"
         );
 
         console.log(

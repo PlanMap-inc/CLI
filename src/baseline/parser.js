@@ -35,21 +35,21 @@ const __dirname =
 const javascriptWasmPath =
     path.resolve(
         __dirname,
-        "../node_modules/tree-sitter-javascript/tree-sitter-javascript.wasm"
+        "../../node_modules/tree-sitter-javascript/tree-sitter-javascript.wasm"
     );
 
 
 const typescriptWasmPath =
     path.resolve(
         __dirname,
-        "../node_modules/tree-sitter-typescript/tree-sitter-typescript.wasm"
+        "../../node_modules/tree-sitter-typescript/tree-sitter-typescript.wasm"
     );
 
 
 const tsxWasmPath =
     path.resolve(
         __dirname,
-        "../node_modules/tree-sitter-typescript/tree-sitter-tsx.wasm"
+        "../../node_modules/tree-sitter-typescript/tree-sitter-tsx.wasm"
     );
 
 

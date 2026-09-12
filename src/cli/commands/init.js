@@ -1,11 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parseFile } from "../parser.js";
-import { scanProject } from "../scanner.js";
-import { writeBaseline } from "../baseline.js";
-import { appendInitialEvents } from "../events.js";
-import { checkDuplicates } from "../declarations/utils.js";
+import { parseFile } from "../../baseline/parser.js";
+import { scanProject } from "../../baseline/scanner.js";
+import { writeBaseline } from "../../baseline/baseline.js";
+import { appendInitialEvents } from "../../watching/events.js";
+import { checkDuplicates } from "../../baseline/declarations/utils.js";
 
 
 // --------------------------------------------------
@@ -30,7 +30,7 @@ export function runInit(
         !projectPath
     ) {
         console.error(
-            "Usage: node src/cli.js init <project-folder>"
+            "Usage: node src/cli/cli.js init <project-folder>"
         );
 
         process.exit(1);

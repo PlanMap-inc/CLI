@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parseFile } from "../parser.js";
+import { parseFile } from "../baseline/parser.js";
 
 
 // ------------------------------------------------------------

@@ -3,7 +3,7 @@ import path from "node:path";
 
 import {
     analyzeSignificance
-} from "./evolution/significance.js";
+} from "../changes/significance.js";
 
 
 // --------------------------------------------------

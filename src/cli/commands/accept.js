@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parseFile } from "../parser.js";
-import { scanProject } from "../scanner.js";
-import { writeBaseline } from "../baseline.js";
-import { checkDuplicates } from "../declarations/utils.js";
+import { parseFile } from "../../baseline/parser.js";
+import { scanProject } from "../../baseline/scanner.js";
+import { writeBaseline } from "../../baseline/baseline.js";
+import { checkDuplicates } from "../../baseline/declarations/utils.js";
 
 
 // --------------------------------------------------
@@ -27,7 +27,7 @@ export function runAccept(
         !projectPath
     ) {
         console.error(
-            "Usage: node src/cli.js accept <project-folder>"
+            "Usage: node src/cli/cli.js accept <project-folder>"
         );
 
         process.exit(1);

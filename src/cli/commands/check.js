@@ -4,53 +4,53 @@ import path from "node:path";
 import {
     runCheck,
     readBaseline
-} from "../check.js";
+} from "../../changes/check.js";
 
 import {
     scanProject
-} from "../scanner.js";
+} from "../../baseline/scanner.js";
 
 import {
     parseFile
-} from "../parser.js";
+} from "../../baseline/parser.js";
 
 import {
     diffDeclarations,
     formatDiff
-} from "../diff.js";
+} from "../../changes/diff.js";
 
 import {
     calculateNetDelta
-} from "../sessions.js";
+} from "../../watching/sessions.js";
 
 import {
     analyzeSignificance
-} from "../evolution/significance.js";
+} from "../../changes/significance.js";
 
 import {
     loadConfig
-} from "../config.js";
+} from "../../storage/config.js";
 
 
 import {
     resolveProjectImports
-} from "../dependencies/resolver.js";
+} from "../../dependencies/resolver.js";
 
 import {
     buildCallerIndex
-} from "../dependencies/callers.js";
+} from "../../dependencies/callers.js";
 
 import {
     joinDependencies
-} from "../dependencies/join.js";
+} from "../../dependencies/join.js";
 
 import {
     buildGraph
-} from "../dependencies/graph.js";
+} from "../../dependencies/graph.js";
 
 import {
     findImpact
-} from "../dependencies/impact.js";
+} from "../../impact/analysis.js";
 
 // --------------------------------------------------
 // BUILD SIGNIFICANCE SESSION
@@ -120,7 +120,7 @@ export function runProjectCheck(
         !projectPath
     ) {
         console.error(
-            "Usage: node src/cli.js check <project-folder> [--all]"
+            "Usage: node src/cli/cli.js check <project-folder> [--all]"
         );
 
         process.exitCode = 1;

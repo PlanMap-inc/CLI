@@ -1,11 +1,11 @@
 import {
     readPlan,
     writePlan
-} from "../plan/storage.js";
+} from "../../plan/storage.js";
 
 import {
     rejectNode
-} from "../plan/approval.js";
+} from "../../plan/approval.js";
 
 
 // --------------------------------------------------
