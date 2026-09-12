@@ -2,28 +2,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { getWorkerForFile } from "./registry/language-registry.js";
-import { javascriptWorker } from "./workers/javascript-worker.js";
-
-
-
-// --------------------------------------------------
-// WORKER SELECTION
-// --------------------------------------------------
-// The pre-registry parser defaulted any unrecognized extension
-// to the JavaScript grammar (see getLanguageForFile's fallback
-// branch). Preserve that behavior here: the registry itself
-// stays strict, but parseFile() falls back to the JavaScript
-// worker when a file's extension isn't registered.
-// --------------------------------------------------
-
-function resolveWorker(filePath) {
-
-    try {
-        return getWorkerForFile(filePath);
-    } catch {
-        return javascriptWorker;
-    }
-}
 
 
 
@@ -34,7 +12,8 @@ function resolveWorker(filePath) {
 // 2-Converts the path into an absolute path.
 // 3-Checks whether the file exists.
 // 4-Reads the entire file.
-// 5-Selects the worker from the file extension.
+// 5-Resolves the worker via the Language Registry (throws for
+//   an unsupported extension).
 // 6-Parses the source code via the worker's grammar.
 // 7-Throws an error when throwOnError is enabled.
 // 8-Sends the syntax tree to the worker's extractDeclarations().
@@ -90,7 +69,7 @@ export function parseFile(
 
 
     const worker =
-        resolveWorker(
+        getWorkerForFile(
             absolutePath
         );
 
