@@ -517,6 +517,71 @@ function createBatches(
 // RUN EVOLUTION
 // --------------------------------------------------
 
+// --------------------------------------------------
+// READ INTENT PLAN
+// --------------------------------------------------
+// 1-Reads .planmap/plan.json when it exists.
+// 2-Invalid plans degrade to no authoritative vocabulary.
+// 3-Existing Evolution behaviour remains unchanged.
+// --------------------------------------------------
+
+function readEvolutionPlan(
+    projectRoot
+) {
+
+    const planPath =
+        path.join(
+            projectRoot,
+            ".planmap",
+            "plan.json"
+        );
+
+
+    if (
+        !fs.existsSync(
+            planPath
+        )
+    ) {
+
+        return null;
+    }
+
+
+    try {
+
+        const plan =
+            JSON.parse(
+                fs.readFileSync(
+                    planPath,
+                    "utf8"
+                )
+            );
+
+
+        if (
+            !plan ||
+            typeof plan !== "object"
+        ) {
+
+            return null;
+        }
+
+
+        return plan;
+
+    } catch (
+        error
+    ) {
+
+        console.warn(
+            `Warning: unable to read ${planPath}; using derived Evolution vocabulary.`
+        );
+
+        return null;
+    }
+}
+
+
 export async function runEvolution(
     projectPath,
     markdownRequested = false
@@ -633,6 +698,12 @@ export async function runEvolution(
 
     const evolution =
         readEvolution(
+            projectRoot
+        );
+
+
+    const plan =
+        readEvolutionPlan(
             projectRoot
         );
 
@@ -818,7 +889,8 @@ export async function runEvolution(
 
                 const vocabulary =
                     getEvolutionVocabulary(
-                        updatedEvolution
+                        updatedEvolution,
+                        plan
                     );
 
 
@@ -856,7 +928,8 @@ export async function runEvolution(
                             Number(
                                 process.env.PLANMAP_MAX_TAGS ||
                                 8
-                            )
+                            ),
+                            vocabulary.authoritative
                         );
 
                     console.log(

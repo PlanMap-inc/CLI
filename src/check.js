@@ -1,3 +1,7 @@
+import {
+    createSessionManager
+} from "./session-manager.js";
+
 import fs from "node:fs";
 import path from "node:path";
 import { appendEvent } from "./events.js";
@@ -99,7 +103,8 @@ export function runCheck(
     projectRoot,
     scanProject,
     parseFile,
-    diffDeclarations
+    diffDeclarations,
+    scanOptions = {}
 ) {
     const baseline =
         readBaseline(
@@ -113,7 +118,10 @@ export function runCheck(
     const currentDeclarations =
         scanProject(
             projectRoot,
-            parseFile
+            {
+                ...scanOptions,
+                parseFile
+            }
         );
 
     const changes =
@@ -123,24 +131,70 @@ export function runCheck(
         );
 
     // --------------------------------------------------
-    // RECORD REAL CHANGES
+    // RECORD CHECK SESSION
     // --------------------------------------------------
-    // appendEvent() already ignores "unchanged"
-    // results and records:
-    //   - changed
-    //   - added
-    //   - deleted
+    // A check invocation is a one-shot session boundary.
+    // It must not merge its changes into an active
+    // watch session.
     //
-    // The baseline is NOT modified here.
+    // The session must be opened before events are
+    // appended so the event timestamps fall inside
+    // the session time window used by evolution.
     // --------------------------------------------------
 
-    for (
-        const change
-        of changes
+    const realChanges =
+        changes.filter(
+            change =>
+                change.type === "changed" ||
+                change.type === "added" ||
+                change.type === "deleted"
+        );
+
+    if (
+        realChanges.length > 0
     ) {
-        appendEvent(
-            projectRoot,
-            change
+        const sessionManager =
+            createSessionManager(
+                projectRoot,
+                {
+                    createActiveSession:
+                        false
+                }
+            );
+
+        sessionManager.recordOneShotSession(
+            realChanges,
+            "check",
+            () => {
+                // --------------------------------------------------
+                // RECORD REAL CHANGES
+                // --------------------------------------------------
+                // appendEvent() writes the durable audit event
+                // while the isolated check session is still open.
+                //
+                // The baseline is NOT modified here.
+                // --------------------------------------------------
+
+                const appendedChanges = [];
+
+                for (
+                    const change
+                    of realChanges
+                ) {
+                    if (
+                        appendEvent(
+                            projectRoot,
+                            change
+                        ) === true
+                    ) {
+                        appendedChanges.push(
+                            change
+                        );
+                    }
+                }
+
+                return appendedChanges;
+            }
         );
     }
 

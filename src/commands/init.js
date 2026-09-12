@@ -23,7 +23,8 @@ import { checkDuplicates } from "../declarations/utils.js";
 // --------------------------------------------------
 
 export function runInit(
-    projectPath
+    projectPath,
+    options = {}
 ) {
     if (
         !projectPath
@@ -71,7 +72,9 @@ export function runInit(
     const declarations =
         scanProject(
             projectRoot,
-            parseFile
+            {
+                verbose: options.verbose
+            }
         );
 
     checkDuplicates(

@@ -35,7 +35,8 @@ export async function classifyEvolutionEvents(
     events,
     existingFeatures,
     existingTags,
-    maxTags
+    maxTags,
+    authoritative = false
 ) {
 
     // --------------------------------------------------
@@ -64,7 +65,8 @@ export async function classifyEvolutionEvents(
             events,
             existingFeatures,
             existingTags,
-            maxTags
+            maxTags,
+            authoritative
         );
 
 

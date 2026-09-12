@@ -84,7 +84,7 @@ export function appendEvent(
         change.type !== "added" &&
         change.type !== "deleted"
     ) {
-        return;
+        return false;
     }
 
     const eventsPath =
@@ -137,31 +137,82 @@ export function appendEvent(
                         line.trim()
                 );
 
-        if (lines.length > 0) {
+        /*
+         * Lifecycle markers are audit metadata.
+         * They must not break declaration-event deduplication.
+         *
+         * Find the LAST declaration event for THIS identity.
+         *
+         * Deduplication is intentionally scoped per identity.
+         *
+         * This prevents interleaved declarations from defeating
+         * deduplication:
+         *
+         *   f: 200 → 203
+         *   g: ...
+         *   f: 200 → 203
+         *
+         * while still allowing a legitimate later recurrence:
+         *
+         *   f: 200 → 203
+         *   f: 203 → 200
+         *   f: 200 → 203
+         */
+
+        const lifecycleEventTypes =
+            new Set([
+                "session_started",
+                "session_sealed"
+            ]);
+
+        let lastEventForIdentity =
+            null;
+
+        for (
+            let index =
+                lines.length - 1;
+            index >= 0;
+            index--
+        ) {
             try {
-                const lastEvent =
+                const candidate =
                     JSON.parse(
-                        lines[lines.length - 1]
+                        lines[index]
                     );
 
-                const sameEvent =
-                    lastEvent.identity ===
+                if (
+                    candidate &&
+                    candidate.identity ===
                         event.identity &&
-                    lastEvent.type ===
-                        event.type &&
-                    JSON.stringify(
-                        lastEvent.delta || {}
-                    ) ===
-                        JSON.stringify(
-                            event.delta || {}
-                        );
+                    !lifecycleEventTypes.has(
+                        candidate.type
+                    )
+                ) {
+                    lastEventForIdentity =
+                        candidate;
 
-                if (sameEvent) {
-                    return;
+                    break;
                 }
             } catch {
                 // Ignore malformed historical lines.
-                // The new event can still be appended.
+            }
+        }
+
+        if (
+            lastEventForIdentity
+        ) {
+            const sameEvent =
+                lastEventForIdentity.type ===
+                    event.type &&
+                JSON.stringify(
+                    lastEventForIdentity.delta || {}
+                ) ===
+                    JSON.stringify(
+                        event.delta || {}
+                    );
+
+            if (sameEvent) {
+                return false;
             }
         }
     }
@@ -171,6 +222,8 @@ export function appendEvent(
         JSON.stringify(event) + "\n",
         "utf8"
     );
+
+    return true;
 }
 
 
