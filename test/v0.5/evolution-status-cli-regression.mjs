@@ -61,7 +61,7 @@ const init =
         [
             path.join(
                 repoRoot,
-                "src/cli.js"
+                "src/cli/cli.js"
             ),
             "init",
             projectRoot
@@ -104,7 +104,7 @@ const evolution =
         [
             path.join(
                 repoRoot,
-                "src/cli.js"
+                "src/cli/cli.js"
             ),
             "evolution",
             projectRoot

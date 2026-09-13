@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { verifyPlan } from "../../src/plan/verify.js";
+import { verifyPlan } from "../../src/verification/engine.js";
 
 function makeProject() {
     return fs.mkdtempSync(

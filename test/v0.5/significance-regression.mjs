@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { analyzeSignificance } from "../../src/evolution/significance.js";
+import { analyzeSignificance } from "../../src/changes/significance.js";
 
 function session(netDelta) {
     return {

@@ -1,9 +1,9 @@
-import { scanProject } from "../../src/scanner.js";
+import { scanProject } from "../../src/baseline/scanner.js";
 import { resolveProjectImports } from "../../src/dependencies/resolver.js";
 import { buildCallerIndex } from "../../src/dependencies/callers.js";
 import { joinDependencies } from "../../src/dependencies/join.js";
 import { buildGraph } from "../../src/dependencies/graph.js";
-import { findImpact } from "../../src/dependencies/impact.js";
+import { findImpact } from "../../src/impact/analysis.js";
 
 const root = process.cwd();
 
@@ -33,7 +33,7 @@ const graph =
     });
 
 const target =
-    "src/properties.js::extractProperties:function";
+    "src/baseline/properties.js::extractProperties:function";
 
 const incoming =
     graph.edges.filter(

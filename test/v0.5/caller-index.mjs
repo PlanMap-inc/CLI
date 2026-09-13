@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { scanProject } from "../../src/scanner.js";
+import { scanProject } from "../../src/baseline/scanner.js";
 import {
     buildCallerIndex,
     findCallers
