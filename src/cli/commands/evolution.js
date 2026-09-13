@@ -801,6 +801,9 @@ export async function runEvolution(
         let totalClassified =
             0;
 
+        let failedBatchCount =
+            0;
+
 
         // --------------------------------------------------
         // OFFLINE MODE
@@ -945,18 +948,16 @@ export async function runEvolution(
                     );
 
                     console.warn(
-                        `Evolution classification stopped: ${error.message}`
+                        `Falling back to path-based labels for this batch: ${error.message}`
                     );
 
                     console.warn(
-                        "Previously successful batches have already been persisted."
+                        "This batch will be retried automatically on a future run."
                     );
 
-                    console.warn(
-                        "Run the evolution command again to retry the remaining events."
-                    );
+                    failedBatchCount++;
 
-                    break;
+                    batchClassifications = [];
                 }
 
 
@@ -1001,8 +1002,20 @@ export async function runEvolution(
             }
 
             console.log(
-                `\nTotal LLM classifications applied: ${totalClassified}`
+                `\nEvolution classification: ${labelBatches.length} batch(es) · ` +
+                `${labelBatches.length - failedBatchCount} succeeded · ` +
+                `${failedBatchCount} fell back to path labels`
             );
+
+            console.log(
+                `Total LLM classifications applied: ${totalClassified}`
+            );
+
+            if (
+                failedBatchCount > 0
+            ) {
+                process.exitCode = 1;
+            }
         }
     }
 
