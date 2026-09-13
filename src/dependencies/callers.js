@@ -61,7 +61,7 @@ function normalizeCalls(
 export function buildCallerIndex(
     declarations
 ) {
-    const callers = {};
+    const callers = Object.create(null);
 
     for (
         const declaration

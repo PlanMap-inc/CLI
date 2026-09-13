@@ -273,6 +273,17 @@ export function joinDependencies(
  * ------------------------------------------------------------
  */
 
+/*
+ * This index is keyed by file path, not by an arbitrary
+ * identifier. A path that collides with an Object.prototype
+ * member (e.g. a file literally named "toString" with no
+ * extension) is rejected by scanner.js's isSourceFile before
+ * it ever reaches this function, so the plain object here is
+ * safe. See src/dependencies/callers.js, which fixed the same
+ * shape of bug for a key space that IS attacker/author-chosen
+ * (call-expression callee names).
+ */
+
 export function buildDeclarationFileIndex(
     declarations
 ) {
