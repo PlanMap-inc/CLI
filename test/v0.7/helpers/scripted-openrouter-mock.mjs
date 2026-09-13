@@ -1,3 +1,8 @@
+// Mock for OpenRouter API: returns different responses per call order from a script.
+// Reads PLANMAP_MOCK_SCRIPT env var (JSON array of {classifications:[...]}, {fail:true},
+// or {truncated:true}). Use this when you need to simulate different behavior on
+// different OpenRouter calls; use the shared mock-openrouter.mjs for a single fixed response.
+
 const realFetch = globalThis.fetch;
 
 let callIndex = 0;

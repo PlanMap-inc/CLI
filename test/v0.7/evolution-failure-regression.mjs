@@ -109,6 +109,12 @@ function runEvolution(projectRoot, script) {
         "batch 5 must still be classified after batch 3 fails"
     );
 
+    assert.notEqual(
+        result.code,
+        0,
+        "a truncated batch must also set a non-zero exit code"
+    );
+
     console.log("PASS: scenario 1 - later batches survive a truncated batch");
 }
 
