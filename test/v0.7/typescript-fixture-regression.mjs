@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = path.resolve(
-    path.dirname(new URL(import.meta.url).pathname),
+    path.dirname(fileURLToPath(import.meta.url)),
     "../.."
 );
 
@@ -18,6 +18,17 @@ const EXPECTED_COUNTS = {
     "object-collision.ts": 6,
     "string-key-collision.ts": 6,
     "namespace-and-abstract.ts": 3
+};
+
+// A namespace block doesn't create its own declaration - it only prefixes
+// the names of the declarations inside it. A broken namespace hook can
+// leave the declaration COUNT unchanged while the qualified NAMES are
+// wrong (missing prefix, or - worse - distinct namespaces collapsing
+// onto the same unprefixed name). Assert on names for the fixtures where
+// that matters.
+const EXPECTED_NAMES = {
+    "namespace-and-abstract.ts": ["Format.upper", "Shape", "Shape.describe"],
+    "collisions.ts": ["A.boot", "B.boot"]
 };
 
 for (const [file, expected] of Object.entries(EXPECTED_COUNTS)) {
@@ -39,6 +50,16 @@ for (const [file, expected] of Object.entries(EXPECTED_COUNTS)) {
         expected,
         `${file}: expected ${expected} declarations, got ${count}`
     );
+
+    const expectedNames = EXPECTED_NAMES[file];
+    if (expectedNames) {
+        for (const name of expectedNames) {
+            assert.ok(
+                result.stdout.includes(name),
+                `${file}: expected qualified name "${name}" in output:\n${result.stdout}`
+            );
+        }
+    }
 }
 
 console.log("PASS: typescript fixture regression");
