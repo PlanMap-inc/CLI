@@ -26,3 +26,6 @@ coverage/
 # IDE
 .vscode/
 .idea/
+
+# Subagent-driven-development scratch workspaces
+.superpowers/
