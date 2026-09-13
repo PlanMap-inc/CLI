@@ -7,7 +7,7 @@ import {
 } from "web-tree-sitter";
 
 import { ensureTreeSitterInitialized } from "./tree-sitter-runtime.js";
-import { walk } from "../walk.js";
+import { extractTypeScriptDeclarations } from "../walkers/typescript-walker.js";
 
 
 // --------------------------------------------------
@@ -76,6 +76,6 @@ export const typescriptWorker = {
     },
 
     extractDeclarations(tree) {
-        return walk(tree.rootNode);
+        return extractTypeScriptDeclarations(tree.rootNode);
     }
 };
