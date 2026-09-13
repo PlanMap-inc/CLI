@@ -18,7 +18,7 @@ import { getExpressionText } from "../nodes.js";
 
 
 // --------------------------------------------------
-// JAVASCRIPT NAMING
+// SHARED NAMING
 // --------------------------------------------------
 
 function getDeclarationName(node) {
@@ -108,7 +108,7 @@ function getNamedCallScope(node) {
 
 
 // --------------------------------------------------
-// JAVASCRIPT NODE RULES
+// SHARED NODE RULES
 // --------------------------------------------------
 
 function visitNode(
