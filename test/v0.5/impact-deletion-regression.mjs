@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import {
     findImpact
-} from "../../src/dependencies/impact.js";
+} from "../../src/impact/analysis.js";
 
 
 /*

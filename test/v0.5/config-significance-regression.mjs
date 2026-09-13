@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 import {
     analyzeSignificance
-} from "../../src/evolution/significance.js";
+} from "../../src/changes/significance.js";
 
 
 // --------------------------------------------------

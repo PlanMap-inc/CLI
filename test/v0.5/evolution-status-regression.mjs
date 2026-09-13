@@ -285,3 +285,94 @@ assert.equal(
 console.log(
     "PASS: evolution status regression"
 );
+
+/*
+ * ------------------------------------------------------------
+ * VERIFICATION STATUS
+ * ------------------------------------------------------------
+ */
+
+import {
+    applyVerificationStatus
+} from "../../src/evolution/status.js";
+
+const verificationEvolution = {
+    version: 1,
+
+    nodes: [
+        {
+            id: "evolution_001",
+            identity: "src/auth.js::verifyToken:function",
+            ts: "2026-09-06T10:00:00.000Z"
+        },
+        {
+            id: "evolution_002",
+            identity: "src/auth.js::verifyToken:function",
+            ts: "2026-09-06T11:00:00.000Z"
+        },
+        {
+            id: "evolution_003",
+            identity: "src/db.js::loadUser:function",
+            ts: "2026-09-06T10:30:00.000Z"
+        }
+    ]
+};
+
+const verifiedEvolution =
+    applyVerificationStatus(
+        verificationEvolution,
+        [
+            {
+                identity:
+                    "src/auth.js::verifyToken:function",
+
+                planNodeId:
+                    "node_verify",
+
+                planVersion:
+                    2,
+
+                status:
+                    "implemented"
+            }
+        ]
+    );
+
+assert.equal(
+    verifiedEvolution.nodes[0].status,
+    "superseded"
+);
+
+assert.equal(
+    verifiedEvolution.nodes[0].statusSource,
+    "verified"
+);
+
+assert.equal(
+    verifiedEvolution.nodes[1].status,
+    "implemented"
+);
+
+assert.equal(
+    verifiedEvolution.nodes[1].statusSource,
+    "verified"
+);
+
+assert.equal(
+    verifiedEvolution.nodes[1].verifiedAgainst,
+    "node_verify@2"
+);
+
+assert.equal(
+    verifiedEvolution.nodes[2].status,
+    undefined
+);
+
+assert.equal(
+    verificationEvolution.nodes[0].status,
+    undefined
+);
+
+console.log(
+    "PASS: verification status regression"
+);
