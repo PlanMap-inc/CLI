@@ -917,7 +917,7 @@ export async function runEvolution(
                     const {
                         classifyEvolutionEvents
                     } = await import(
-                        "../llm.js"
+                        "../../llm/llm.js"
                     );
 
                     batchClassifications =
