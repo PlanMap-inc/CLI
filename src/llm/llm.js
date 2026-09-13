@@ -110,14 +110,16 @@ export async function classifyEvolutionEvents(
                         // --------------------------------------------------
                         // BATCHED REQUEST CEILING
                         // --------------------------------------------------
-                        // Evolution events are now processed in batches
-                        // of 30. A 2500-token ceiling gives each batch
-                        // enough room without reserving the old 8000-token
-                        // maximum for every request.
+                        // Evolution events are processed in batches of
+                        // 30 (see BATCH_SIZE in cli/commands/evolution.js).
+                        // 2500 tokens was not enough for a full batch of
+                        // long identifiers and caused truncated, invalid
+                        // JSON responses. 8000 matches the ceiling used
+                        // before batching was introduced.
                         // --------------------------------------------------
 
                         max_tokens:
-                            2500
+                            8000
                     })
             }
         );
