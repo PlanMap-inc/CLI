@@ -1,0 +1,50 @@
+{
+  "name": "planmap-vscode",
+  "displayName": "PlanMap",
+  "description": "See what you approved and what your code actually does, as one map.",
+  "version": "0.1.0",
+  "publisher": "planmap",
+  "private": true,
+  "license": "BUSL-1.1",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "planmap.open",
+        "title": "Open Plan Graph",
+        "category": "PlanMap"
+      }
+    ],
+    "configuration": {
+      "title": "PlanMap",
+      "properties": {
+        "planmap.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the PlanMap CLI entry file. Leave empty to use the CLI in this repository (../src/cli/cli.js)."
+        },
+        "planmap.nodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Node executable used to run the CLI. Leave empty to use VS Code's bundled runtime."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "tsc -p . && for t in test/*.mjs; do node \"$t\" || exit 1; done"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.90.0",
+    "typescript": "^7.0.2"
+  }
+}
