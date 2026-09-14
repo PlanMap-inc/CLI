@@ -104,7 +104,6 @@ button{font:inherit;}
 .canvas-content.flying{transition:transform .45s cubic-bezier(.2,.7,.2,1);}
 svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:none;overflow:visible;}
 .edge-path{fill:none;stroke:var(--edge);stroke-width:1.6;transition:opacity .2s;}
-.edge-path.faded{opacity:.15;}
 
 .gnode{position:absolute;width:172px;padding:12px 13px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s, box-shadow .15s, transform .12s, opacity .2s;text-align:left;color:inherit;font:inherit;}
 .gnode:hover{border-color:var(--text-low);transform:translateY(-2px);box-shadow:0 12px 28px -14px rgba(0,0,0,.8);}
@@ -122,8 +121,6 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .gnode.status-superseded{opacity:.4;}
 .gnode.pulse .status-pill .dot{animation:driftPulse 1.6s ease-in-out infinite;}
 @keyframes driftPulse{0%,100%{box-shadow:0 0 0 3px rgba(255,92,92,.18);}50%{box-shadow:0 0 0 6px rgba(255,92,92,.05);}}
-.gnode.faded{opacity:.15;}
-.gnode.faded:hover{opacity:.35;}
 
 .handle{position:absolute;left:50%;transform:translateX(-50%);width:9px;height:9px;border-radius:50%;background:var(--void);border:1.6px solid var(--text-low); opacity:0; transition:opacity .15s;pointer-events:none;}
 .gnode:hover .handle, .gnode.selected .handle{opacity:1;}
