@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}}; font-src {{cspSource}}; img-src {{cspSource}}; script-src 'nonce-{{nonce}}' {{cspSource}};" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="stylesheet" href="{{stylesUri}}" />
+<title>Plan Graph</title>
+</head>
+<body>
+<div class="planmap-root">
+
+  <nav class="app-rail" aria-label="PlanMap views">
+    <div class="rail-mark"></div>
+    <button class="nav-icon-btn active" data-nav="planmap" title="Plan Graph" aria-label="Plan Graph" aria-current="page">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <rect x="7.5" y="2" width="5" height="4" rx="1"/><rect x="2" y="14" width="5" height="4" rx="1"/><rect x="13" y="14" width="5" height="4" rx="1"/>
+        <path d="M10 6v4M4.5 14v-2.5h11V14"/>
+      </svg>
+    </button>
+    <button class="nav-icon-btn inert" data-nav="evolution" title="Evolution Graph arrives in a later build" aria-label="Evolution Graph (not available yet)" aria-disabled="true">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <path d="M4 3v11a2 2 0 0 0 2 2h4M4 8h4"/><circle cx="15" cy="16" r="1.8"/><circle cx="14" cy="8" r="1.8"/><path d="M8 8h4"/>
+      </svg>
+    </button>
+  </nav>
+
+  <div class="content-row">
+    <div class="main-panel">
+
+      <div class="view" id="viewPlanmap">
+        <div class="toolbar">
+          <div class="breadcrumb" id="breadcrumb"><span class="crumb current">Constellation</span></div>
+          <div class="lens-switch plan" id="lensSwitch" role="radiogroup" aria-label="Lens"></div>
+          <div class="view-controls">
+            <button class="icon-btn inert" id="addNodeBtn" title="Adding nodes needs a CLI command that doesn't exist yet" aria-disabled="true">+ Add node</button>
+            <div class="zoom-controls">
+              <button id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
+              <div class="zoom-label" id="zoomLabel">100%</div>
+              <button id="zoomInBtn" title="Zoom in" aria-label="Zoom in">+</button>
+              <button id="zoomResetBtn" class="reset-btn" title="Fit to content" aria-label="Fit to content">⤢</button>
+            </div>
+            <div class="compile-controls">
+              <button class="icon-btn inert" id="compileBtn" title="Approving the whole plan arrives with plan editing" aria-disabled="true">Approve plan</button>
+              <button class="icon-btn implement-btn" id="implementBtn" disabled title="Available after the plan is approved">Hand to agent</button>
+              <button class="icon-btn inert" id="verifyBtn" title="Verify arrives in the next build" aria-disabled="true">Verify against code</button>
+            </div>
+          </div>
+        </div>
+        <div class="workspace">
+          <div class="canvas-area">
+            <div class="graph-canvas" id="constellationCanvas">
+              <div class="grid-layer" id="constellationGrid"></div>
+              <div class="canvas-content" id="constellationContent"><svg class="edges" id="constellationEdges"></svg></div>
+            </div>
+            <div class="graph-canvas hidden" id="featureCanvas">
+              <div class="grid-layer" id="featureGrid"></div>
+              <div class="canvas-content" id="featureContent"><svg class="edges" id="featureEdges"></svg></div>
+              <div class="flow-tag"><span class="arrow-up">↑</span> step order</div>
+            </div>
+            <div class="compile-banner" id="compileBanner"></div>
+            <div class="empty-state" id="emptyState" hidden><div class="empty-card" id="emptyCard"></div></div>
+          </div>
+          <aside class="impact-panel" id="impactPanel" aria-label="Node detail"><div class="impact-inner" id="impactInner"></div></aside>
+        </div>
+        <div class="statusbar">
+          <div class="legend-item"><span class="legend-dot intended"></span>intended</div>
+          <div class="legend-item"><span class="legend-dot approved"></span>approved</div>
+          <div class="legend-item"><span class="legend-dot implemented"></span>implemented</div>
+          <div class="legend-item"><span class="legend-dot drifted"></span>drifted</div>
+          <div class="legend-item"><span class="legend-dot error"></span>error</div>
+          <div class="legend-item"><span class="legend-dot superseded"></span>superseded</div>
+          <div class="spacer"></div>
+          <div id="statusHint">Loading plan…</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script type="module" nonce="{{nonce}}" src="{{mainUri}}"></script>
+</body>
+</html>
