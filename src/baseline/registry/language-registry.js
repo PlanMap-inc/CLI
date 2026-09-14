@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { javascriptWorker } from "../workers/javascript-worker.js";
 import { typescriptWorker } from "../workers/typescript-worker.js";
+import { pythonWorker } from "../workers/python-worker.js";
 
 
 // --------------------------------------------------
@@ -38,3 +39,4 @@ export function getWorkerForFile(filePath) {
 
 registerWorker(javascriptWorker);
 registerWorker(typescriptWorker);
+registerWorker(pythonWorker);

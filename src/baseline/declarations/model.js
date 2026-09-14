@@ -12,7 +12,8 @@ export function createDeclaration(
     node,
     name,
     kind,
-    modifiers = []
+    modifiers = [],
+    propertiesExtractor = extractProperties
 ) {
 
     const identityParts = [
@@ -38,6 +39,6 @@ export function createDeclaration(
         startColumn: node.startPosition.column,
         endLine: node.endPosition.row + 1,
         endColumn: node.endPosition.column,
-        properties: extractProperties(node)
+        properties: propertiesExtractor(node)
     };
 }
