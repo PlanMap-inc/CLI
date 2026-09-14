@@ -7,25 +7,34 @@ import {
     FEATURE_PALETTE,
     LENS_PALETTE,
     buildConstellation,
+    buildFeatureGraph,
     colorAt,
-    fadedIds,
     lensColors
 } from "../webview/model.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-// Filtering on lensTags: non-matching nodes are faded, never removed.
-const nodes = [
-    { id: "n1", lensTags: ["security", "backend"] },
-    { id: "n2", lensTags: ["backend"] },
-    { id: "n3", lensTags: [] },
-    { id: "n4" }
-];
+// Filtering on lensTags: a lens shows only its nodes, and edges between them.
+const plan = {
+    features: [{ id: "f", name: "F" }],
+    nodes: [
+        { id: "n1", feature: "f", lensTags: ["security", "backend"], edgesOut: ["n2"] },
+        { id: "n2", feature: "f", lensTags: ["backend"], edgesOut: ["n3"] },
+        { id: "n3", feature: "f", lensTags: [], edgesOut: [] },
+        { id: "n4", feature: "f" }
+    ]
+};
+const ids = lensId => buildFeatureGraph(plan, "f", {}, lensId).nodes.map(n => n.id).sort();
 
-assert.deepEqual([...fadedIds(nodes, "security")].sort(), ["n2", "n3", "n4"]);
-assert.deepEqual([...fadedIds(nodes, "backend")].sort(), ["n3", "n4"]);
-assert.equal(fadedIds(nodes, null).size, 0, "no active lens fades nothing");
-assert.equal(nodes.length, 4, "filtering does not remove nodes");
+assert.deepEqual(ids("security"), ["n1"]);
+assert.deepEqual(ids("backend"), ["n1", "n2"]);
+assert.deepEqual(ids(null), ["n1", "n2", "n3", "n4"], "no active lens shows everything");
+assert.deepEqual(buildFeatureGraph(plan, "f", {}, "security").edges, [], "edges to hidden nodes are dropped");
+assert.deepEqual(buildFeatureGraph(plan, "f", {}, "backend").edges, [{ from: "n1", to: "n2" }]);
+
+const backendYs = buildFeatureGraph(plan, "f", {}, "backend").nodes.map(n => n.y).sort((a, b) => a - b);
+// Rows snap to the grid, so the step is ~150px; a hidden row in between would double it.
+assert.ok(backendYs[1] - backendYs[0] < 200, "hidden nodes leave no gap in the column");
 
 // Lens colours come from position, not from the lens name.
 const django = { lenses: [{ id: "models", label: "Models" }, { id: "views", label: "Views" }, { id: "tasks", label: "Tasks" }] };

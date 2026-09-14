@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { buildConstellation, buildFeatureGraph, NODE_W } from "../webview/model.js";
+import { buildConstellation, buildFeatureGraph, NODE_H_EST } from "../webview/model.js";
 
 const plan = {
     version: 1,
@@ -47,10 +47,10 @@ assert.equal(orders.nodes.length, 3);
 assert.equal(orders.edges.length, 3);
 for (const n of orders.nodes) assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
 
-// Siblings on the same layer do not overlap.
-const layerTwo = orders.nodes.filter(n => n.id === "o2" || n.id === "o3");
-assert.equal(layerTwo[0].y, layerTwo[1].y);
-assert.ok(Math.abs(layerTwo[0].x - layerTwo[1].x) >= NODE_W);
+// Siblings on the same layer still get their own row: one vertical column, no overlap.
+assert.equal(new Set(orders.nodes.map(n => n.x)).size, 1);
+const ys = orders.nodes.map(n => n.y).sort((a, b) => a - b);
+for (let i = 1; i < ys.length; i++) assert.ok(ys[i] - ys[i - 1] >= NODE_H_EST, "rows overlap");
 
 assert.deepEqual(buildFeatureGraph(plan, "empty", {}), { nodes: [], edges: [] });
 

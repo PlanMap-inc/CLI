@@ -6,7 +6,6 @@ import {
     colorAt,
     describeHistory,
     describeRules,
-    fadedIds,
     lensColors,
     FEATURE_PALETTE,
     statusClass,
@@ -44,7 +43,7 @@ function scaledAboutCenter(view, factor, w, h) {
 
 // ================= GRAPH (the demo's createGraph, fed real data) =================
 function createGraph(canvasEl, gridEl, contentEl, opts) {
-    let nodes = [], edges = [], faded = new Set();
+    let nodes = [], edges = [];
     let selectedId = null, onSelect = null, onOpen = null, dotColor = "var(--accent-a)", edgeColor = "var(--edge)";
     let panX = 0, panY = 0, scale = 1, panning = false, panStart = null, panOrigin = null;
 
@@ -66,7 +65,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     function renderNode(n) {
         const el = document.createElement("button");
         el.type = "button";
-        el.className = `gnode ${statusClass(n.status)}` + (n.id === selectedId ? " selected" : "") + (faded.has(n.id) ? " faded" : "");
+        el.className = `gnode ${statusClass(n.status)}` + (n.id === selectedId ? " selected" : "");
         el.dataset.id = n.id;
         el.style.left = n.x + "px";
         el.style.top = n.y + "px";
@@ -134,8 +133,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             const d = opts.horizontal
                 ? elbowPathH(a.x + NODE_W, a.y + NODE_H_EST / 2, b.x, b.y + NODE_H_EST / 2)
                 : elbowPath(a.x + NODE_W / 2, a.y, b.x + NODE_W / 2, b.y + NODE_H_EST);
-            const dim = faded.has(a.id) || faded.has(b.id) ? " faded" : "";
-            markup += `<path class="edge-path${dim}" d="${d}" style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
+            markup += `<path class="edge-path" d="${d}" style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
         });
         svgEl.innerHTML = markup;
     }
@@ -206,14 +204,12 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     return {
         setData(next) {
             nodes = next.nodes; edges = next.edges;
-            faded = next.faded ?? new Set();
             dotColor = next.dotColor ?? dotColor;
             edgeColor = next.edgeColor ?? edgeColor;
             onOpen = next.onOpen ?? onOpen;
             if (selectedId && !nodes.some(n => n.id === selectedId)) selectedId = null;
             render();
         },
-        setFaded(next) { faded = next; render(); },
         clearSelection: deselect,
         zoomIn: () => { const r = canvasEl.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 1.25); },
         zoomOut: () => { const r = canvasEl.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 0.8); },
@@ -265,7 +261,7 @@ function mountConstellation() {
 
 function mountFeature() {
     const p = plan();
-    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus);
+    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus, currentLensId);
     const colors = lensColors(p);
     const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
     const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
@@ -273,7 +269,6 @@ function mountFeature() {
     featureGraph.setData({
         nodes: graph.nodes.map(n => ({ ...n, color })),
         edges: graph.edges,
-        faded: fadedIds(graph.nodes, currentLensId),
         dotColor: color,
         edgeColor: currentLensId ? color : "var(--edge)",
         onOpen: n => openDetail(n)
@@ -293,6 +288,7 @@ function renderLensSwitch() {
             currentLensId = btn.dataset.lens;
             renderLensSwitch();
             mountFeature();
+            featureGraph.fitToContent();
             updateHint();
         });
     });
@@ -311,8 +307,11 @@ function updateHint() {
     if (!state || state.setup !== "ready") { statusHint.textContent = ""; return; }
     if (inFeature) {
         const lens = lensById(currentLensId);
-        statusHint.textContent = lens
-            ? `Feature Space · ${lens.label} lens · scroll to zoom, drag empty space to pan`
+        const shown = featureGraph.nodes.length;
+        statusHint.textContent = lens && shown === 0
+            ? `Feature Space · no nodes in this feature have the ${lens.label} lens`
+            : lens
+            ? `Feature Space · ${lens.label} lens · ${shown} ${shown === 1 ? "node" : "nodes"} · scroll to zoom, drag empty space to pan`
             : "Feature Space · scroll to zoom, drag empty space to pan";
     } else {
         const count = plan().features.length;

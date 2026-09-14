@@ -122,21 +122,22 @@ export function buildConstellation(plan, verifiedStatus) {
 // --------------------------------------------------
 // FEATURE SPACE
 // --------------------------------------------------
-// Plan nodes carry no positions, so they are layered by longest path over
-// edgesOut and drawn bottom-to-top, matching the demo's "step order".
+// Plan nodes carry no positions, so they are ordered by longest path over
+// edgesOut and stacked one per row, bottom-to-top, matching the demo's
+// "step order". A lens shows only the nodes tagged with it.
 // --------------------------------------------------
 
 const TOP_Y = 60;
 const STEP_Y = 150;
-const STEP_X = 220;
 const CENTER_X = 300;
 
 export function nodeSub(node) {
     return node?.identity ? node.identity.split("::").pop() : "greenfield";
 }
 
-export function buildFeatureGraph(plan, featureId, verifiedStatus) {
-    const members = nodesInFeature(plan, featureId);
+export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null) {
+    const members = nodesInFeature(plan, featureId)
+        .filter(node => !lensId || (node.lensTags ?? []).includes(lensId));
     const ids = new Set(members.map(node => node.id));
 
     const edges = [];
@@ -150,32 +151,22 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus) {
     }
 
     const layer = layerByLongestPath(members, edges);
-    const maxLayer = Math.max(0, ...layer.values());
 
-    const byLayer = new Map();
+    // Stable sort keeps plan order within a layer.
+    // ponytail: one column, so an edge that skips a row is drawn behind the
+    // node between; route around it if plans with branches make that confusing.
+    const ordered = [...members].sort((a, b) => layer.get(a.id) - layer.get(b.id));
 
-    for (const node of members) {
-        const depth = layer.get(node.id);
-        if (!byLayer.has(depth)) byLayer.set(depth, []);
-        byLayer.get(depth).push(node);
-    }
-
-    const nodes = [];
-
-    for (const [depth, row] of byLayer) {
-        row.forEach((node, index) => {
-            nodes.push({
-                id: node.id,
-                title: node.title,
-                sub: nodeSub(node),
-                status: effectiveStatus(node, verifiedStatus),
-                lensTags: node.lensTags ?? [],
-                x: snap(CENTER_X + (index - (row.length - 1) / 2) * STEP_X),
-                y: snap(TOP_Y + (maxLayer - depth) * STEP_Y),
-                source: node
-            });
-        });
-    }
+    const nodes = ordered.map((node, row) => ({
+        id: node.id,
+        title: node.title,
+        sub: nodeSub(node),
+        status: effectiveStatus(node, verifiedStatus),
+        lensTags: node.lensTags ?? [],
+        x: snap(CENTER_X),
+        y: snap(TOP_Y + (ordered.length - 1 - row) * STEP_Y),
+        source: node
+    }));
 
     return { nodes, edges };
 }
@@ -232,15 +223,6 @@ export function lensColors(plan) {
         colors[lens.id] = colorAt(LENS_PALETTE, index);
     });
     return colors;
-}
-
-export function fadedIds(nodes, lensId) {
-    if (!lensId) return new Set();
-    return new Set(
-        nodes
-            .filter(node => !(node.lensTags ?? []).includes(lensId))
-            .map(node => node.id)
-    );
 }
 
 
