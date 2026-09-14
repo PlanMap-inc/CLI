@@ -32,6 +32,7 @@ const SKIP_DIRECTORIES = new Set([
 //   .js   JavaScript
 //   .ts   TypeScript
 //   .tsx  TypeScript + JSX
+//   .py   Python
 //
 // Type declaration files (.d.ts) are excluded.
 // --------------------------------------------------
@@ -60,7 +61,8 @@ export function isSourceFile(
     return (
         fileName?.endsWith(".js") ||
         fileName?.endsWith(".ts") ||
-        fileName?.endsWith(".tsx")
+        fileName?.endsWith(".tsx") ||
+        fileName?.endsWith(".py")
     );
 }
 
@@ -72,6 +74,7 @@ export function isSourceFile(
 //   .js  JavaScript
 //   .ts  TypeScript
 //   .tsx TypeScript + JSX
+//   .py  Python
 // --------------------------------------------------
 
 function findSourceFiles(projectRoot) {

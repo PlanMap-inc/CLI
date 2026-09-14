@@ -871,6 +871,604 @@ function resolveReExport(
 
 
 // ------------------------------------------------------------
+// PYTHON IMPORTS
+// ------------------------------------------------------------
+//
+// Python's import grammar and resolution rules are unrelated
+// to the ESM/CommonJS logic above: imports are dot-counted
+// relative ("from . import x", "from ..pkg import y") or
+// absolute from the project root, packages are directories
+// with __init__.py (not index.js), and there is no explicit
+// export keyword - any top-level name is importable.
+//
+// Scope is deliberately narrow, per the plan this implements:
+// exactly four import forms, one hop of __init__.py re-export
+// following, no sys.path handling, no namespace packages.
+// ------------------------------------------------------------
+
+function extractPythonImportRecords(tree) {
+
+    const records = [];
+
+    function visit(node) {
+
+        if (!node) {
+            return;
+        }
+
+        if (node.type === "import_statement") {
+
+            for (const child of node.namedChildren) {
+
+                if (child.type === "dotted_name") {
+
+                    records.push({
+                        dots: 0,
+                        modulePath: child.text,
+                        imported: null,
+                        local: child.text
+                    });
+
+                } else if (child.type === "aliased_import") {
+
+                    const dotted =
+                        child.namedChildren.find(
+                            c => c.type === "dotted_name"
+                        );
+
+                    const alias =
+                        child.namedChildren.find(
+                            c => c.type === "identifier"
+                        );
+
+                    records.push({
+                        dots: 0,
+                        modulePath: dotted?.text ?? null,
+                        imported: null,
+                        local: alias?.text ?? dotted?.text ?? null
+                    });
+                }
+            }
+
+            return;
+        }
+
+        if (node.type === "import_from_statement") {
+
+            const moduleNameNode =
+                node.childForFieldName("module_name");
+
+            /*
+             * module_name is always the first namedChild.
+             * Reference equality on node wrapper objects
+             * returned by separate accessor calls is not
+             * reliable in this binding - verified directly -
+             * so the specifier list is taken positionally.
+             */
+            const specifierNodes =
+                node.namedChildren.slice(1);
+
+            let dots = 0;
+            let modulePath = null;
+
+            if (moduleNameNode?.type === "relative_import") {
+
+                const prefix =
+                    moduleNameNode.namedChildren.find(
+                        c => c.type === "import_prefix"
+                    );
+
+                dots = prefix ? prefix.text.length : 0;
+
+                const dotted =
+                    moduleNameNode.namedChildren.find(
+                        c => c.type === "dotted_name"
+                    );
+
+                modulePath = dotted?.text ?? null;
+
+            } else if (moduleNameNode?.type === "dotted_name") {
+
+                modulePath = moduleNameNode.text;
+            }
+
+            for (const spec of specifierNodes) {
+
+                if (spec.type === "dotted_name") {
+
+                    records.push({
+                        dots,
+                        modulePath,
+                        imported: spec.text,
+                        local: spec.text
+                    });
+
+                } else if (spec.type === "aliased_import") {
+
+                    const dotted =
+                        spec.namedChildren.find(
+                            c => c.type === "dotted_name"
+                        );
+
+                    const alias =
+                        spec.namedChildren.find(
+                            c => c.type === "identifier"
+                        );
+
+                    records.push({
+                        dots,
+                        modulePath,
+                        imported: dotted?.text ?? null,
+                        local: alias?.text ?? dotted?.text ?? null
+                    });
+
+                } else if (spec.type === "wildcard_import") {
+
+                    records.push({
+                        dots,
+                        modulePath,
+                        imported: "*",
+                        local: "*"
+                    });
+                }
+            }
+
+            return;
+        }
+
+        for (const child of node.namedChildren) {
+            visit(child);
+        }
+    }
+
+    visit(tree.rootNode);
+    return records;
+}
+
+
+function resolvePythonModuleFile(
+    baseDir,
+    projectRoot,
+    dots,
+    modulePath
+) {
+
+    let dir;
+
+    if (dots === 0) {
+        dir = projectRoot;
+    } else {
+        dir = baseDir;
+        for (let i = 0; i < dots - 1; i++) {
+            dir = path.dirname(dir);
+        }
+    }
+
+    const segments =
+        modulePath ? modulePath.split(".") : [];
+
+    const target =
+        segments.length > 0
+            ? path.join(dir, ...segments)
+            : dir;
+
+    /*
+     * An over-deep relative import ("from .... import x" with
+     * more dots than the importer has ancestor directories
+     * inside the project) can walk above projectRoot. That can
+     * never match an in-project declaration, so treat it as
+     * unresolved rather than asserting a "certain" edge that
+     * points outside the project.
+     */
+    if (
+        path.relative(projectRoot, target).startsWith("..")
+    ) {
+        return null;
+    }
+
+    if (
+        fs.existsSync(target + ".py") &&
+        fs.statSync(target + ".py").isFile()
+    ) {
+        return {
+            file: target + ".py",
+            isPackage: false
+        };
+    }
+
+    const initFile = path.join(target, "__init__.py");
+
+    if (
+        fs.existsSync(initFile) &&
+        fs.statSync(initFile).isFile()
+    ) {
+        return {
+            file: initFile,
+            isPackage: true
+        };
+    }
+
+    return null;
+}
+
+
+function findTopLevelPythonDeclaration(
+    parsedFile,
+    importedName
+) {
+
+    if (
+        !importedName ||
+        !parsedFile ||
+        !Array.isArray(parsedFile.declarations)
+    ) {
+        return null;
+    }
+
+    /*
+     * A Python "from x import name" specifier can only ever
+     * name a top-level module member - never a nested/qualified
+     * one (there is no "from x import Class.method" in real
+     * Python). declaration.name holds the qualified name for a
+     * method ("Class.method"), so without this guard, a
+     * specifier that happens to carry a dot (tree-sitter parses
+     * "from mod import a.b" leniently even though it is not
+     * valid Python) would match a nested declaration and produce
+     * a confidently-wrong "certain" edge to it.
+     */
+    const matches =
+        parsedFile.declarations.filter(
+            declaration =>
+                declaration.name === importedName &&
+                !declaration.name.includes(".")
+        );
+
+    return matches.length === 1 ? matches[0] : null;
+}
+
+
+function resolveInitPyReexport(
+    projectRoot,
+    initFile,
+    importedName
+) {
+
+    let parsedInit;
+
+    try {
+        parsedInit = parseFile(initFile);
+    } catch {
+        return null;
+    }
+
+    const records = extractPythonImportRecords(parsedInit.tree);
+
+    for (const record of records) {
+
+        if (record.local !== importedName) {
+            continue;
+        }
+
+        const hopDots = record.dots === 0 ? 1 : record.dots;
+
+        const resolved =
+            resolvePythonModuleFile(
+                path.dirname(initFile),
+                projectRoot,
+                hopDots,
+                record.modulePath
+            );
+
+        if (!resolved) {
+            continue;
+        }
+
+        let parsedTarget;
+
+        try {
+            parsedTarget = parseFile(resolved.file);
+        } catch {
+            continue;
+        }
+
+        const declaration =
+            findTopLevelPythonDeclaration(
+                parsedTarget,
+                record.imported ?? importedName
+            );
+
+        if (declaration) {
+            return {
+                path: resolved.file,
+                declaration
+            };
+        }
+    }
+
+    return null;
+}
+
+
+function resolvePythonFileImports(
+    projectRoot,
+    absoluteImporter,
+    parsedImporter
+) {
+
+    const records = extractPythonImportRecords(parsedImporter.tree);
+    const edges = [];
+
+    const importerIdentity =
+        path.relative(projectRoot, absoluteImporter);
+
+    const baseDir = path.dirname(absoluteImporter);
+
+    for (const record of records) {
+
+        const isRelative = record.dots > 0;
+
+        /*
+         * "from . import X" / "from .. import X" - no
+         * modulePath. X may be a submodule file, or a name
+         * defined directly inside the package's __init__.py.
+         */
+        if (isRelative && !record.modulePath) {
+
+            const asSubmodule =
+                resolvePythonModuleFile(
+                    baseDir,
+                    projectRoot,
+                    record.dots,
+                    record.imported
+                );
+
+            if (asSubmodule) {
+
+                edges.push({
+                    from: importerIdentity,
+                    to: path.relative(projectRoot, asSubmodule.file),
+                    importer: absoluteImporter,
+                    source: record.modulePath,
+                    imported: record.imported,
+                    local: record.local,
+                    kind: "import",
+                    targetFile: asSubmodule.file,
+                    confidence: "certain",
+                    reason: "relative-submodule-resolved"
+                });
+
+                continue;
+            }
+
+            let packageDir = baseDir;
+
+            for (let i = 0; i < record.dots - 1; i++) {
+                packageDir = path.dirname(packageDir);
+            }
+
+            const initFile = path.join(packageDir, "__init__.py");
+            let declarationFromInit = null;
+
+            if (fs.existsSync(initFile)) {
+
+                try {
+                    const parsedInit = parseFile(initFile);
+
+                    declarationFromInit =
+                        findTopLevelPythonDeclaration(
+                            parsedInit,
+                            record.imported
+                        );
+                } catch {
+                    declarationFromInit = null;
+                }
+            }
+
+            if (declarationFromInit) {
+
+                edges.push({
+                    from: importerIdentity,
+                    to: `${path.relative(projectRoot, initFile)}::${declarationFromInit.identity}`,
+                    importer: absoluteImporter,
+                    source: null,
+                    imported: record.imported,
+                    local: record.local,
+                    kind: "import",
+                    targetFile: initFile,
+                    confidence: "certain",
+                    reason: "package-init-name-found"
+                });
+
+                continue;
+            }
+
+            edges.push({
+                from: importerIdentity,
+                to: null,
+                importer: absoluteImporter,
+                source: null,
+                imported: record.imported,
+                local: record.local,
+                kind: "import",
+                confidence: "unresolved",
+                reason: "relative-import-path-not-found"
+            });
+
+            continue;
+        }
+
+        /*
+         * "from .module import X" / "from ..pkg.sub import X" /
+         * "from package import X" / "import module"
+         */
+        const resolved =
+            resolvePythonModuleFile(
+                baseDir,
+                projectRoot,
+                record.dots,
+                record.modulePath
+            );
+
+        if (!resolved) {
+
+            /*
+             * A relative import that fails to resolve is always
+             * unresolved - the dots make the intent to reference
+             * a local project file unambiguous, and it wasn't
+             * found. An absolute import gets one narrow upgrade
+             * to "inferred": when its first dotted segment names
+             * a real top-level entry in this project (so the
+             * name plausibly matches something local) but the
+             * full path still didn't resolve to a file. Anything
+             * else absolute (no project-level name match at all,
+             * e.g. a third-party package name) is unresolved.
+             */
+            let confidence = "unresolved";
+            let reason = isRelative ? "relative-import-path-not-found" : "external-or-stdlib";
+
+            if (!isRelative && record.modulePath) {
+                const firstSegment = record.modulePath.split(".")[0];
+                const firstSegmentPath = path.join(projectRoot, firstSegment);
+
+                const matchesProjectEntry =
+                    fs.existsSync(firstSegmentPath + ".py") ||
+                    fs.existsSync(path.join(firstSegmentPath, "__init__.py"));
+
+                if (matchesProjectEntry) {
+                    confidence = "inferred";
+                    reason = "partial-path-matches-project-package";
+                }
+            }
+
+            edges.push({
+                from: importerIdentity,
+                to: null,
+                importer: absoluteImporter,
+                source: record.modulePath,
+                imported: record.imported,
+                local: record.local,
+                kind: "import",
+                confidence,
+                reason
+            });
+
+            continue;
+        }
+
+        if (record.imported === null || record.imported === "*") {
+
+            edges.push({
+                from: importerIdentity,
+                to: path.relative(projectRoot, resolved.file),
+                importer: absoluteImporter,
+                source: record.modulePath,
+                imported: record.imported,
+                local: record.local,
+                kind: record.imported === "*" ? "wildcard" : "import",
+                targetFile: resolved.file,
+                confidence: "certain",
+                reason: "module-resolved"
+            });
+
+            continue;
+        }
+
+        let parsedTarget;
+
+        try {
+            parsedTarget = parseFile(resolved.file);
+        } catch {
+
+            edges.push({
+                from: importerIdentity,
+                to: null,
+                importer: absoluteImporter,
+                source: record.modulePath,
+                imported: record.imported,
+                local: record.local,
+                kind: "import",
+                targetFile: resolved.file,
+                confidence: "unresolved",
+                reason: "target-parse-failed"
+            });
+
+            continue;
+        }
+
+        const declaration =
+            findTopLevelPythonDeclaration(
+                parsedTarget,
+                record.imported
+            );
+
+        if (declaration) {
+
+            edges.push({
+                from: importerIdentity,
+                to: `${path.relative(projectRoot, resolved.file)}::${declaration.identity}`,
+                importer: absoluteImporter,
+                source: record.modulePath,
+                imported: record.imported,
+                local: record.local,
+                kind: "import",
+                targetFile: resolved.file,
+                confidence: "certain",
+                reason: "declaration-found"
+            });
+
+            continue;
+        }
+
+        if (resolved.isPackage) {
+
+            const reexport =
+                resolveInitPyReexport(
+                    projectRoot,
+                    resolved.file,
+                    record.imported
+                );
+
+            if (reexport) {
+
+                edges.push({
+                    from: importerIdentity,
+                    to: `${path.relative(projectRoot, reexport.path)}::${reexport.declaration.identity}`,
+                    importer: absoluteImporter,
+                    source: record.modulePath,
+                    imported: record.imported,
+                    local: record.local,
+                    kind: "reexport",
+                    targetFile: reexport.path,
+                    confidence: "certain",
+                    reason: "init-reexport-one-hop"
+                });
+
+                continue;
+            }
+        }
+
+        edges.push({
+            from: importerIdentity,
+            to: path.relative(projectRoot, resolved.file),
+            importer: absoluteImporter,
+            source: record.modulePath,
+            imported: record.imported,
+            local: record.local,
+            kind: "import",
+            targetFile: resolved.file,
+            confidence: "certain",
+            reason: "module-resolved-name-not-found"
+        });
+    }
+
+    return {
+        filePath: absoluteImporter,
+        edges
+    };
+}
+
+
+// ------------------------------------------------------------
 // RESOLVE FILE IMPORTS
 // ------------------------------------------------------------
 
@@ -898,6 +1496,16 @@ export function resolveFileImports(
             edges:
                 []
         };
+    }
+
+    if (
+        path.extname(absoluteImporter).toLowerCase() === ".py"
+    ) {
+        return resolvePythonFileImports(
+            projectRoot,
+            absoluteImporter,
+            parsedImporter
+        );
     }
 
     const imports =
@@ -1310,12 +1918,14 @@ export function resolveProjectImports(
                 continue;
             }
 
+            const entryExtension =
+                path.extname(
+                    entry.name
+                ).toLowerCase();
+
             if (
-                SOURCE_EXTENSIONS.includes(
-                    path.extname(
-                        entry.name
-                    ).toLowerCase()
-                )
+                SOURCE_EXTENSIONS.includes(entryExtension) ||
+                entryExtension === ".py"
             ) {
                 files.push(
                     entryPath
