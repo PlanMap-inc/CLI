@@ -6,6 +6,27 @@
   "publisher": "planmap",
   "private": true,
   "license": "BUSL-1.1",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0a0c11",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PlanMap-inc/CLI.git",
+    "directory": "extension"
+  },
+  "homepage": "https://github.com/PlanMap-inc/CLI/tree/main/extension#readme",
+  "bugs": {
+    "url": "https://github.com/PlanMap-inc/CLI/issues"
+  },
+  "keywords": [
+    "plan",
+    "drift",
+    "verification",
+    "architecture",
+    "code evolution"
+  ],
   "engines": {
     "vscode": "^1.90.0"
   },

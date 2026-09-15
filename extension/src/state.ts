@@ -86,35 +86,48 @@ export function latestVerifiedStatus(evolution: unknown): ViewState["verifiedSta
     return result;
 }
 
+export function declarationCount(baseline: unknown): number | null {
+    const declarations = (baseline as { declarations?: unknown } | null)?.declarations;
+    return Array.isArray(declarations) ? declarations.length : null;
+}
+
 export async function readViewState(projectRoot: string): Promise<ViewState> {
     const projectName = path.basename(projectRoot);
     const planmapDir = path.join(projectRoot, ".planmap");
-    const base = { projectName, plan: null, verifiedStatus: {}, problem: null };
+    const base = { projectName, plan: null, verifiedStatus: {}, problem: null, evolution: null, declarationCount: null };
 
     if (!(await isDirectory(planmapDir))) {
         return { ...base, setup: "missing" };
     }
 
+    // A scan produces evolution and the declaration count before any plan exists.
+    const [evolution, baseline] = await Promise.all([
+        readJson(path.join(planmapDir, "evolution.json")),
+        readJson(path.join(planmapDir, "baseline.json"))
+    ]);
+
+    const evolutionNodes = evolution.ok ? (evolution.value as { nodes?: unknown } | null)?.nodes : undefined;
+
+    const scanned = {
+        ...base,
+        evolution: evolution.ok && Array.isArray(evolutionNodes) ? evolution.value : null,
+        verifiedStatus: evolution.ok ? latestVerifiedStatus(evolution.value) : {},
+        declarationCount: baseline.ok ? declarationCount(baseline.value) : null
+    };
+
     const plan = await readJson(path.join(planmapDir, "plan.json"));
 
     if (!plan.ok) {
         return plan.missing
-            ? { ...base, setup: "no-plan" }
-            : { ...base, setup: "invalid-plan", problem: `plan.json could not be read: ${plan.message}` };
+            ? { ...scanned, setup: "no-plan" }
+            : { ...scanned, setup: "invalid-plan", problem: `plan.json could not be read: ${plan.message}` };
     }
 
     const shapeProblem = planShapeProblem(plan.value);
 
     if (shapeProblem) {
-        return { ...base, setup: "invalid-plan", problem: shapeProblem };
+        return { ...scanned, setup: "invalid-plan", problem: shapeProblem };
     }
 
-    const evolution = await readJson(path.join(planmapDir, "evolution.json"));
-
-    return {
-        ...base,
-        setup: "ready",
-        plan: plan.value,
-        verifiedStatus: evolution.ok ? latestVerifiedStatus(evolution.value) : {}
-    };
+    return { ...scanned, setup: "ready", plan: plan.value };
 }

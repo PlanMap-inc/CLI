@@ -6,9 +6,12 @@ import { runCli } from "./cli";
 import {
     buildCliArgs,
     isWebviewMessage,
+    runsOffline,
     type HostMessage,
     type WebviewMessage
 } from "./messages";
+
+const PLAN_SKELETON = '{ "version": 1, "lenses": [], "features": [], "nodes": [] }\n';
 import { readViewState } from "./state";
 import { watchPlanmap } from "./watcher";
 
@@ -119,10 +122,15 @@ class PlanMapPanel {
             return;
         }
 
+        if (message.type === "openPlan") {
+            await this.openPlan();
+            return;
+        }
+
         const args = buildCliArgs(message, this.projectRoot);
         if (!args) return;
 
-        const result = await runCli(args, this.cliOptions());
+        const result = await runCli(args, { ...this.cliOptions(), offline: runsOffline(message) });
 
         this.post({
             type: "cliResult",
@@ -134,6 +142,26 @@ class PlanMapPanel {
         });
 
         await this.postState();
+    }
+
+    // "Write one rule myself". The extension never writes .planmap/: an existing
+    // plan.json opens as it is; otherwise an unsaved editor at that path holds
+    // the empty skeleton, and the file exists once the user saves it.
+    private async openPlan() {
+        const planUri = vscode.Uri.file(path.join(this.projectRoot, ".planmap", "plan.json"));
+        const exists = await vscode.workspace.fs.stat(planUri).then(() => true, () => false);
+
+        if (exists) {
+            await vscode.window.showTextDocument(planUri, { viewColumn: vscode.ViewColumn.Beside });
+            return;
+        }
+
+        const document = await vscode.workspace.openTextDocument(planUri.with({ scheme: "untitled" }));
+        const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.Beside);
+
+        if (document.getText().length === 0) {
+            await editor.edit(builder => builder.insert(new vscode.Position(0, 0), PLAN_SKELETON));
+        }
     }
 
     private cliOptions() {

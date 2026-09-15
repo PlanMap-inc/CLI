@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { WEBVIEW_MESSAGE_TYPES, buildCliArgs, isWebviewMessage } from "../out/messages.js";
+import { WEBVIEW_MESSAGE_TYPES, buildCliArgs, isWebviewMessage, runsOffline } from "../out/messages.js";
 
 const root = "/work/project";
 const identity = "src/auth.js::verifyToken:function";
@@ -14,7 +14,10 @@ const expected = {
     approveLens: [{ type: "approveLens", lensId: "security" }, ["approve", root, "--lens", "security"]],
     reject: [{ type: "reject", identity, force: false }, ["reject", root, identity]],
     revise: [{ type: "revise", identity }, ["plan", "revise", root, identity]],
-    evolution: [{ type: "evolution" }, ["evolution", root]]
+    evolution: [{ type: "evolution" }, ["evolution", root]],
+    draftPlan: [{ type: "draftPlan" }, ["plan", "draft", root]],
+    // Handled by the host as an unsaved editor - no CLI call, no write.
+    openPlan: [{ type: "openPlan" }, null]
 };
 
 assert.deepEqual(
@@ -34,6 +37,11 @@ assert.deepEqual(
     ["reject", root, identity, "--force"],
     "rejecting an approved node adds --force"
 );
+
+// Scan's evolution run promises nothing leaves the machine; plan draft is the one AI action.
+assert.equal(runsOffline({ type: "evolution" }), true);
+assert.equal(runsOffline({ type: "draftPlan" }), false);
+assert.equal(runsOffline({ type: "verify" }), false);
 
 assert.equal(isWebviewMessage({ type: "writePlan" }), false, "unknown message types are rejected");
 assert.equal(isWebviewMessage(null), false);
