@@ -30,6 +30,12 @@ export const STATUSES = [
 const SEVERITY = ["drifted", "error", "intended", "approved", "implemented"];
 
 
+export function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 export function snap(value) {
     return Math.round(value / GRID) * GRID;
 }
@@ -254,4 +260,43 @@ export function describeHistory(history) {
         intent: entry.intent ?? "",
         status: entry.status ? `was ${entry.status}` : ""
     }));
+}
+
+
+// --------------------------------------------------
+// DRIFT SYNC, NAV RAIL, ONBOARDING
+// --------------------------------------------------
+// One verify run writes its statuses into evolution.json. The Plan Graph
+// (effectiveStatus), the Evolution view (node.status) and the rail badge all
+// read those statuses, joined on the exact identity string.
+// --------------------------------------------------
+
+export function driftCount(verifiedStatus) {
+    return Object.values(verifiedStatus ?? {}).filter(entry => entry?.status === "drifted").length;
+}
+
+export const VIEWS = [
+    { id: "planmap", label: "Plan Graph" },
+    { id: "evolution", label: "Project Evolution" }
+];
+
+export function railModel(activeView, verifiedStatus) {
+    const active = VIEWS.some(view => view.id === activeView) ? activeView : "planmap";
+    const count = driftCount(verifiedStatus);
+
+    return {
+        active,
+        buttons: VIEWS.map(view => ({ ...view, active: view.id === active })),
+        badge: count > 0 ? { count, label: `${count} drifted` } : null
+    };
+}
+
+// A: no .planmap/.  B: scanned, no plan.json.  C: a plan nothing has verified yet.
+export function onboardingState(state) {
+    if (!state) return null;
+    if (state.setup === "missing") return { kind: "scan" };
+    if (state.setup === "no-plan") return { kind: "no-plan", declarations: state.declarationCount ?? null };
+    if (state.setup === "invalid-plan") return { kind: "invalid-plan", problem: state.problem };
+    if (Object.keys(state.verifiedStatus ?? {}).length === 0) return { kind: "verify" };
+    return null;
 }

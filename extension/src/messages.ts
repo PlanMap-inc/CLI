@@ -17,7 +17,9 @@ export type WebviewMessage =
     | { type: "approveLens"; lensId: string }
     | { type: "reject"; identity: string; force: boolean }
     | { type: "revise"; identity: string }
-    | { type: "evolution" };
+    | { type: "evolution" }
+    | { type: "draftPlan" }
+    | { type: "openPlan" };
 
 export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "ready",
@@ -27,7 +29,9 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "approveLens",
     "reject",
     "revise",
-    "evolution"
+    "evolution",
+    "draftPlan",
+    "openPlan"
 ];
 
 
@@ -49,6 +53,10 @@ export interface ViewState {
     plan: unknown;
     verifiedStatus: Record<string, VerifiedStatus>;
     problem: string | null;
+    // evolution.json as the CLI wrote it, or null when there is none yet.
+    evolution: unknown;
+    // baseline.json declarations.length, or null before the first scan.
+    declarationCount: number | null;
 }
 
 export type HostMessage =
@@ -90,7 +98,19 @@ export function buildCliArgs(
             return ["plan", "revise", projectRoot, message.identity];
         case "evolution":
             return ["evolution", projectRoot];
+        case "draftPlan":
+            return ["plan", "draft", projectRoot];
+        case "openPlan":
+            // Not a CLI call and not a write: the host opens an unsaved
+            // editor at .planmap/plan.json, and the file exists once the user saves.
+            return null;
     }
+}
+
+// Evolution only runs from "Scan project", which promises that nothing
+// leaves the machine, so it never classifies with the LLM.
+export function runsOffline(message: WebviewMessage): boolean {
+    return message.type === "evolution";
 }
 
 

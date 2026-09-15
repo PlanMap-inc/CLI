@@ -28,6 +28,7 @@ export interface CliRunOptions {
     cliPath: string;
     cwd: string;
     runAsNode: boolean;
+    offline?: boolean;
 }
 
 
@@ -85,6 +86,12 @@ export function runCli(
 
     if (options.runAsNode) {
         env.ELECTRON_RUN_AS_NODE = "1";
+    }
+
+    // An empty key still counts as set, so the CLI's .env loading cannot
+    // fill it in: the command classifies offline and makes no LLM request.
+    if (options.offline) {
+        env.OPENROUTER_API_KEY = "";
     }
 
     return new Promise(resolve => {

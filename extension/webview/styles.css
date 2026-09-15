@@ -196,3 +196,62 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
   .gnode.pulse .status-pill .dot, .implement-btn.ready{animation:none;}
   .canvas-content.flying, .graph-canvas, .impact-panel, .gnode{transition:none;}
 }
+
+/* ---------- nav rail: two views, radio behaviour, drift badge ---------- */
+.rail-views{display:flex;flex-direction:column;gap:8px;}
+.rail-badge{position:absolute;top:1px;right:0;min-width:15px;height:15px;padding:0 4px;border-radius:999px;background:var(--danger);color:var(--void);font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;line-height:15px;text-align:center;box-shadow:0 0 0 2px var(--surface);font-variant-ligatures:none;}
+.rail-badge[hidden], .lens-switch[hidden]{display:none;}
+
+/* ---------- notices: verify prompt and verify results, in the demo's banner ---------- */
+.cb-head{display:flex;align-items:center;gap:8px;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;margin-bottom:6px;color:var(--text-hi);}
+.cb-close{margin-left:auto;cursor:pointer;color:var(--text-low);font-size:13px;background:transparent;border:none;padding:0;}
+.cb-close:hover{color:var(--text-hi);}
+.cb-sub{color:var(--text-mid);line-height:1.55;white-space:pre-line;overflow-wrap:anywhere;}
+.cb-actions{margin-top:10px;display:flex;gap:8px;}
+.compile-banner.danger{border-color:rgba(255,92,92,.45);}
+.compile-banner.danger .cb-head{color:var(--danger);}
+
+/* ---------- onboarding ---------- */
+.primary-btn{height:34px;padding:0 18px;border-radius:8px;border:1px solid var(--accent-a);background:var(--accent-a);color:var(--void);font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;cursor:pointer;}
+.primary-btn:hover{box-shadow:0 0 0 3px rgba(127,224,176,.16);}
+.primary-btn:disabled{opacity:.6;cursor:progress;box-shadow:none;}
+.empty-card .fine{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-low);margin:12px 0 0;font-variant-ligatures:none;}
+.choices{display:flex;flex-direction:column;gap:8px;margin-top:18px;text-align:left;}
+.choice{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border-radius:9px;background:var(--surface-2);border:1px solid var(--border);color:var(--text-hi);cursor:pointer;}
+.choice:hover{border-color:var(--text-low);}
+.choice:disabled{opacity:.6;cursor:progress;}
+.choice.recommended{border-color:rgba(127,224,176,.5);}
+.choice-label{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13.5px;}
+.choice-note{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-low);white-space:nowrap;font-variant-ligatures:none;}
+.empty-card .note, .empty-card .problem{margin-top:14px;white-space:pre-line;}
+.empty-card .note{font-size:12px;line-height:1.55;color:var(--text-mid);text-align:left;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-wrap:anywhere;}
+
+/* ---------- project evolution: an outline, not a canvas ---------- */
+.derived-chip{margin-left:8px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);border:1px solid var(--border);border-radius:999px;padding:3px 9px;font-variant-ligatures:none;}
+.evo-tree-panel{flex:1;overflow:auto;padding:16px 10px 24px 14px;}
+.evo-root-label{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:var(--text-hi);padding:6px 10px 10px;}
+.evo-node{position:relative;}
+.evo-children{margin-left:15px;padding-left:14px;border-left:1px solid var(--border-soft);}
+.evo-children[hidden]{display:none;}
+.evo-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;}
+.evo-row:hover{background:var(--surface-2);}
+.evo-row.selected{background:var(--surface-3);}
+.evo-row.evo-feature .evo-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;}
+.evo-row.status-drifted .evo-title, .evo-row.status-error .evo-title{color:var(--danger);}
+.evo-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);}
+.evo-toggle{width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-low);font-size:9px;cursor:pointer;}
+.evo-toggle.leaf{visibility:hidden;}
+.evo-status-icon{width:14px;flex-shrink:0;text-align:center;font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--text-low);}
+.evo-status-icon.status-intended{color:var(--text-low);}
+.evo-status-icon.status-approved{color:var(--text-hi);}
+.evo-status-icon.status-implemented{color:var(--accent-a);}
+.evo-status-icon.status-drifted, .evo-status-icon.status-error{color:var(--danger);}
+.evo-status-icon.status-superseded{color:var(--text-mid);}
+.evo-title{font-size:12.5px;color:var(--text-hi);flex-shrink:0;}
+.evo-tags{display:flex;gap:10px;margin-left:auto;padding-left:12px;}
+.evo-tag{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);}
+.evo-tag-dot{width:6px;height:6px;border-radius:50%;}
+.statusbar .legend-item .evo-status-icon{width:auto;}
+.badge .evo-status-icon{width:auto;}
+.drift-callout{margin-top:8px;}
+.drift-callout code{font-family:'JetBrains Mono',monospace;font-size:11px;font-variant-ligatures:none;}
