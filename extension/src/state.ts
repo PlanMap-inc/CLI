@@ -86,6 +86,34 @@ export function latestVerifiedStatus(evolution: unknown): ViewState["verifiedSta
     return result;
 }
 
+// Where the CLI will find an OpenRouter key without one from the extension,
+// mirroring src/llm/config.js: the environment first, then the project's
+// .env. Reports only the source - the key is never returned.
+export async function detectApiKeySource(
+    projectRoot: string,
+    env: Record<string, string | undefined>
+): Promise<"environment" | "project" | null> {
+    if (env.OPENROUTER_API_KEY?.trim()) return "environment";
+
+    let text: string;
+
+    try {
+        text = await readFile(path.join(projectRoot, ".env"), "utf8");
+    } catch {
+        return null;
+    }
+
+    const found = text.split(/\r?\n/).some(line => {
+        const trimmed = line.trim();
+        return (
+            trimmed.startsWith("OPENROUTER_API_KEY=") &&
+            trimmed.slice("OPENROUTER_API_KEY=".length).trim().replace(/^["']|["']$/g, "").length > 0
+        );
+    });
+
+    return found ? "project" : null;
+}
+
 export function declarationCount(baseline: unknown): number | null {
     const declarations = (baseline as { declarations?: unknown } | null)?.declarations;
     return Array.isArray(declarations) ? declarations.length : null;
@@ -94,7 +122,8 @@ export function declarationCount(baseline: unknown): number | null {
 export async function readViewState(projectRoot: string): Promise<ViewState> {
     const projectName = path.basename(projectRoot);
     const planmapDir = path.join(projectRoot, ".planmap");
-    const base = { projectName, plan: null, verifiedStatus: {}, problem: null, evolution: null, declarationCount: null };
+    // aiKey is filled in by the host, which alone can see secret storage.
+    const base = { projectName, plan: null, verifiedStatus: {}, problem: null, evolution: null, declarationCount: null, aiKey: null };
 
     if (!(await isDirectory(planmapDir))) {
         return { ...base, setup: "missing" };

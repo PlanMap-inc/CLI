@@ -255,3 +255,15 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .badge .evo-status-icon{width:auto;}
 .drift-callout{margin-top:8px;}
 .drift-callout code{font-family:'JetBrains Mono',monospace;font-size:11px;font-variant-ligatures:none;}
+
+/* ---------- plan decisions, verify detail, key prompt ---------- */
+.icon-btn[hidden]{display:none;}
+.detail-actions{display:flex;gap:8px;flex-wrap:wrap;}
+.icon-btn.danger:not(.inert){color:var(--danger);border-color:rgba(255,92,92,.35);}
+.icon-btn.danger:not(.inert):hover{border-color:var(--danger);}
+.detail-note{font-size:11.5px;line-height:1.5;color:var(--text-low);margin:8px 0 0;}
+.detail-note code{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-mid);font-variant-ligatures:none;}
+.rule-block .clause.reason{color:var(--text-mid);font-family:'Inter',sans-serif;font-size:12px;}
+.impact-panel .file-chip .range{white-space:nowrap;padding-left:8px;}
+.link-btn{display:block;margin:10px auto 0;background:transparent;border:none;padding:4px 0;color:var(--accent-b);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
+.link-btn:hover{color:var(--text-hi);}

@@ -37,7 +37,12 @@ const start = html.indexOf('id="viewEvolution"');
 const section = html.slice(start, html.indexOf("<script", start));
 assert.ok(start > 0, "the Evolution view exists");
 assert.match(section.slice(0, 200), /data-vscode-context='\{"preventDefaultContextMenuItems": true\}'/);
-assert.deepEqual([...section.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]), ["evoExpandBtn", "evoCollapseBtn"]);
+assert.deepEqual([...section.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]), ["evoRefreshBtn", "evoExpandBtn", "evoCollapseBtn"]);
+
+// Refresh re-derives evolution from the code - the only message the view's toolbar sends.
+const mainSource = read("main.js");
+assert.match(mainSource, /evoRefreshBtn\.addEventListener\("click", \(\) => request\("refresh", \{ type: "evolution" \}\)\);/);
+assert.equal((mainSource.match(/evoRefreshBtn\.addEventListener/g) ?? []).length, 1);
 for (const [pattern, label] of forbidden) {
     assert.doesNotMatch(section, pattern, `the Evolution markup contains ${label}`);
 }

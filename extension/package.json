@@ -41,6 +41,16 @@
         "command": "planmap.open",
         "title": "Open Plan Graph",
         "category": "PlanMap"
+      },
+      {
+        "command": "planmap.setApiKey",
+        "title": "Set OpenRouter API Key",
+        "category": "PlanMap"
+      },
+      {
+        "command": "planmap.clearApiKey",
+        "title": "Remove OpenRouter API Key",
+        "category": "PlanMap"
       }
     ],
     "configuration": {

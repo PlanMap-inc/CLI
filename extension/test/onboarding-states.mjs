@@ -13,8 +13,8 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(HERE, "../../src/cli/cli.js");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-onboard-"));
-// offline: a developer's own OPENROUTER_API_KEY must never reach these runs.
-const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, offline: true };
+// apiKey "": a developer's own OPENROUTER_API_KEY must never reach these runs.
+const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "" };
 
 fs.writeFileSync(path.join(root, "a.js"), "export function a() { return 1; }\nexport function b() { return a(); }\n");
 

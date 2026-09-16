@@ -13,13 +13,16 @@ export type WebviewMessage =
     | { type: "ready" }
     | { type: "init" }
     | { type: "verify" }
-    | { type: "approve"; identity: string }
+    // approve and reject take a plan node id (the CLI matches id or identity);
+    // revise takes the identity, the only thing "plan revise" matches.
+    | { type: "approve"; target: string }
     | { type: "approveLens"; lensId: string }
-    | { type: "reject"; identity: string; force: boolean }
+    | { type: "reject"; target: string; force: boolean }
     | { type: "revise"; identity: string }
     | { type: "evolution" }
     | { type: "draftPlan" }
-    | { type: "openPlan" };
+    | { type: "openPlan" }
+    | { type: "setApiKey" };
 
 export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "ready",
@@ -31,7 +34,8 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "revise",
     "evolution",
     "draftPlan",
-    "openPlan"
+    "openPlan",
+    "setApiKey"
 ];
 
 
@@ -40,6 +44,9 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
 // --------------------------------------------------
 
 export type SetupState = "missing" | "no-plan" | "invalid-plan" | "ready";
+
+// Where the CLI will get an OpenRouter key from. The key itself never leaves the host.
+export type ApiKeySource = "stored" | "environment" | "project" | null;
 
 export interface VerifiedStatus {
     status: string;
@@ -57,6 +64,7 @@ export interface ViewState {
     evolution: unknown;
     // baseline.json declarations.length, or null before the first scan.
     declarationCount: number | null;
+    aiKey: ApiKeySource;
 }
 
 export type HostMessage =
@@ -67,8 +75,11 @@ export type HostMessage =
         outcome: CliOutcome;
         code: number | null;
         json: unknown;
+        stdout: string;
         stderr: string;
-    };
+    }
+    // The user dismissed a confirmation dialog; no CLI call was made.
+    | { type: "cancelled"; requestType: WebviewMessage["type"] };
 
 
 // --------------------------------------------------
@@ -87,13 +98,13 @@ export function buildCliArgs(
         case "verify":
             return ["verify", projectRoot, "--json"];
         case "approve":
-            return ["approve", projectRoot, message.identity];
+            return ["approve", projectRoot, message.target];
         case "approveLens":
             return ["approve", projectRoot, "--lens", message.lensId];
         case "reject":
             return message.force
-                ? ["reject", projectRoot, message.identity, "--force"]
-                : ["reject", projectRoot, message.identity];
+                ? ["reject", projectRoot, message.target, "--force"]
+                : ["reject", projectRoot, message.target];
         case "revise":
             return ["plan", "revise", projectRoot, message.identity];
         case "evolution":
@@ -104,14 +115,20 @@ export function buildCliArgs(
             // Not a CLI call and not a write: the host opens an unsaved
             // editor at .planmap/plan.json, and the file exists once the user saves.
             return null;
+        case "setApiKey":
+            // Not a CLI call: the host asks for the key and keeps it in secret storage.
+            return null;
     }
 }
 
-// Evolution only runs from "Scan project", which promises that nothing
-// leaves the machine, so it never classifies with the LLM.
-export function runsOffline(message: WebviewMessage): boolean {
-    return message.type === "evolution";
-}
+// Values that become CLI arguments. A value starting with "-" would be read
+// as a flag (think "--all"), so it is refused rather than passed through.
+const ARGUMENT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
+    approve: ["target"],
+    approveLens: ["lensId"],
+    reject: ["target"],
+    revise: ["identity"]
+};
 
 
 export function isWebviewMessage(value: unknown): value is WebviewMessage {
@@ -121,8 +138,18 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
 
     const type = (value as { type?: unknown }).type;
 
-    return (
-        typeof type === "string" &&
-        (WEBVIEW_MESSAGE_TYPES as readonly string[]).includes(type)
-    );
+    if (
+        typeof type !== "string" ||
+        !(WEBVIEW_MESSAGE_TYPES as readonly string[]).includes(type)
+    ) {
+        return false;
+    }
+
+    const fields = ARGUMENT_FIELDS[type as WebviewMessage["type"]] ?? [];
+    const record = value as Record<string, unknown>;
+
+    return fields.every(field => {
+        const argument = record[field];
+        return typeof argument === "string" && argument.length > 0 && !argument.startsWith("-");
+    });
 }

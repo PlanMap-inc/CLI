@@ -16,7 +16,8 @@ const flatten = items => items.flatMap(item => [...(item.feature ? [] : [item]),
 
 // One real verify run flags the same identity in both view models and on the rail.
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-drift-"));
-const options = offline => ({ nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, offline });
+// apiKey "": a developer's own OPENROUTER_API_KEY must never reach these runs.
+const options = () => ({ nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "" });
 const source = path.join(root, "auth.js");
 const identity = "auth.js::verifyToken:function";
 

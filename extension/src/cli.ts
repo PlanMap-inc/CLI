@@ -28,7 +28,7 @@ export interface CliRunOptions {
     cliPath: string;
     cwd: string;
     runAsNode: boolean;
-    offline?: boolean;
+    apiKey?: string;
 }
 
 
@@ -88,10 +88,11 @@ export function runCli(
         env.ELECTRON_RUN_AS_NODE = "1";
     }
 
-    // An empty key still counts as set, so the CLI's .env loading cannot
-    // fill it in: the command classifies offline and makes no LLM request.
-    if (options.offline) {
-        env.OPENROUTER_API_KEY = "";
+    // A key from VS Code's secret storage is handed to the CLI's environment.
+    // Without one, the CLI does its own lookup (environment, then the project's
+    // .env). An empty string still counts as set, so it forces no LLM request.
+    if (typeof options.apiKey === "string") {
+        env.OPENROUTER_API_KEY = options.apiKey;
     }
 
     return new Promise(resolve => {

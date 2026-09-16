@@ -60,7 +60,7 @@ assert.deepEqual(buildEvolutionTree({ nodes: "not an array" }), []);
 
 // The same shape from a real, offline CLI run.
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-evo-"));
-const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, offline: true };
+const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "" };
 
 fs.writeFileSync(path.join(root, "auth.js"), "export function verifyToken(t) { return t; }\nexport function loadSession(t) { return verifyToken(t); }\n");
 fs.writeFileSync(path.join(root, "orders.js"), "export function createOrder(c) { return c; }\n");

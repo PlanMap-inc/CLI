@@ -300,3 +300,84 @@ export function onboardingState(state) {
     if (Object.keys(state.verifiedStatus ?? {}).length === 0) return { kind: "verify" };
     return null;
 }
+
+
+// --------------------------------------------------
+// PLAN DECISIONS AND VERIFY DETAIL
+// --------------------------------------------------
+
+// Mirrors src/plan/approval.js. Approve takes intended nodes. Reject removes an
+// intended node, or an approved one with --force. Revise reopens an approved
+// node as a new intended version, and "plan revise" matches on identity only.
+export function nodeActions(node) {
+    const status = node?.status;
+    const target = typeof node?.id === "string" ? node.id : null;
+    const identity = typeof node?.identity === "string" && node.identity ? node.identity : null;
+
+    const reviseReason =
+        status === "intended" ? "Already intended: edit it in plan.json, then approve it"
+            : status !== "approved" ? "Only approved nodes can be revised"
+                : "The CLI revises by identity, and this node has no code yet";
+
+    return [
+        {
+            type: "approve",
+            label: "Approve",
+            enabled: status === "intended" && Boolean(target),
+            hint: "Lock in this intent; Verify checks the code against it",
+            reason: status === "approved" ? "Already approved" : "Only intended nodes can be approved",
+            message: { type: "approve", target }
+        },
+        {
+            type: "revise",
+            label: "Revise",
+            enabled: status === "approved" && Boolean(identity),
+            hint: "Reopen as a new intended version; this version moves to history",
+            reason: reviseReason,
+            message: { type: "revise", identity }
+        },
+        {
+            type: "reject",
+            label: "Reject",
+            tone: "danger",
+            enabled: (status === "intended" || status === "approved") && Boolean(target),
+            hint: "Remove this node from the plan",
+            reason: "Only intended or approved nodes can be rejected",
+            message: { type: "reject", target, force: status === "approved" }
+        }
+    ];
+}
+
+// The verify --json result for this exact plan node version, if the last run checked it.
+export function verifyResultFor(verify, node) {
+    const results = Array.isArray(verify?.results) ? verify.results : [];
+    return results.find(result =>
+        result?.planNodeId === node?.id &&
+        (result.planVersion ?? 1) === (node?.version ?? 1)
+    ) ?? null;
+}
+
+function showValue(value) {
+    if (value === undefined) return "—";
+    return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+export function describeViolation(violation) {
+    return {
+        field: violation?.field ?? violation?.target ?? "rule",
+        expected: showValue(violation?.expected),
+        actual: showValue(violation?.actual),
+        reason: violation?.reason ?? violation?.message ?? ""
+    };
+}
+
+export function describeImpact(entry) {
+    return {
+        identity: entry?.identity ?? entry?.target ?? "unknown",
+        meta: [
+            entry?.kind ?? null,
+            Number.isFinite(entry?.depth) ? `depth ${entry.depth}` : null,
+            entry?.confidence != null ? `${entry.confidence} confidence` : null
+        ].filter(Boolean).join(" · ")
+    };
+}

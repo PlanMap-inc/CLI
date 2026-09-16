@@ -6,25 +6,59 @@ import { runCli } from "./cli";
 import {
     buildCliArgs,
     isWebviewMessage,
-    runsOffline,
     type HostMessage,
     type WebviewMessage
 } from "./messages";
+import { detectApiKeySource, readViewState } from "./state";
+import { watchPlanmap } from "./watcher";
 
 const PLAN_SKELETON = '{ "version": 1, "lenses": [], "features": [], "nodes": [] }\n';
-import { readViewState } from "./state";
-import { watchPlanmap } from "./watcher";
+
+// The OpenRouter key lives in VS Code's secret storage (the OS keychain). It is
+// handed to the CLI's environment and never sent to the webview, logged, or
+// put in a file.
+const API_KEY_SECRET = "planmap.openRouterApiKey";
 
 
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand("planmap.open", () => {
             PlanMapPanel.show(context);
+        }),
+        vscode.commands.registerCommand("planmap.setApiKey", () => setApiKey(context)),
+        vscode.commands.registerCommand("planmap.clearApiKey", () => clearApiKey(context)),
+        context.secrets.onDidChange(event => {
+            if (event.key === API_KEY_SECRET) PlanMapPanel.refresh();
         })
     );
 }
 
 export function deactivate() {}
+
+
+// --------------------------------------------------
+// API KEY
+// --------------------------------------------------
+
+async function setApiKey(context: vscode.ExtensionContext) {
+    const key = await vscode.window.showInputBox({
+        title: "OpenRouter API key",
+        prompt: "PlanMap uses it to group your code into features and to draft plans. It is kept in your system keychain.",
+        password: true,
+        ignoreFocusOut: true,
+        validateInput: value => (value.trim() ? null : "Enter a key, or press Escape to cancel.")
+    });
+
+    if (!key?.trim()) return;
+
+    await context.secrets.store(API_KEY_SECRET, key.trim());
+    void vscode.window.showInformationMessage("PlanMap will use this OpenRouter key.");
+}
+
+async function clearApiKey(context: vscode.ExtensionContext) {
+    await context.secrets.delete(API_KEY_SECRET);
+    void vscode.window.showInformationMessage("PlanMap no longer has a stored OpenRouter key.");
+}
 
 
 // --------------------------------------------------
@@ -51,6 +85,10 @@ class PlanMapPanel {
         }
 
         PlanMapPanel.current = new PlanMapPanel(context, folder.uri.fsPath);
+    }
+
+    static refresh() {
+        void PlanMapPanel.current?.postState();
     }
 
     private constructor(
@@ -102,16 +140,22 @@ class PlanMapPanel {
     }
 
     private async postState() {
-        const state = await readViewState(this.projectRoot);
-        this.post({ type: "state", state });
+        const [state, stored] = await Promise.all([
+            readViewState(this.projectRoot),
+            this.context.secrets.get(API_KEY_SECRET)
+        ]);
+
+        const aiKey = stored ? "stored" : await detectApiKeySource(this.projectRoot, process.env);
+
+        this.post({ type: "state", state: { ...state, aiKey } });
     }
 
     private post(message: HostMessage) {
         void this.panel.webview.postMessage(message);
     }
 
-    // Every message except "ready" becomes exactly one CLI invocation. The
-    // CLI owns .planmap/; the watcher and the re-read below pick up its writes.
+    // Every plan or code message becomes exactly one CLI invocation. The CLI
+    // owns .planmap/; the watcher and the re-read below pick up its writes.
     private async onMessage(raw: unknown) {
         if (!isWebviewMessage(raw)) return;
 
@@ -127,10 +171,22 @@ class PlanMapPanel {
             return;
         }
 
+        if (message.type === "setApiKey") {
+            await setApiKey(this.context);
+            await this.postState();
+            return;
+        }
+
         const args = buildCliArgs(message, this.projectRoot);
         if (!args) return;
 
-        const result = await runCli(args, { ...this.cliOptions(), offline: runsOffline(message) });
+        if (!(await this.confirm(message))) {
+            this.post({ type: "cancelled", requestType: message.type });
+            return;
+        }
+
+        const apiKey = await this.context.secrets.get(API_KEY_SECRET);
+        const result = await runCli(args, { ...this.cliOptions(), apiKey });
 
         this.post({
             type: "cliResult",
@@ -138,10 +194,45 @@ class PlanMapPanel {
             outcome: result.outcome,
             code: result.code,
             json: result.json,
+            stdout: result.stdout,
             stderr: result.stderr
         });
 
         await this.postState();
+    }
+
+    // Removing a node, and approving a whole lens across every feature, are
+    // confirmed in a VS Code dialog before the CLI runs.
+    private async confirm(message: WebviewMessage): Promise<boolean> {
+        if (message.type !== "reject" && message.type !== "approveLens") return true;
+
+        const { plan } = await readViewState(this.projectRoot);
+        const nodes = ((plan as { nodes?: unknown[] } | null)?.nodes ?? []) as Array<Record<string, unknown>>;
+        const lenses = ((plan as { lenses?: unknown[] } | null)?.lenses ?? []) as Array<Record<string, unknown>>;
+
+        let question: string;
+        let action: string;
+
+        if (message.type === "reject") {
+            const node = nodes.find(candidate => candidate.id === message.target || candidate.identity === message.target);
+            const name = typeof node?.title === "string" ? `"${node.title}"` : message.target;
+            question = message.force
+                ? `Reject ${name}? It is approved, and rejecting removes it from plan.json.`
+                : `Reject ${name}? Rejecting removes it from plan.json.`;
+            action = "Reject";
+        } else {
+            const lens = lenses.find(candidate => candidate.id === message.lensId);
+            const label = typeof lens?.label === "string" ? lens.label : message.lensId;
+            const count = nodes.filter(node =>
+                node.status === "intended" &&
+                Array.isArray(node.lensTags) &&
+                node.lensTags.includes(message.lensId)
+            ).length;
+            question = `Approve ${count} intended ${count === 1 ? "node" : "nodes"} tagged ${label}? This covers every feature, not just the one open.`;
+            action = "Approve";
+        }
+
+        return (await vscode.window.showWarningMessage(question, { modal: true }, action)) === action;
     }
 
     // "Write one rule myself". The extension never writes .planmap/: an existing

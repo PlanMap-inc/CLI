@@ -36,6 +36,7 @@
           <div class="breadcrumb" id="breadcrumb"><span class="crumb current">Constellation</span></div>
           <div class="lens-switch plan" id="lensSwitch" role="radiogroup" aria-label="Lens"></div>
           <div class="view-controls">
+            <button class="icon-btn" id="approveLensBtn" hidden>Approve lens</button>
             <button class="icon-btn inert" id="addNodeBtn" title="Node editing is not available yet — edit .planmap/plan.json directly" aria-disabled="true">+ Add node</button>
             <div class="zoom-controls">
               <button id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
@@ -84,12 +85,14 @@
           <div class="breadcrumb"><span class="crumb current" id="evoTitle">Project Evolution</span><span class="derived-chip">read-only · derived from code</span></div>
           <div class="lens-switch" id="tagSwitch" role="radiogroup" aria-label="Filter by tag" hidden></div>
           <div class="view-controls">
+            <button class="icon-btn" id="evoRefreshBtn" title="Scan the code again and rebuild Project Evolution">Refresh evolution</button>
             <button class="icon-btn" id="evoExpandBtn">Expand all</button>
             <button class="icon-btn" id="evoCollapseBtn">Collapse all</button>
           </div>
         </div>
         <div class="workspace">
           <div class="canvas-area evo-tree-panel" id="evoTreePanel" role="tree" aria-label="Project evolution"></div>
+          <div class="compile-banner" id="evoNotice" role="status"></div>
           <div class="empty-state" id="evoEmptyState" hidden><div class="empty-card" id="evoEmptyCard"></div></div>
           <aside class="impact-panel" id="evoDetailPanel" aria-label="Evolution detail"><div class="impact-inner" id="evoDetailInner"></div></aside>
         </div>

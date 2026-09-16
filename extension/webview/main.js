@@ -5,14 +5,18 @@ import {
     buildFeatureGraph,
     colorAt,
     describeHistory,
+    describeImpact,
     describeRules,
+    describeViolation,
     escapeHtml,
     lensColors,
     FEATURE_PALETTE,
+    nodeActions,
     onboardingState,
     railModel,
     statusClass,
-    statusDotStyle
+    statusDotStyle,
+    verifyResultFor
 } from "./model.js";
 import { createEvolutionView } from "./evolution-view.js";
 
@@ -283,6 +287,7 @@ function renderLensSwitch() {
             <span class="swatch"></span>${escapeHtml(lens.label)}
         </button>`).join("");
     lensSwitch.classList.toggle("show", inFeature && lenses.length > 0);
+    renderApproveLens();
     lensSwitch.querySelectorAll(".lens-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             currentLensId = btn.dataset.lens;
@@ -377,6 +382,11 @@ async function exitFeature() {
 
 
 // ================= NODE DETAIL =================
+// verify --json is not saved to disk, so violations and impact come from the
+// last Verify run in this panel.
+let lastVerify = null;
+let detailNodeId = null;
+
 function section(title, body) {
     return `<div class="impact-section"><div class="h">${title}</div>${body}</div>`;
 }
@@ -411,17 +421,59 @@ function openDetail(viewNode) {
         <div class="impact-head"><h3>${escapeHtml(node.title)}</h3><button class="impact-close" id="impactCloseBtn" aria-label="Close detail">✕</button></div>
         <div class="impact-sub">${escapeHtml(node.identity ?? "greenfield · no code yet")}</div>
         ${section("Status", statusBody)}
+        ${verifyBlock(node, viewNode.status)}
         ${section("Intent", `<p>${escapeHtml(node.intent)}</p>`)}
         ${section("Rules", rulesBody)}
         ${approval}
         ${lenses}
-        ${historyBlock}`;
+        ${historyBlock}
+        ${section("Decision", actionsBody(node))}`;
 
+    detailNodeId = node.id;
     impactPanel.classList.add("open");
     document.getElementById("impactCloseBtn").addEventListener("click", closeDetail);
+    impactInner.querySelectorAll("[data-action]").forEach(button => {
+        button.addEventListener("click", () => {
+            const action = nodeActions(node).find(candidate => candidate.type === button.dataset.action);
+            if (action?.enabled) request("action", action.message);
+        });
+    });
 }
 
-function closeDetail() { impactPanel.classList.remove("open"); }
+function closeDetail() { detailNodeId = null; impactPanel.classList.remove("open"); }
+
+// Why a node drifted or errored, and what else it touches.
+function verifyBlock(node, status) {
+    const result = verifyResultFor(lastVerify, node);
+
+    if (!result) {
+        return status === "drifted" || status === "error"
+            ? section("Why", "<p>Run Verify against code to see what changed.</p>")
+            : "";
+    }
+
+    const violations = (result.violations ?? []).map(describeViolation);
+    const errors = (result.errors ?? []).map(error => error?.message ?? String(error));
+    const unsupported = (result.unsupported ?? []).map(item => item?.reason ?? JSON.stringify(item));
+    const impact = (result.impact ?? []).map(describeImpact);
+
+    return [
+        violations.length ? section("Why it drifted", violations.map(v => `<div class="rule-block"><div class="target">${escapeHtml(v.field)}</div><div class="clause">expected ${escapeHtml(v.expected)}</div><div class="clause">actual ${escapeHtml(v.actual)}</div>${v.reason ? `<div class="clause reason">${escapeHtml(v.reason)}</div>` : ""}</div>`).join("")) : "",
+        errors.length ? section("Errors", errors.map(message => `<div class="drift-callout">${escapeHtml(message)}</div>`).join("")) : "",
+        unsupported.length ? section("Not checked", unsupported.map(message => `<p>${escapeHtml(message)}</p>`).join("")) : "",
+        impact.length ? section("Impact", impact.map(entry => `<div class="file-chip">${escapeHtml(entry.identity)}<span class="range">${escapeHtml(entry.meta)}</span></div>`).join("")) : "",
+        result.status === "implemented" && !violations.length && !errors.length ? section("Verify", "<p>Matches the code as of the last Verify run.</p>") : ""
+    ].join("");
+}
+
+// Approve, revise and reject run the CLI. Unavailable actions stay visible
+// with the reason in their tooltip.
+function actionsBody(node) {
+    const buttons = nodeActions(node).map(action =>
+        `<button class="icon-btn${action.tone === "danger" ? " danger" : ""}${action.enabled ? "" : " inert"}" data-action="${action.type}"${action.enabled ? "" : ' aria-disabled="true"'} title="${escapeHtml(action.enabled ? action.hint : action.reason)}">${escapeHtml(action.label)}</button>`
+    ).join("");
+    return `<div class="detail-actions">${buttons}</div><p class="detail-note">Revise opens a new intended version. Edit its intent or rules in <code>.planmap/plan.json</code>, then approve it.</p>`;
+}
 
 
 // ================= NOTICES =================
@@ -432,24 +484,32 @@ const verifyBtn = document.getElementById("verifyBtn");
 let noticeKind = null;
 let verifyPromptDismissed = false;
 
-function showNotice(kind, { tone = "", title, body = "", action = null }) {
-    noticeKind = kind;
-    compileBanner.className = `compile-banner show${tone ? ` ${tone}` : ""}`;
-    compileBanner.innerHTML = `
-        <div class="cb-head">${escapeHtml(title)}<button class="cb-close" id="noticeClose" aria-label="Dismiss">✕</button></div>
+function renderBanner(el, { tone = "", title, body = "", action = null }, onClose) {
+    el.className = `compile-banner show${tone ? ` ${tone}` : ""}`;
+    el.innerHTML = `
+        <div class="cb-head">${escapeHtml(title)}<button class="cb-close" aria-label="Dismiss">✕</button></div>
         ${body ? `<div class="cb-sub">${escapeHtml(body)}</div>` : ""}
-        ${action ? `<div class="cb-actions"><button class="icon-btn" id="noticeAction">${escapeHtml(action.label)}</button></div>` : ""}`;
-    document.getElementById("noticeClose").addEventListener("click", () => {
+        ${action ? `<div class="cb-actions"><button class="icon-btn cb-action">${escapeHtml(action.label)}</button></div>` : ""}`;
+    el.querySelector(".cb-close").addEventListener("click", onClose);
+    if (action) el.querySelector(".cb-action").addEventListener("click", action.run);
+}
+
+function hideBanner(el) {
+    el.className = "compile-banner";
+    el.innerHTML = "";
+}
+
+function showNotice(kind, options) {
+    noticeKind = kind;
+    renderBanner(compileBanner, options, () => {
         if (noticeKind === "verify-prompt") verifyPromptDismissed = true;
         hideNotice();
     });
-    if (action) document.getElementById("noticeAction").addEventListener("click", action.run);
 }
 
 function hideNotice() {
     noticeKind = null;
-    compileBanner.className = "compile-banner";
-    compileBanner.innerHTML = "";
+    hideBanner(compileBanner);
 }
 
 function renderVerifyPrompt(show) {
@@ -472,7 +532,7 @@ const busy = new Set();
 const problems = {};
 
 function cliMessage(result) {
-    const text = String(result.json?.message ?? result.stderr ?? "").trim();
+    const text = String(result.json?.message ?? "").trim() || String(result.stderr ?? "").trim() || String(result.stdout ?? "").trim();
     return text || `The command stopped with exit code ${result.code}.`;
 }
 
@@ -496,6 +556,27 @@ function refreshRequests() {
     verifyBtn.disabled = verifying;
     verifyBtn.classList.toggle("loading", verifying);
     verifyBtn.textContent = verifying ? "Verifying…" : "Verify against code";
+
+    const refreshing = busy.has("refresh");
+    evoRefreshBtn.disabled = refreshing || busy.has("scan");
+    evoRefreshBtn.textContent = refreshing ? "Refreshing…" : "Refresh evolution";
+
+    impactInner.querySelectorAll("[data-action]").forEach(button => button.classList.toggle("loading", busy.has("action")));
+    renderApproveLens();
+}
+
+// Approves every intended node with the active lens - in all features, which the confirmation says.
+function renderApproveLens() {
+    const lens = inFeature && state?.setup === "ready" ? lensById(currentLensId) : null;
+    approveLensBtn.hidden = !lens;
+    if (!lens) return;
+
+    const pending = (plan()?.nodes ?? []).filter(node => node.status === "intended" && (node.lensTags ?? []).includes(lens.id)).length;
+    approveLensBtn.textContent = busy.has("action") ? "Approving…" : `Approve ${lens.label}`;
+    approveLensBtn.classList.toggle("inert", pending === 0);
+    approveLensBtn.title = pending === 0
+        ? `No intended nodes are tagged ${lens.label}`
+        : `Approve all ${pending} intended ${lens.label} ${pending === 1 ? "node" : "nodes"}, in every feature`;
 }
 
 function runVerify() {
@@ -509,17 +590,70 @@ function onCliResult(result) {
             else finish("scan", { tone: "problem", text: cliMessage(result) });
             break;
         case "evolution":
-            finish("scan", result.outcome === "ok" ? null : { tone: "problem", text: cliMessage(result) });
+            if (busy.has("refresh")) {
+                finish("refresh", null);
+                showEvolutionResult(result);
+            } else {
+                // Exit 1 means some AI batches fell back to path labels; the scan still finished.
+                finish("scan", result.outcome === "ok" ? null : { tone: result.outcome === "findings" ? "note" : "problem", text: cliMessage(result) });
+            }
+            break;
+        case "approve":
+        case "approveLens":
+        case "reject":
+        case "revise":
+            finish("action", null);
+            showActionResult(result);
             break;
         case "draftPlan":
             // Exit 2 (no key, no evolution history) is a message to read, not a crash.
             finish("draftPlan", result.outcome === "ok" ? null : { tone: result.outcome === "nothing" ? "note" : "problem", text: cliMessage(result) });
             break;
         case "verify":
+            if (Array.isArray(result.json?.results)) lastVerify = result.json;
             finish("verify", null);
             showVerifyResult(result);
             break;
     }
+}
+
+function onCancelled(message) {
+    if (["approve", "approveLens", "reject", "revise"].includes(message.requestType)) finish("action", null);
+}
+
+const ACTION_DONE = { approve: "Approved", approveLens: "Approved", reject: "Rejected", revise: "Revised" };
+const ACTION_FAILED = { approve: "Couldn't approve", approveLens: "Some nodes couldn't be approved", reject: "Couldn't reject", revise: "Couldn't revise" };
+
+function showActionResult(result) {
+    const output = [String(result.stdout ?? "").trim(), String(result.stderr ?? "").trim()].filter(Boolean).join("\n");
+
+    if (result.outcome === "ok") {
+        showNotice("action-result", {
+            title: ACTION_DONE[result.requestType],
+            body: result.requestType === "revise"
+                ? "It is now a new intended version. Edit its intent or rules in .planmap/plan.json, then approve it."
+                : output
+        });
+    } else if (result.outcome === "nothing") {
+        showNotice("action-result", { title: result.requestType === "revise" ? "Nothing to revise" : "Nothing to approve", body: output });
+    } else {
+        showNotice("action-result", { tone: "danger", title: ACTION_FAILED[result.requestType], body: output || cliMessage(result) });
+    }
+}
+
+// Refresh re-derives evolution from the code. The CLI resets verify statuses
+// when it does, so drift returns after the next Verify.
+function showEvolutionResult(result) {
+    const summary = String(result.stdout ?? "").split("\n").filter(line => /classification|LLM classifications/.test(line)).join("\n");
+    const reverify = state?.plan ? "Verify again to bring drift back onto the map." : "";
+
+    const options = result.outcome === "ok"
+        ? { title: "Evolution refreshed", body: [summary, reverify].filter(Boolean).join("\n") }
+        : result.outcome === "findings"
+            ? { title: "Evolution refreshed, partly without AI", body: [summary, "Some batches kept path labels.", cliMessage(result), reverify].filter(Boolean).join("\n") }
+            : { tone: "danger", title: "Evolution didn't refresh", body: cliMessage(result) };
+
+    renderBanner(evoNotice, options, () => hideBanner(evoNotice));
 }
 
 // Exit 1 is a successful run that found drift, never an error.
@@ -560,13 +694,17 @@ function renderEmpty() {
     renderVerifyPrompt(onboarding?.kind === "verify");
     if (!blocking) return;
 
+    const withAi = Boolean(state?.aiKey);
+    const addKey = withAi ? "" : '<button class="link-btn" id="addKeyBtn">Add an OpenRouter key</button>';
+
     if (onboarding.kind === "scan") {
         const scanning = busy.has("scan");
         emptyCard.innerHTML = `
             <h2>PlanMap isn't set up yet</h2>
             <p>Scan this project to learn what your code currently does.</p>
             <button class="primary-btn" id="scanBtn"${scanning ? " disabled" : ""}>${scanning ? "Scanning…" : "Scan project"}</button>
-            <p class="fine">Takes ~10s · nothing leaves your machine</p>
+            <p class="fine">${withAi ? "Groups your code into features with your OpenRouter key · can take a minute" : "Takes ~10s · nothing leaves your machine"}</p>
+            ${scanning ? "" : addKey}
             ${problemBlock("scan")}`;
         document.getElementById("scanBtn").addEventListener("click", () => request("scan", { type: "init" }));
     } else if (onboarding.kind === "no-plan") {
@@ -576,13 +714,18 @@ function renderEmpty() {
         emptyCard.innerHTML = `
             <h2>${escapeHtml(found)}, no plan yet.</h2>
             <div class="choices">
-              <button class="choice" id="draftPlanBtn"${drafting ? " disabled" : ""}><span class="choice-label">${drafting ? "Drafting a plan…" : "Draft a plan with AI"}</span><span class="choice-note">needs OPENROUTER_API_KEY</span></button>
+              <button class="choice" id="draftPlanBtn"${drafting ? " disabled" : ""}><span class="choice-label">${drafting ? "Drafting a plan…" : "Draft a plan with AI"}</span><span class="choice-note">${withAi ? "uses your OpenRouter key" : "needs OPENROUTER_API_KEY"}</span></button>
               <button class="choice recommended" id="writeRuleBtn"><span class="choice-label">Write one rule myself</span><span class="choice-note">no key needed</span></button>
             </div>
+            ${addKey}
+            ${problemBlock("scan")}
             ${problemBlock("draftPlan")}`;
         document.getElementById("draftPlanBtn").addEventListener("click", () => request("draftPlan", { type: "draftPlan" }));
         document.getElementById("writeRuleBtn").addEventListener("click", () => vscode.postMessage({ type: "openPlan" }));
-    } else {
+    }
+    document.getElementById("addKeyBtn")?.addEventListener("click", () => vscode.postMessage({ type: "setApiKey" }));
+
+    if (onboarding.kind === "invalid-plan") {
         emptyCard.innerHTML = `<h2>This plan can't be shown</h2><p>Fix <code>.planmap/plan.json</code> and the map will reload.</p><div class="problem">${escapeHtml(onboarding.problem)}</div>`;
     }
 }
@@ -640,6 +783,16 @@ railButtons.forEach(button => {
     });
 });
 
+const approveLensBtn = document.getElementById("approveLensBtn");
+const evoRefreshBtn = document.getElementById("evoRefreshBtn");
+const evoNotice = document.getElementById("evoNotice");
+
+approveLensBtn.addEventListener("click", () => {
+    if (!approveLensBtn.classList.contains("inert") && currentLensId) request("action", { type: "approveLens", lensId: currentLensId });
+});
+// The only message the Evolution view's toolbar sends: re-derive it from the code.
+evoRefreshBtn.addEventListener("click", () => request("refresh", { type: "evolution" }));
+
 const evolutionView = createEvolutionView({
     title: document.getElementById("evoTitle"),
     tagSwitch: document.getElementById("tagSwitch"),
@@ -677,6 +830,13 @@ function applyState(next) {
     }
     if (inFeature) mountFeature();
 
+    // An approve, revise or reject re-reads the plan: follow the node (a revise
+    // gives it a new id that supersedes the old one), or close if it is gone.
+    if (detailNodeId && impactPanel.classList.contains("open")) {
+        const same = inFeature && featureGraph.nodes.find(n => n.id === detailNodeId || n.source.supersedes === detailNodeId);
+        if (same) openDetail(same); else closeDetail();
+    }
+
     renderBreadcrumb(); renderLensSwitch(); updateHint(); refreshCompileUI(); syncZoomLabel();
 }
 
@@ -694,6 +854,7 @@ window.addEventListener("message", event => {
     const message = event.data;
     if (message?.type === "state") applyState(message.state);
     if (message?.type === "cliResult") onCliResult(message);
+    if (message?.type === "cancelled") onCancelled(message);
 });
 
 vscode.postMessage({ type: "ready" });
