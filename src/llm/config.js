@@ -91,8 +91,11 @@ export function loadOpenRouterApiKey() {
 // CONFIGURATION
 // --------------------------------------------------
 
+// A free model: no OpenRouter credit is needed. Free models are rate
+// limited, and this one reasons before answering (see max_tokens in
+// llm.js and plan/draft.js).
 export const OPENROUTER_MODEL =
-    "google/gemini-2.5-flash";
+    "nvidia/nemotron-3-ultra-550b-a55b:free";
 
 
 export const OPENROUTER_ENDPOINT =

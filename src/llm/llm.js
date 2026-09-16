@@ -114,12 +114,14 @@ export async function classifyEvolutionEvents(
                         // 30 (see BATCH_SIZE in cli/commands/evolution.js).
                         // 2500 tokens was not enough for a full batch of
                         // long identifiers and caused truncated, invalid
-                        // JSON responses. 8000 matches the ceiling used
-                        // before batching was introduced.
+                        // JSON responses. 8000 matched the ceiling used
+                        // before batching was introduced. Reasoning models
+                        // also count hidden reasoning against this limit,
+                        // so it is 16000 to leave room for a full batch.
                         // --------------------------------------------------
 
                         max_tokens:
-                            8000
+                            16000
                     })
             }
         );

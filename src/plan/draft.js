@@ -229,8 +229,12 @@ async function callOpenRouter(
                         temperature:
                             0.1,
 
+                        // Reasoning models count their hidden reasoning
+                        // against max_tokens. At 4000 the plan JSON was cut
+                        // off or empty; a 7-node draft used ~3100-11500
+                        // tokens across the free models tried.
                         max_tokens:
-                            4000
+                            16000
                     })
             }
         );
