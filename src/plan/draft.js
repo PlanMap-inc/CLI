@@ -11,6 +11,11 @@ import {
 } from "./model.js";
 
 import {
+    clauseProblem,
+    NUMERIC_FACT_FIELDS
+} from "./evaluate.js";
+
+import {
     readBaseline
 } from "../changes/check.js";
 
@@ -31,15 +36,25 @@ import {
 } from "../evolution/classification.js";
 
 import {
-    loadOpenRouterApiKey,
-    OPENROUTER_MODEL,
-    OPENROUTER_ENDPOINT
+    isLocalLlm,
+    loadLlmApiKey,
+    ollamaChatEndpoint,
+    LLM_MODEL,
+    LLM_ENDPOINT,
+    LLM_NUM_CTX
 } from "../llm/config.js";
 
 import {
     extractOpenRouterText,
     parseOpenRouterJson
 } from "../llm/response.js";
+
+import {
+    LENSES,
+    LENS_IDS,
+    canonicalLenses,
+    lensCatalogue
+} from "../llm/lenses.js";
 
 
 // --------------------------------------------------
@@ -168,17 +183,19 @@ function getNextLensNumber(
 
 function requireOpenRouterApiKey() {
     const apiKey =
-        loadOpenRouterApiKey();
+        loadLlmApiKey();
 
+    // A local server needs no key; a hosted one does.
     if (
-        !apiKey
+        !apiKey &&
+        !isLocalLlm()
     ) {
         throw new Error(
             "OPENROUTER_API_KEY is not configured."
         );
     }
 
-    return apiKey;
+    return apiKey || "local";
 }
 
 
@@ -196,44 +213,95 @@ async function callOpenRouter(
     const apiKey =
         requireOpenRouterApiKey();
 
-    const response =
-        await fetch(
-            OPENROUTER_ENDPOINT,
-            {
-                method:
-                    "POST",
+    // Ollama's own API accepts the context size per request; the
+    // OpenAI-compatible one does not.
+    const ollamaEndpoint =
+        ollamaChatEndpoint();
 
-                headers: {
-                    "Authorization":
-                        `Bearer ${apiKey}`,
+    const requestBody =
+        ollamaEndpoint
+            ? {
+                model:
+                    LLM_MODEL,
 
-                    "Content-Type":
-                        "application/json"
-                },
+                messages: [
+                    {
+                        role:
+                            "user",
 
-                body:
-                    JSON.stringify({
-                        model:
-                            OPENROUTER_MODEL,
+                        content:
+                            prompt
+                    }
+                ],
 
-                        messages: [
-                            {
-                                role:
-                                    "user",
+                stream:
+                    false,
 
-                                content:
-                                    prompt
-                            }
-                        ],
+                options: {
+                    temperature:
+                        0.1,
 
-                        temperature:
-                            0.1,
+                    num_ctx:
+                        LLM_NUM_CTX,
 
-                        max_tokens:
-                            4000
-                    })
+                    num_predict:
+                        16000
+                }
             }
+            : null;
+
+    let response;
+
+    try {
+        response =
+            await fetch(
+                ollamaEndpoint || LLM_ENDPOINT,
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Authorization":
+                            `Bearer ${apiKey}`,
+
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        requestBody
+                            ? JSON.stringify(requestBody)
+                            : JSON.stringify({
+                            model:
+                                LLM_MODEL,
+
+                            messages: [
+                                {
+                                    role:
+                                        "user",
+
+                                    content:
+                                        prompt
+                                }
+                            ],
+
+                            temperature:
+                                0.1,
+
+                            // Reasoning models count their hidden reasoning
+                            // against max_tokens. At 4000 the plan JSON was cut
+                            // off or empty; a 7-node draft used ~3100-11500
+                            // tokens across the free models tried.
+                            max_tokens:
+                                16000
+                        })
+                }
         );
+    } catch (error) {
+        throw new Error(
+            `Cannot reach the model at ${LLM_ENDPOINT}: ${error.message}. Start it (ollama serve), or set PLANMAP_LLM_ENDPOINT.`
+        );
+    }
 
     if (
         !response.ok
@@ -380,7 +448,8 @@ function collectBrownfieldCandidates(
 function buildBrownfieldPrompt(
     candidates,
     factsByIdentity,
-    vocabulary
+    vocabulary,
+    groupByIdentity = {}
 ) {
     const declarations =
         candidates.map(
@@ -390,6 +459,14 @@ function buildBrownfieldPrompt(
 
                 type:
                     candidate.type,
+
+                // What the Evolution graph already decided this declaration
+                // is part of, so the plan tells the same story the outline
+                // does instead of regrouping the same code differently.
+                partOf:
+                    groupByIdentity[
+                        candidate.identity
+                    ] || null,
 
                 facts:
                     factsByIdentity[
@@ -408,36 +485,116 @@ The project already exists. Draft intent for the significant declarations suppli
 Every returned node MUST contain:
 - identity
 - feature
+- step
 - title
 - intent
 - lensTags
 - rules
+
+
+--------------------------------------------------
+TITLE AND INTENT QUALITY
+--------------------------------------------------
+
+A plan reads as the product's own story, in the order a user lives it.
+
+title = the step, named as the product behaves.
+Keep it under 7 words. No function names. No file names.
+
+NEVER start a title with: Ensure, Handle, Manage, Process, Validate that,
+Verify that, Implement, Support.
+
+WRONG:
+Ensure submitSurvey function handles errors and responds appropriately
+Ensure JWT verification middleware correctly handles authentication
+Handle user credential response
+
+RIGHT:
+Sign in with Google
+Issue a 24-hour session token
+Refuse a second submission
+Save all seven answers together
+
+intent = ONE sentence saying what must stay true, in plain language,
+supported by the supplied facts. Not a restatement of the title, and not a
+description of the code's shape.
+
+WRONG:
+The submitSurvey function should handle errors, log them, and respond with
+appropriate status codes.
+
+RIGHT:
+A submission is rejected unless all seven answers are present.
+
+
+--------------------------------------------------
+FEATURES AND ORDER
+--------------------------------------------------
+
+feature = the user-facing capability this step belongs to, chosen from the
+supplied features.
+
+Each declaration carries "partOf": the feature and group the Evolution
+graph already placed it in. Use that feature unless the supplied facts
+plainly contradict it. The two views describe the same code and must not
+disagree about where it belongs.
+
+Spread the declarations across the features they truly belong to. Putting
+most of them in one feature is wrong: a feature holding almost everything
+tells a reader nothing.
+
+step = this step's position inside its feature, counting from 1, in the
+order a user reaches it. Steps within one feature must be numbered 1, 2, 3
+with no gaps and no repeats.
+
+Order by what happens, in sequence, not by which file it lives in:
+
+1. What the person does first - the screen, the button, the form.
+2. What is sent, and what receives it - the route or endpoint.
+3. What must be true before it proceeds - the checks.
+4. What is stored or returned.
+5. What the person sees as a result.
+
+A feature's steps therefore cross the frontend and the backend, and that
+crossing is the point: a reader follows one request the whole way through.
+Never group all the frontend steps together and then all the backend ones,
+and never order by "partOf" group - a group gathers declarations that do
+one job, while step order follows a single journey.
+
+
+--------------------------------------------------
+LENSES
+--------------------------------------------------
+
+lensTags = the perspectives this step can be read through. The vocabulary
+is FIXED. Use these ids exactly, in lower case:
+
+${lensCatalogue()}
+
+- Every node gets AT LEAST ONE lens, at most 3.
+- Only these ids are accepted: ${LENS_IDS.join(", ")}
+- NEVER invent one, and NEVER use a feature name as a lens.
+- Choose only what the supplied facts support. A step that checks a token
+  is ["backend", "security"]; a form that posts to the server is
+  ["frontend", "backend"]; a query that writes a row is ["data"].
 
 Every rule MUST have:
 - kind: "behaviour"
 - target
 - assert
 
-Rules must use only these checkable facts:
-throws
-throwTypes
-returns
-returnsNullish
-calls
-numbers
-awaits
-catches
-emptyCatches
-params
+Rules must use only these checkable facts, each with the operators its type allows.
 
-Allowed assertion operators:
->=
-<=
-==
-!=
-contains
-notContains
-unchanged
+Count facts hold a number. Use ">=", "<=", "==" or "!=" with a numeric value:
+${NUMERIC_FACT_FIELDS.join("\n")}
+
+List facts hold a list. Use "contains" or "notContains" with ONE item as the value:
+throwTypes and calls: the value is a string, such as "Error" or "verifyToken"
+numbers: the value is a number, such as 0
+
+Any fact may also use "unchanged" with no value. It passes while the fact stays as it was when the node was approved.
+
+NEVER use ">=", "<=", "==" or "!=" on a list fact. A clause such as "calls": { "op": "==", "value": 0 } can never be verified. To describe a function that calls nothing, leave "calls" out.
 
 ASSERTION FORMAT IS STRICT.
 
@@ -482,24 +639,15 @@ Every node must use:
 status: "intended"
 origin: "ai_drafted"
 
-Use only supplied feature names and lens tags when they are provided.
-
 Existing features:
 ${JSON.stringify(
     vocabulary.features || []
 )}
 
-Existing lens tags:
-${JSON.stringify(
-    vocabulary.tags || []
-)}
-
 IMPORTANT VOCABULARY BOUNDARY:
 - "feature" MUST be one of the supplied existing feature names.
-- "lensTags" MUST contain ONLY the supplied existing lens tag IDs.
+- "lensTags" MUST contain ONLY ids from the fixed lens list above.
 - NEVER put a feature name into "lensTags".
-- NEVER invent a lens tag.
-- NEVER use a feature name such as "Login" as a lens tag unless it also appears exactly in the supplied lens tag list.
 
 Significant declarations:
 ${JSON.stringify(
@@ -508,6 +656,19 @@ ${JSON.stringify(
     2
 )}
 
+
+--------------------------------------------------
+COVERAGE
+--------------------------------------------------
+
+Return exactly one node for every supplied declaration, with the same
+identity, in the same number. Never merge two declarations into one node.
+Never leave one out because it seems minor. Never invent one.
+
+A declaration you would rather not describe still gets a node: say plainly
+what it must keep doing.
+
+
 Return this exact top-level shape:
 
 {
@@ -515,9 +676,10 @@ Return this exact top-level shape:
     {
       "identity": "file::name:type",
       "feature": "one of the supplied existing feature names",
-      "title": "short requirement title",
-      "intent": "clear behavioural intent",
-      "lensTags": [],
+      "step": 1,
+      "title": "the step, in the product's words",
+      "intent": "one sentence: what must stay true",
+      "lensTags": ["backend"],
       "rules": [
         {
           "kind": "behaviour",
@@ -543,7 +705,10 @@ Return this exact top-level shape:
 function normalizeBrownfieldNodes(
     parsed,
     plan,
-    candidates
+    candidates,
+    dropped = [],
+    skipped = [],
+    lensesByIdentity = {}
 ) {
     if (
         !parsed ||
@@ -585,19 +750,6 @@ function normalizeBrownfieldNodes(
         );
     }
 
-    const lensIds =
-        new Set(
-            (plan.lenses || [])
-                .map(
-                    lens =>
-                        typeof lens?.id ===
-                        "string"
-                            ? lens.id
-                            : ""
-                )
-                .filter(Boolean)
-        );
-
     const protectedIdentities =
         new Set(
             (plan.nodes || [])
@@ -619,6 +771,11 @@ function normalizeBrownfieldNodes(
 
     const nodes = [];
 
+    const skippedBefore =
+        skipped.length;
+
+
+
     let nodeNumber =
         getNextNodeNumber(
             plan
@@ -627,12 +784,15 @@ function normalizeBrownfieldNodes(
     for (
         const draft of parsed.nodes
     ) {
+      // A node the model got wrong is skipped and reported. One bad node
+      // must not throw away a draft of hundreds of good ones.
+      try {
         if (
             !draft ||
             typeof draft !== "object"
         ) {
             throw new Error(
-                "Brownfield LLM returned an invalid node."
+                "not an object"
             );
         }
 
@@ -643,7 +803,7 @@ function normalizeBrownfieldNodes(
             )
         ) {
             throw new Error(
-                "Brownfield LLM returned a node for a non-significant declaration."
+                "not one of the declarations it was asked about"
             );
         }
 
@@ -684,34 +844,26 @@ function normalizeBrownfieldNodes(
             );
         }
 
-        const lensTags =
-            Array.isArray(
-                draft.lensTags
-            )
-                ? draft.lensTags
-                    .filter(
-                        tag =>
-                            typeof tag ===
-                            "string" &&
-                            tag.trim()
-                    )
-                    .map(
-                        tag =>
-                            tag.trim()
-                    )
-                : [];
+        // --------------------------------------------------
+        // LENSES
+        // --------------------------------------------------
+        // The Evolution graph's tags for this exact declaration win. Both
+        // views then filter the same code into the same lens, instead of
+        // the model deciding twice and disagreeing with itself. What the
+        // model returned is the fallback for a declaration evolution has
+        // no tags for, mapped onto the fixed vocabulary.
+        // --------------------------------------------------
 
-        for (
-            const tag of lensTags
-        ) {
-            if (
-                !lensIds.has(tag)
-            ) {
-                throw new Error(
-                    `Brownfield draft for ${draft.identity} contains unknown lens tag: ${tag}.`
+        const lensTags =
+            lensesByIdentity[
+                draft.identity
+            ]?.length
+                ? lensesByIdentity[
+                    draft.identity
+                ]
+                : canonicalLenses(
+                    draft.lensTags
                 );
-            }
-        }
 
         const rules =
             draft.rules.map(
@@ -752,6 +904,33 @@ function normalizeBrownfieldNodes(
                         );
                     }
 
+                    // A clause verify can never evaluate (such as
+                    // "calls" with "==") would make the node a
+                    // permanent verify error, so it is dropped and
+                    // reported instead of written to the plan.
+                    const assert =
+                        Object.fromEntries(
+                            Object.entries(
+                                rule.assert
+                            ).filter(
+                                ([field, clause]) => {
+                                    const problem =
+                                        clauseProblem(
+                                            field,
+                                            clause
+                                        );
+
+                                    if (problem) {
+                                        dropped.push(
+                                            `${draft.identity}: ${problem}`
+                                        );
+                                    }
+
+                                    return !problem;
+                                }
+                            )
+                        );
+
                     return {
                         kind:
                             "behaviour",
@@ -759,11 +938,16 @@ function normalizeBrownfieldNodes(
                         target:
                             draft.identity,
 
-                        assert:
-                            rule.assert
+                        assert
                     };
                 }
-            );
+            )
+                .filter(
+                    rule =>
+                        Object.keys(
+                            rule.assert
+                        ).length > 0
+                );
 
         let featureId = null;
 
@@ -802,7 +986,7 @@ function normalizeBrownfieldNodes(
             );
         }
 
-        nodes.push({
+        const node = {
             id:
                 createId(
                     "plan",
@@ -837,7 +1021,128 @@ function normalizeBrownfieldNodes(
 
             origin:
                 "ai_drafted"
-        });
+        };
+
+        if (
+            Number.isFinite(
+                Number(draft.step)
+            )
+        ) {
+            node.step =
+                Number(draft.step);
+        }
+
+        nodes.push(node);
+      } catch (error) {
+        skipped.push(
+            `${typeof draft?.identity === "string" ? draft.identity : "unnamed node"}: ${error.message}`
+        );
+      }
+    }
+
+
+    // --------------------------------------------------
+    // FAIL CLOSED WHEN THE RESPONSE IS BROADLY WRONG
+    // --------------------------------------------------
+    // An isolated mistake is skipped and reported above. A response that is
+    // mostly wrong is not a draft, and nothing is written.
+    // --------------------------------------------------
+
+    const batchSkipped =
+        skipped.length -
+        skippedBefore;
+
+    if (
+        batchSkipped > 0 &&
+        (
+            nodes.length === 0 ||
+            batchSkipped > parsed.nodes.length / 4
+        )
+    ) {
+        throw new Error(
+            `Brownfield draft rejected: ${batchSkipped} of ${parsed.nodes.length} nodes were wrong.\n${skipped.slice(skippedBefore).map(line => `- ${line}`).join("\n")}`
+        );
+    }
+
+    return nodes;
+}
+
+
+// --------------------------------------------------
+// LINK EACH FEATURE'S STEPS IN ORDER
+// --------------------------------------------------
+// The model numbers the steps inside a feature, and those numbers become the
+// edges, so a feature reads as the journey a user takes instead of a pile of
+// declarations. Batches are numbered independently, so this runs over the
+// whole plan: a node keeps its place among everything already drafted.
+// The step number itself is working state and does not reach plan.json.
+// --------------------------------------------------
+
+function linkFeatureSteps(
+    nodes
+) {
+    const byFeature =
+        new Map();
+
+    nodes.forEach(
+        (node, index) => {
+            if (
+                !byFeature.has(node.feature)
+            ) {
+                byFeature.set(
+                    node.feature,
+                    []
+                );
+            }
+
+            byFeature
+                .get(node.feature)
+                .push({
+                    node,
+                    index
+                });
+        }
+    );
+
+    for (
+        const [, members] of byFeature
+    ) {
+        members.sort(
+            (left, right) => {
+                const leftStep =
+                    Number.isFinite(left.node.step)
+                        ? left.node.step
+                        : Number.MAX_SAFE_INTEGER;
+
+                const rightStep =
+                    Number.isFinite(right.node.step)
+                        ? right.node.step
+                        : Number.MAX_SAFE_INTEGER;
+
+                return (
+                    leftStep - rightStep ||
+                    left.index - right.index
+                );
+            }
+        );
+
+        members.forEach(
+            (member, position) => {
+                const next =
+                    members[position + 1];
+
+                member.node.edgesOut =
+                    next
+                        ? [next.node.id]
+                        : [];
+            }
+        );
+    }
+
+    for (
+        const node of nodes
+    ) {
+        delete node.step;
     }
 
     return nodes;
@@ -921,6 +1226,15 @@ function ensureBrownfieldVocabulary(
         );
     }
 
+    // --------------------------------------------------
+    // LENSES
+    // --------------------------------------------------
+    // The fixed vocabulary, in its own order, whether or not this project's
+    // scan has produced a declaration for each one yet. The Plan Graph and
+    // the Evolution graph then offer the same perspectives in the same
+    // order, and a lens reads as empty rather than as missing.
+    // --------------------------------------------------
+
     const existingLensIds =
         new Set(
             (plan.lenses || [])
@@ -934,60 +1248,28 @@ function ensureBrownfieldVocabulary(
                 .filter(Boolean)
         );
 
-    const existingLensLabels =
-        new Set(
-            (plan.lenses || [])
-                .map(
-                    lens =>
-                        typeof lens?.label ===
-                        "string"
-                            ? lens.label.trim()
-                            : ""
-                )
-                .filter(Boolean)
-        );
-
-    const tagNames =
-        Array.isArray(
-            vocabulary.tags
-        )
-            ? vocabulary.tags
-                .filter(
-                    value =>
-                        typeof value ===
-                        "string" &&
-                        value.trim()
-                )
-                .map(
-                    value =>
-                        value.trim()
-                )
-            : [];
-
     for (
-        const tag of tagNames
+        const lens of LENSES
     ) {
         if (
-            existingLensIds.has(tag) ||
-            existingLensLabels.has(tag)
+            existingLensIds.has(lens.id)
         ) {
             continue;
         }
 
         plan.lenses.push({
             id:
-                tag,
+                lens.id,
 
             label:
-                tag,
+                lens.label,
 
             source:
                 "derived",
 
             derivedFrom:
-                "evolution.tags"
+                "planmap.lenses"
         });
-
     }
 }
 
@@ -1059,7 +1341,9 @@ export async function draftBrownfield(
     ) {
         throw new Error(
             "Cannot draft: no features found in the evolution graph. " +
-            "Run 'planmap evolution <project>' with OPENROUTER_API_KEY set to label it first."
+            "The scan labelled from file paths, which names no features. " +
+            "Run 'planmap evolution <project>' again with a model configured: " +
+            "OPENROUTER_API_KEY, or PLANMAP_LLM_ENDPOINT for a local one."
         );
     }
 
@@ -1072,6 +1356,63 @@ export async function draftBrownfield(
         readBaseline(
             projectRoot
         );
+
+    // --------------------------------------------------
+    // WHAT EVOLUTION ALREADY DECIDED
+    // --------------------------------------------------
+    // Per identity: the lenses it is seen through, and the feature and
+    // group it sits in. The plan reuses both so the two graphs describe
+    // the same code the same way. Later nodes win, being the newer word
+    // on a declaration that has changed.
+    // --------------------------------------------------
+
+    const lensesByIdentity =
+        {};
+
+    const groupByIdentity =
+        {};
+
+    for (
+        const node of evolution.nodes || []
+    ) {
+        if (
+            !node?.identity
+        ) {
+            continue;
+        }
+
+        const lenses =
+            canonicalLenses(
+                node.tags
+            );
+
+        if (
+            lenses.length > 0
+        ) {
+            lensesByIdentity[
+                node.identity
+            ] = lenses;
+        }
+
+        const feature =
+            typeof node.feature === "string"
+                ? node.feature.trim()
+                : "";
+
+        if (
+            feature
+        ) {
+            groupByIdentity[
+                node.identity
+            ] = {
+                feature,
+
+                ...(node.group
+                    ? { group: node.group }
+                    : {})
+            };
+        }
+    }
 
     const factsByIdentity =
         {};
@@ -1150,29 +1491,44 @@ export async function draftBrownfield(
             .push(candidate);
     }
 
+    // One request per batch, packed across directories: a model that sees a
+    // whole feature at once can order its steps and name them consistently.
+    // A local model gets smaller batches, its context being smaller.
     const batchSize =
-        30;
+        Number.parseInt(
+            process.env.PLANMAP_LLM_BATCH_SIZE ?? "",
+            10
+        ) > 0
+            ? Number.parseInt(
+                process.env.PLANMAP_LLM_BATCH_SIZE,
+                10
+            )
+            : isLocalLlm()
+                ? 10
+                : 30;
+
+    const sortedCandidates =
+        [...directoryGroups.keys()]
+            .sort()
+            .flatMap(
+                directory =>
+                    directoryGroups.get(directory)
+            );
 
     const batchesList =
         [];
 
     for (
-        const candidatesInDirectory of
-            directoryGroups.values()
+        let start = 0;
+        start < sortedCandidates.length;
+        start += batchSize
     ) {
-        for (
-            let start = 0;
-            start <
-                candidatesInDirectory.length;
-            start += batchSize
-        ) {
-            batchesList.push(
-                candidatesInDirectory.slice(
-                    start,
-                    start + batchSize
-                )
-            );
-        }
+        batchesList.push(
+            sortedCandidates.slice(
+                start,
+                start + batchSize
+            )
+        );
     }
 
     let drafted =
@@ -1180,6 +1536,12 @@ export async function draftBrownfield(
 
     let batches =
         0;
+
+    const dropped =
+        [];
+
+    const skipped =
+        [];
 
     for (
         const batch of batchesList
@@ -1191,7 +1553,8 @@ export async function draftBrownfield(
             buildBrownfieldPrompt(
                 batch,
                 factsByIdentity,
-                vocabulary
+                vocabulary,
+                groupByIdentity
             );
 
         const parsed =
@@ -1203,7 +1566,10 @@ export async function draftBrownfield(
             normalizeBrownfieldNodes(
                 parsed,
                 plan,
-                batch
+                batch,
+                dropped,
+                skipped,
+                lensesByIdentity
             );
 
         const batchIdentities =
@@ -1236,10 +1602,11 @@ export async function draftBrownfield(
         const nextPlan = {
             ...plan,
 
-            nodes: [
-                ...preservedNodes,
-                ...nodes
-            ]
+            nodes:
+                linkFeatureSteps([
+                    ...preservedNodes,
+                    ...nodes
+                ])
         };
 
         const errors =
@@ -1276,11 +1643,21 @@ export async function draftBrownfield(
 
         drafted +=
             nodes.length;
+
+        if (
+            nodes.length < batch.length
+        ) {
+            console.log(
+                `Batch ${batches}: ${nodes.length} of ${batch.length} declarations drafted; the rest are retried on the next run.`
+            );
+        }
     }
 
     return {
         drafted,
-        batches
+        batches,
+        dropped,
+        skipped
     };
 }
 

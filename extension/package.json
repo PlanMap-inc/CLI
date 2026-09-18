@@ -1,0 +1,103 @@
+{
+  "name": "planmap-vscode",
+  "displayName": "PlanMap",
+  "description": "See what you approved and what your code actually does, as one map.",
+  "version": "0.1.0",
+  "publisher": "planmap",
+  "private": true,
+  "license": "BUSL-1.1",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0a0c11",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PlanMap-inc/CLI.git",
+    "directory": "extension"
+  },
+  "homepage": "https://github.com/PlanMap-inc/CLI/tree/main/extension#readme",
+  "bugs": {
+    "url": "https://github.com/PlanMap-inc/CLI/issues"
+  },
+  "keywords": [
+    "plan",
+    "drift",
+    "verification",
+    "architecture",
+    "code evolution"
+  ],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "planmap.open",
+        "title": "Open Plan Graph",
+        "category": "PlanMap"
+      },
+      {
+        "command": "planmap.openProjectFolder",
+        "title": "Open Project Folder…",
+        "category": "PlanMap"
+      },
+      {
+        "command": "planmap.setApiKey",
+        "title": "Set OpenRouter API Key",
+        "category": "PlanMap"
+      },
+      {
+        "command": "planmap.clearApiKey",
+        "title": "Remove OpenRouter API Key",
+        "category": "PlanMap"
+      }
+    ],
+    "configuration": {
+      "title": "PlanMap",
+      "properties": {
+        "planmap.cliPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the PlanMap CLI entry file. Leave empty to use the CLI in this repository (../src/cli/cli.js)."
+        },
+        "planmap.nodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Node executable used to run the CLI. Leave empty to use VS Code's bundled runtime."
+        },
+        "planmap.llmEndpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "OpenAI-compatible endpoint used to group code into features and draft plans. Leave empty for a local model with [Ollama](https://ollama.com) at `http://localhost:11434/v1/chat/completions`, which needs no API key. For OpenRouter: `https://openrouter.ai/api/v1/chat/completions`, with **PlanMap: Set OpenRouter API Key**."
+        },
+        "planmap.llmModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model name for the endpoint above. Leave empty for `qwen2.5-coder:7b`, PlanMap's local default (`ollama pull qwen2.5-coder:7b`)."
+        },
+        "planmap.llmBatchSize": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Declarations classified per request. Leave 0 for PlanMap's default of 30. A local model with a small context window does better at 10."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -w -p .",
+    "test": "tsc -p . && for t in test/*.mjs; do node \"$t\" || exit 1; done"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.90.0",
+    "typescript": "^7.0.2"
+  }
+}

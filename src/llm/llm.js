@@ -1,7 +1,10 @@
 import {
-    loadOpenRouterApiKey,
-    OPENROUTER_MODEL,
-    OPENROUTER_ENDPOINT
+    isLocalLlm,
+    loadLlmApiKey,
+    ollamaChatEndpoint,
+    LLM_MODEL,
+    LLM_ENDPOINT,
+    LLM_NUM_CTX
 } from "./config.js";
 
 import {
@@ -36,7 +39,8 @@ export async function classifyEvolutionEvents(
     existingFeatures,
     existingTags,
     maxTags,
-    authoritative = false
+    authoritative = false,
+    existingGroups = {}
 ) {
 
     // --------------------------------------------------
@@ -44,11 +48,13 @@ export async function classifyEvolutionEvents(
     // --------------------------------------------------
 
     const apiKey =
-        loadOpenRouterApiKey();
+        loadLlmApiKey();
 
 
+    // A local server needs no key; a hosted one does.
     if (
-        !apiKey
+        !apiKey &&
+        !isLocalLlm()
     ) {
         throw new Error(
             "OPENROUTER_API_KEY is not configured."
@@ -66,7 +72,8 @@ export async function classifyEvolutionEvents(
             existingFeatures,
             existingTags,
             maxTags,
-            authoritative
+            authoritative,
+            existingGroups
         );
 
 
@@ -74,55 +81,104 @@ export async function classifyEvolutionEvents(
     // SEND REQUEST TO OPENROUTER
     // --------------------------------------------------
 
-    const response =
-        await fetch(
-            OPENROUTER_ENDPOINT,
-            {
-                method:
-                    "POST",
+    // Ollama's own API accepts the context size per request; the
+    // OpenAI-compatible one does not.
+    const ollamaEndpoint =
+        ollamaChatEndpoint();
 
-                headers: {
-                    "Authorization":
-                        `Bearer ${apiKey}`,
+    const requestBody =
+        ollamaEndpoint
+            ? {
+                model:
+                    LLM_MODEL,
 
-                    "Content-Type":
-                        "application/json"
-                },
+                messages: [
+                    {
+                        role:
+                            "user",
 
-                body:
-                    JSON.stringify({
-                        model:
-                            OPENROUTER_MODEL,
+                        content:
+                            prompt
+                    }
+                ],
 
-                        messages: [
-                            {
-                                role:
-                                    "user",
+                stream:
+                    false,
 
-                                content:
-                                    prompt
-                            }
-                        ],
+                options: {
+                    temperature:
+                        0.1,
 
-                        temperature:
-                            0.1,
+                    num_ctx:
+                        LLM_NUM_CTX,
 
-                        // --------------------------------------------------
-                        // BATCHED REQUEST CEILING
-                        // --------------------------------------------------
-                        // Evolution events are processed in batches of
-                        // 30 (see BATCH_SIZE in cli/commands/evolution.js).
-                        // 2500 tokens was not enough for a full batch of
-                        // long identifiers and caused truncated, invalid
-                        // JSON responses. 8000 matches the ceiling used
-                        // before batching was introduced.
-                        // --------------------------------------------------
-
-                        max_tokens:
-                            8000
-                    })
+                    num_predict:
+                        16000
+                }
             }
+            : null;
+
+    let response;
+
+    try {
+        response =
+            await fetch(
+                ollamaEndpoint || LLM_ENDPOINT,
+                {
+                    method:
+                        "POST",
+
+                    headers: {
+                        "Authorization":
+                            `Bearer ${apiKey || "local"}`,
+
+                        "Content-Type":
+                            "application/json"
+                    },
+
+                    body:
+                        requestBody
+                            ? JSON.stringify(requestBody)
+                            : JSON.stringify({
+                            model:
+                                LLM_MODEL,
+
+                            messages: [
+                                {
+                                    role:
+                                        "user",
+
+                                    content:
+                                        prompt
+                                }
+                            ],
+
+                            temperature:
+                                0.1,
+
+                            // --------------------------------------------------
+                            // BATCHED REQUEST CEILING
+                            // --------------------------------------------------
+                            // Evolution events are processed in batches of
+                            // 30 (see BATCH_SIZE in cli/commands/evolution.js).
+                            // 2500 tokens was not enough for a full batch of
+                            // long identifiers and caused truncated, invalid
+                            // JSON responses. 8000 matched the ceiling used
+                            // before batching was introduced. Reasoning models
+                            // also count hidden reasoning against this limit,
+                            // so it is 16000 to leave room for a full batch.
+                            // --------------------------------------------------
+
+                            max_tokens:
+                                16000
+                        })
+                }
         );
+    } catch (error) {
+        throw new Error(
+            `Cannot reach the model at ${LLM_ENDPOINT}: ${error.message}. Start it (ollama serve), or set PLANMAP_LLM_ENDPOINT.`
+        );
+    }
 
 
     // --------------------------------------------------

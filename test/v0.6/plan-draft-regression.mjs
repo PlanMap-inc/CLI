@@ -288,7 +288,9 @@ function assertNoPlan(
 }
 
 /*
- * 5. Invalid lens must fail closed.
+ * 5. The lens vocabulary is fixed: a lens outside it is dropped, and a
+ *    synonym is mapped onto the lens it names. One unusable tag must not
+ *    cost the whole batch its labels.
  */
 {
     const root = project();
@@ -309,10 +311,11 @@ function assertNoPlan(
                         "Invalid lens",
 
                     intent:
-                        "Invalid lens must be rejected.",
+                        "An unknown lens is dropped, a synonym is mapped.",
 
                     lensTags: [
-                        "backend"
+                        "auth",
+                        "not-a-lens"
                     ],
 
                     rules: [
@@ -359,15 +362,45 @@ function assertNoPlan(
 
     assert.equal(
         result.code,
-        1
+        0,
+        `draft failed:\n${result.stdout}\n${result.stderr}`
     );
 
-    assert.match(
-        result.stderr,
-        /unknown lens tag/
+    const drafted =
+        JSON.parse(
+            fs.readFileSync(
+                path.join(
+                    root,
+                    ".planmap",
+                    "plan.json"
+                ),
+                "utf8"
+            )
+        );
+
+    assert.deepEqual(
+        drafted.nodes[0].lensTags,
+        [
+            "security"
+        ],
+        "\"auth\" maps onto the security lens and \"not-a-lens\" is dropped"
     );
 
-    assertNoPlan(root);
+    // Every lens exists in the plan whether or not this project has a
+    // declaration for it, so both graphs offer the same perspectives.
+    assert.deepEqual(
+        drafted.lenses.map(
+            lens => lens.id
+        ),
+        [
+            "frontend",
+            "backend",
+            "security",
+            "data",
+            "integration",
+            "platform"
+        ]
+    );
 }
 
 /*

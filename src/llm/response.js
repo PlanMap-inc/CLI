@@ -13,8 +13,11 @@ export function extractOpenRouterText(
     data
 ) {
 
+    // OpenAI-compatible servers answer under choices[]; Ollama's own
+    // /api/chat answers with a single message.
     const content =
-        data?.choices?.[0]?.message?.content;
+        data?.choices?.[0]?.message?.content ??
+        data?.message?.content;
 
 
     if (
@@ -120,6 +123,37 @@ export function parseOpenRouterJson(
     } catch (
         error
     ) {
+
+        // Smaller models often wrap the JSON in a sentence
+        // ("Here is the JSON array: [...]"). Take the JSON itself.
+        const start =
+            cleaned.search(
+                /[[{]/
+            );
+
+        const end =
+            Math.max(
+                cleaned.lastIndexOf("]"),
+                cleaned.lastIndexOf("}")
+            );
+
+        if (
+            start !== -1 &&
+            end > start
+        ) {
+            try {
+
+                return JSON.parse(
+                    cleaned.slice(
+                        start,
+                        end + 1
+                    )
+                );
+
+            } catch {
+                // Fall through to the original error.
+            }
+        }
 
         throw new Error(
             `OpenRouter returned invalid JSON: ${error.message}`
