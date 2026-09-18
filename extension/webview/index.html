@@ -11,7 +11,15 @@
 <div class="planmap-root">
 
   <nav class="app-rail" aria-label="PlanMap views">
-    <div class="rail-mark"></div>
+    <svg class="rail-mark" viewBox="0 0 2000 2000" width="20" height="20" fill="none" stroke="currentColor"
+         stroke-width="95" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="PlanMap">
+      <path d="M455 925 L665 545 Q710 480 795 480 L1180 480 Q1260 480 1300 545 L1545 925"/>
+      <path d="M455 925 L1290 925"/>
+      <path d="M1175 715 L1290 925"/>
+      <path d="M440 1080 L650 1435 Q700 1510 790 1510 L1180 1510 Q1260 1510 1305 1440 L1530 1080"/>
+      <path d="M670 1080 L1515 1080"/>
+      <path d="M670 1080 L835 1280"/>
+    </svg>
     <div class="rail-views" role="radiogroup" aria-label="View">
       <button class="nav-icon-btn active" data-nav="planmap" role="radio" aria-checked="true" title="Plan Graph" aria-label="Plan Graph">
         <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
@@ -88,7 +96,7 @@
       <!-- Derived from code and read-only: an outline, no add, drag, edit or context menu. -->
       <div class="view hidden" id="viewEvolution" data-vscode-context='{"preventDefaultContextMenuItems": true}'>
         <div class="toolbar">
-          <div class="breadcrumb"><span class="crumb current" id="evoTitle">Project Evolution</span><span class="derived-chip">read-only · derived from code</span></div>
+          <div class="breadcrumb"><span class="crumb current" id="evoTitle">Project Evolution</span><span class="derived-chip">Read-only, derived from code</span></div>
           <div class="lens-switch" id="tagSwitch" role="radiogroup" aria-label="Filter by tag" hidden></div>
           <div class="view-controls">
             <button class="icon-btn" id="evoRefreshBtn" title="Scan the code again and rebuild Project Evolution">Refresh evolution</button>

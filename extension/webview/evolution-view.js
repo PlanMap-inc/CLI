@@ -103,7 +103,10 @@ export function createEvolutionView(el) {
         const button = (tag, label) =>
             `<button class="lens-btn${tag === activeTag ? " active" : ""}" data-tag="${escapeHtml(tag ?? "")}" role="radio" aria-checked="${tag === activeTag}" style="--swatch:${tag ? colors[tag] : "var(--text-low)"}"><span class="swatch"></span>${escapeHtml(label)}</button>`;
 
-        el.tagSwitch.innerHTML = button(null, "All") + tags.map(tag => button(tag, tag)).join("");
+        // Sentence case, so a lens is named the same here as in the Plan Graph.
+        const name = tag => tag.charAt(0).toUpperCase() + tag.slice(1);
+
+        el.tagSwitch.innerHTML = button(null, "All") + tags.map(tag => button(tag, name(tag))).join("");
         el.tagSwitch.hidden = tags.length === 0;
 
         el.tagSwitch.querySelectorAll(".lens-btn").forEach(btn => {

@@ -16,10 +16,11 @@ export const FEATURE_PALETTE = [
     "#6fa8ff", "#ff9f6f", "#7fe0b0", "#ffd873", "#c89bff", "#6fe0e0", "#ff7fb0"
 ];
 
-// The demo's lens colours (business, backend, security, database, frontend),
-// extended to seven from the feature palette. Assigned by index.
+// The demo's own dot colours, ordered to line up with the lens vocabulary
+// below, so each perspective keeps the hue the demo gave that concept.
+// Assigned by index; the seventh is spare, for a lens a project adds itself.
 export const LENS_PALETTE = [
-    "#7fe0b0", "#6fa8ff", "#ff9f6f", "#5ec9c9", "#c89bff", "#ffd873", "#ff7fb0"
+    "#c89bff", "#6fa8ff", "#ff9f6f", "#5ec9c9", "#ff7fb0", "#ffd873", "#7fe0b0"
 ];
 
 // The lens vocabulary, in the order src/llm/lenses.js defines it. The Plan
