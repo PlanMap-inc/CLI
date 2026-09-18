@@ -26,6 +26,11 @@
         <span class="rail-badge" id="driftBadge" hidden></span>
       </button>
     </div>
+    <button class="nav-icon-btn rail-folder" id="openFolderBtn" title="Open another project folder" aria-label="Open another project folder">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2.5 5.5A1.5 1.5 0 0 1 4 4h3.6l1.8 2h6.6a1.5 1.5 0 0 1 1.5 1.5V15a1.5 1.5 0 0 1-1.5 1.5H4A1.5 1.5 0 0 1 2.5 15z"/>
+      </svg>
+    </button>
   </nav>
 
   <div class="content-row">
@@ -51,18 +56,19 @@
             </div>
           </div>
         </div>
+        <div class="compile-banner" id="compileBanner" role="status"></div>
         <div class="workspace">
           <div class="canvas-area">
             <div class="graph-canvas" id="constellationCanvas">
               <div class="grid-layer" id="constellationGrid"></div>
               <div class="canvas-content" id="constellationContent"><svg class="edges" id="constellationEdges"></svg></div>
+              <div class="flow-tag" id="constellationFlowTag" hidden><span class="arrow-up">↑</span> <span id="constellationFlowLabel">plan order</span></div>
             </div>
             <div class="graph-canvas hidden" id="featureCanvas">
               <div class="grid-layer" id="featureGrid"></div>
               <div class="canvas-content" id="featureContent"><svg class="edges" id="featureEdges"></svg></div>
               <div class="flow-tag"><span class="arrow-up">↑</span> step order</div>
             </div>
-            <div class="compile-banner" id="compileBanner" role="status"></div>
             <div class="empty-state" id="emptyState" hidden><div class="empty-card" id="emptyCard"></div></div>
           </div>
           <aside class="impact-panel" id="impactPanel" aria-label="Node detail"><div class="impact-inner" id="impactInner"></div></aside>
@@ -90,9 +96,9 @@
             <button class="icon-btn" id="evoCollapseBtn">Collapse all</button>
           </div>
         </div>
+        <div class="compile-banner" id="evoNotice" role="status"></div>
         <div class="workspace">
           <div class="canvas-area evo-tree-panel" id="evoTreePanel" role="tree" aria-label="Project evolution"></div>
-          <div class="compile-banner" id="evoNotice" role="status"></div>
           <div class="empty-state" id="evoEmptyState" hidden><div class="empty-card" id="evoEmptyCard"></div></div>
           <aside class="impact-panel" id="evoDetailPanel" aria-label="Evolution detail"><div class="impact-inner" id="evoDetailInner"></div></aside>
         </div>

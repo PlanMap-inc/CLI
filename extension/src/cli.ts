@@ -29,6 +29,10 @@ export interface CliRunOptions {
     cwd: string;
     runAsNode: boolean;
     apiKey?: string;
+    // Extra environment for the CLI, such as which model to use.
+    env?: Record<string, string>;
+    // Called with each complete line the CLI prints, while it runs.
+    onLine?: (line: string) => void;
 }
 
 
@@ -95,9 +99,37 @@ export function runCli(
         env.OPENROUTER_API_KEY = options.apiKey;
     }
 
+    for (const [name, value] of Object.entries(options.env ?? {})) {
+        if (value) env[name] = value;
+    }
+
     return new Promise(resolve => {
         let stdout = "";
         let stderr = "";
+        // One buffer per stream: stdout and stderr interleave, and a half
+        // written line from one must never be joined to the other.
+        const pending = { stdout: "", stderr: "" };
+
+        // The CLI reports progress as it goes; hand over whole lines only.
+        const emit = (stream: "stdout" | "stderr", chunk: string) => {
+            if (!options.onLine) return;
+
+            pending[stream] += chunk;
+            const lines = pending[stream].split("\n");
+            pending[stream] = lines.pop() ?? "";
+
+            for (const line of lines) {
+                if (line.trim()) options.onLine(line.trimEnd());
+            }
+        };
+
+        const flush = () => {
+            for (const stream of ["stdout", "stderr"] as const) {
+                const rest = pending[stream];
+                pending[stream] = "";
+                if (rest.trim() && options.onLine) options.onLine(rest.trimEnd());
+            }
+        };
 
         const child = spawn(
             options.nodePath,
@@ -106,11 +138,15 @@ export function runCli(
         );
 
         child.stdout?.on("data", chunk => {
-            stdout += chunk.toString();
+            const text = chunk.toString();
+            stdout += text;
+            emit("stdout", text);
         });
 
         child.stderr?.on("data", chunk => {
-            stderr += chunk.toString();
+            const text = chunk.toString();
+            stderr += text;
+            emit("stderr", text);
         });
 
         child.on("error", error => {
@@ -125,6 +161,8 @@ export function runCli(
         });
 
         child.on("close", code => {
+            flush();
+
             const json = expectsJson ? parseJsonOutput(stdout) : undefined;
 
             resolve({

@@ -33,13 +33,20 @@
   "categories": [
     "Visualization"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "planmap.open",
         "title": "Open Plan Graph",
+        "category": "PlanMap"
+      },
+      {
+        "command": "planmap.openProjectFolder",
+        "title": "Open Project Folder…",
         "category": "PlanMap"
       },
       {
@@ -65,6 +72,21 @@
           "type": "string",
           "default": "",
           "description": "Node executable used to run the CLI. Leave empty to use VS Code's bundled runtime."
+        },
+        "planmap.llmEndpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "OpenAI-compatible endpoint used to group code into features and draft plans. Leave empty for a local model with [Ollama](https://ollama.com) at `http://localhost:11434/v1/chat/completions`, which needs no API key. For OpenRouter: `https://openrouter.ai/api/v1/chat/completions`, with **PlanMap: Set OpenRouter API Key**."
+        },
+        "planmap.llmModel": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Model name for the endpoint above. Leave empty for `qwen2.5-coder:7b`, PlanMap's local default (`ollama pull qwen2.5-coder:7b`)."
+        },
+        "planmap.llmBatchSize": {
+          "type": "number",
+          "default": 0,
+          "markdownDescription": "Declarations classified per request. Leave 0 for PlanMap's default of 30. A local model with a small context window does better at 10."
         }
       }
     }

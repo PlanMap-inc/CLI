@@ -16,8 +16,9 @@ const flatten = items => items.flatMap(item => [...(item.feature ? [] : [item]),
 
 // One real verify run flags the same identity in both view models and on the rail.
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-drift-"));
-// apiKey "": a developer's own OPENROUTER_API_KEY must never reach these runs.
-const options = () => ({ nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "" });
+// No model is reached: an empty key on the hosted endpoint means the CLI
+// labels from file paths, so these runs stay offline and deterministic.
+const options = () => ({ nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "", env: { PLANMAP_LLM_ENDPOINT: "https://openrouter.ai/api/v1/chat/completions" } });
 const source = path.join(root, "auth.js");
 const identity = "auth.js::verifyToken:function";
 

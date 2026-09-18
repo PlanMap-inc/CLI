@@ -5,12 +5,24 @@
 //
 // The LLM may suggest:
 // - feature
+// - group
 // - label
 // - tags
 //
 // PlanMap accepts the result only when it satisfies
 // the structural and vocabulary rules defined here.
+//
+// Tags are mapped onto the fixed lens vocabulary
+// rather than checked against a growing one: an
+// unusable tag is dropped, never a whole batch. A
+// batch thrown away costs every declaration in it its
+// label, which is how scans came back half-classified.
 // --------------------------------------------------
+
+import {
+    canonicalLens,
+    canonicalLenses
+} from "./lenses.js";
 
 
 export function validateClassification(
@@ -42,98 +54,6 @@ export function validateClassification(
     ) {
         throw new Error(
             `LLM returned ${classifications.length} classifications for ${events.length} events.`
-        );
-    }
-
-
-    // --------------------------------------------------
-    // EXISTING VOCABULARY
-    // --------------------------------------------------
-
-    const featureVocabulary =
-        new Set(
-            existingFeatures
-                .map(
-                    feature =>
-                        typeof feature ===
-                        "string"
-                            ? feature
-                            : feature?.name
-                )
-                .filter(
-                    Boolean
-                )
-        );
-
-
-    const tagVocabulary =
-        new Set(
-            existingTags
-                .map(
-                    tag =>
-                        typeof tag ===
-                        "string"
-                            ? tag
-                            : tag?.name
-                )
-                .filter(
-                    Boolean
-                )
-        );
-
-
-    // --------------------------------------------------
-    // PROJECT-WIDE TAG COUNT
-    // --------------------------------------------------
-
-    const responseTags =
-        new Set();
-
-
-    for (
-        const classification
-        of classifications
-    ) {
-
-        if (
-            !Array.isArray(
-                classification?.tags
-            )
-        ) {
-            continue;
-        }
-
-
-        for (
-            const tag
-            of classification.tags
-        ) {
-
-            if (
-                typeof tag ===
-                "string"
-            ) {
-                responseTags.add(
-                    tag.trim()
-                );
-            }
-        }
-    }
-
-
-    const combinedTags =
-        new Set([
-            ...tagVocabulary,
-            ...responseTags
-        ]);
-
-
-    if (
-        combinedTags.size >
-        maxTags
-    ) {
-        throw new Error(
-            `LLM introduced too many unique tags: ${combinedTags.size}. Maximum allowed: ${maxTags}.`
         );
     }
 
@@ -275,81 +195,54 @@ export function validateClassification(
         }
 
 
-        if (
-            classification.tags.length >
-            3
-        ) {
-            throw new Error(
-                `Classification at index ${index} contains more than 3 tags.`
-            );
-        }
-
-
-        const tags =
-            classification.tags
-                .map(
-                    tag =>
-                        typeof tag ===
-                        "string"
-                            ? tag.trim()
-                            : ""
-                )
-                .filter(
-                    Boolean
-                );
-
-
-        // --------------------------------------------------
-        // DUPLICATE TAGS
-        // --------------------------------------------------
-
-        if (
-            new Set(tags).size !==
-            tags.length
-        ) {
-            throw new Error(
-                `Classification at index ${index} contains duplicate tags.`
-            );
-        }
-
-
-        // --------------------------------------------------
-        // ADD NEW TAGS TO VOCABULARY
-        // --------------------------------------------------
-
-        for (
-            const tag
-            of tags
-        ) {
-            tagVocabulary.add(
-                tag
-            );
-        }
-
-
-        // --------------------------------------------------
-        // FEATURE + TAG SEPARATION
-        // --------------------------------------------------
-        // A tag should not simply repeat the feature name.
-
         const normalizedFeature =
             feature.toLowerCase();
 
 
-        for (
-            const tag
-            of tags
-        ) {
-
-            if (
-                tag.toLowerCase() ===
-                normalizedFeature
-            ) {
-                throw new Error(
-                    `Classification at index ${index} uses the feature name as a tag: "${tag}".`
+        // Mapped onto the fixed vocabulary, capped at three, and with any
+        // tag that merely repeats the feature name dropped. An empty result
+        // is filled from the declaration's own facts when the
+        // classification is applied, so every node carries a lens.
+        const tags =
+            canonicalLenses(
+                classification.tags
+            )
+                .filter(
+                    tag =>
+                        tag !==
+                        normalizedFeature
+                )
+                .slice(
+                    0,
+                    3
                 );
-            }
-        }
+
+
+        // --------------------------------------------------
+        // GROUP
+        // --------------------------------------------------
+        // The level between the feature and its declarations. Optional:
+        // a graph written before groups existed, or a model that omits
+        // one, leaves the declaration directly under its feature.
+
+        const rawGroup =
+            typeof classification.group ===
+            "string"
+                ? classification.group.trim()
+                : "";
+
+
+        // A group names a job, never a layer: "Authentication", not
+        // "Security". A lens name here would put the same axis on two
+        // levels, so it is dropped and the declaration sits under its
+        // feature rather than under a heading that repeats a filter.
+        const group =
+            rawGroup &&
+            rawGroup.toLowerCase() !==
+                normalizedFeature &&
+            !canonicalLens(rawGroup)
+                ? rawGroup
+                : "";
 
 
         // --------------------------------------------------
@@ -394,22 +287,12 @@ export function validateClassification(
             ...classification,
             feature,
             label,
-            tags
+            tags,
+
+            ...(group
+                ? { group }
+                : {})
         });
-    }
-
-
-    // --------------------------------------------------
-    // FINAL TAG VOCABULARY CHECK
-    // --------------------------------------------------
-
-    if (
-        tagVocabulary.size >
-        maxTags
-    ) {
-        throw new Error(
-            `Final tag vocabulary contains ${tagVocabulary.size} unique tags. Maximum allowed: ${maxTags}.`
-        );
     }
 
 

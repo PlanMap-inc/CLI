@@ -1,7 +1,14 @@
+import fs from "node:fs";
+
 import {
+    getPlanPath,
     readPlan,
     writePlan
 } from "../../plan/storage.js";
+
+import {
+    validatePlan
+} from "../../plan/model.js";
 
 import {
     draftBrownfield,
@@ -186,6 +193,38 @@ export async function runPlanDraft(
         console.log(
             `Batches: ${result.batches}`
         );
+
+        if (
+            result.skipped?.length > 0
+        ) {
+            console.log(
+                `Skipped, the model got these wrong: ${result.skipped.length}`
+            );
+
+            for (
+                const line of result.skipped
+            ) {
+                console.log(
+                    `  ${line}`
+                );
+            }
+        }
+
+        if (
+            result.dropped?.length > 0
+        ) {
+            console.log(
+                `Dropped rule checks verify can't evaluate: ${result.dropped.length}`
+            );
+
+            for (
+                const line of result.dropped
+            ) {
+                console.log(
+                    `  ${line}`
+                );
+            }
+        }
     } catch (
         error
     ) {
@@ -237,4 +276,124 @@ export async function runPlanDraft(
 
         process.exitCode = 1;
     }
+}
+
+
+// --------------------------------------------------
+// PLAN VALIDATE COMMAND
+// --------------------------------------------------
+// readPlan treats a plan that fails validation as an
+// empty plan, so every command sees no nodes. This
+// reports the same validation errors instead.
+// 0 valid · 1 invalid · 2 no plan.json
+// --------------------------------------------------
+
+export function runPlanValidate(
+    projectRoot,
+    options = {}
+) {
+    if (
+        !projectRoot
+    ) {
+        console.error(
+            "Usage: planmap plan validate <project> [--json]"
+        );
+
+        process.exitCode = 1;
+
+        return;
+    }
+
+    const report =
+        (valid, errors, message = null) => {
+            if (options.json) {
+                console.log(
+                    JSON.stringify({
+                        schema: 1,
+                        valid,
+                        errors,
+                        ...(message ? { message } : {})
+                    })
+                );
+
+                return;
+            }
+
+            if (message) {
+                console.log(message);
+            }
+
+            if (valid) {
+                console.log("plan.json is valid.");
+            }
+
+            for (
+                const error of errors
+            ) {
+                console.log(
+                    `  - ${error}`
+                );
+            }
+        };
+
+    const planPath =
+        getPlanPath(
+            projectRoot
+        );
+
+    if (
+        !fs.existsSync(
+            planPath
+        )
+    ) {
+        report(
+            false,
+            [],
+            "No plan found."
+        );
+
+        process.exitCode = 2;
+
+        return;
+    }
+
+    let plan;
+
+    try {
+        plan =
+            JSON.parse(
+                fs.readFileSync(
+                    planPath,
+                    "utf8"
+                )
+            );
+    } catch (
+        error
+    ) {
+        report(
+            false,
+            [
+                `plan.json is not valid JSON: ${error.message}`
+            ]
+        );
+
+        process.exitCode = 1;
+
+        return;
+    }
+
+    const errors =
+        validatePlan(
+            plan
+        );
+
+    report(
+        errors.length === 0,
+        errors
+    );
+
+    process.exitCode =
+        errors.length === 0
+            ? 0
+            : 1;
 }

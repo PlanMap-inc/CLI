@@ -26,7 +26,7 @@ function formatTime(value) {
 
 function findItem(items, id) {
     for (const item of items) {
-        if (!item.feature && item.id === id) return item;
+        if (!item.feature && !item.group && item.id === id) return item;
         const found = findItem(item.children, id);
         if (found) return found;
     }
@@ -131,8 +131,8 @@ export function createEvolutionView(el) {
 
         const toggleMark = `<span class="evo-toggle${hasKids ? "" : " leaf"}" aria-hidden="true">${hasKids ? (collapsed ? "▸" : "▾") : ""}</span>`;
 
-        if (item.feature) {
-            row.className = "evo-row evo-feature";
+        if (item.feature || item.group) {
+            row.className = item.feature ? "evo-row evo-feature" : "evo-row evo-group";
             row.innerHTML = `${toggleMark}<span class="evo-title">${escapeHtml(item.title)}</span><span class="evo-count">${countNodes(item.children)}</span>`;
         } else {
             const status = item.status ?? "";
@@ -171,7 +171,7 @@ export function createEvolutionView(el) {
         });
 
         row.addEventListener("click", () => {
-            if (item.feature) {
+            if (item.feature || item.group) {
                 if (childrenEl) setCollapsed(!childrenEl.hidden);
                 return;
             }

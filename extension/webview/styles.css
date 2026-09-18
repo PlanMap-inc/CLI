@@ -71,6 +71,9 @@ button{font:inherit;}
 .lens-btn{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.03em;text-transform:uppercase;padding:6px 14px;border-radius:999px;color:var(--text-mid);cursor:pointer;border:none;background:transparent;display:flex;align-items:center;gap:6px;transition:background-color .15s, color .15s;}
 .lens-btn .swatch{width:7px;height:7px;border-radius:50%;background:var(--swatch, var(--text-low));}
 .lens-btn.active{background:var(--surface-3);color:var(--text-hi);}
+.lens-btn .lens-count{font-size:9.5px;color:var(--text-low);}
+.lens-btn.empty{opacity:.45;}
+.lens-btn.empty .swatch{background:transparent;box-shadow:inset 0 0 0 1px var(--text-low);}
 
 .view-controls{display:flex;gap:10px;align-items:center;}
 .icon-btn{height:28px;padding:0 10px;border-radius:7px;display:flex;align-items:center;justify-content:center;gap:6px;color:var(--text-mid);background:var(--surface-2);border:1px solid var(--border);cursor:pointer;font-size:12px;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
@@ -177,13 +180,15 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .flow-tag{position:absolute;left:22px;bottom:18px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);display:flex;align-items:center;gap:6px;z-index:2;pointer-events:none;}
 .flow-tag .arrow-up{color:var(--text-mid);}
 
-.compile-banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6;width:420px;max-width:calc(100% - 40px);background:var(--surface-2);border:1px solid var(--border);border-radius:12px;box-shadow:0 20px 40px -20px rgba(0,0,0,.7);padding:14px 16px;font-size:12px;display:none;}
+.compile-banner{background:var(--surface-2);border-bottom:1px solid var(--border);padding:12px 22px;font-size:12px;display:none;flex-shrink:0;}
 .compile-banner.show{display:block;}
 
 /* ---------- checkpoint empty states ---------- */
-.planmap-root.not-ready .view-controls,
-.planmap-root.not-ready .breadcrumb,
-.planmap-root.not-ready .statusbar .legend-item{visibility:hidden;}
+/* Only the Plan Graph's chrome is meaningless without a plan. Project
+   Evolution keeps its own controls, Refresh evolution above all. */
+.planmap-root.not-ready #viewPlanmap .view-controls,
+.planmap-root.not-ready #viewPlanmap .breadcrumb,
+.planmap-root.not-ready #viewPlanmap .statusbar .legend-item{visibility:hidden;}
 .empty-state{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:5;background:var(--void);}
 .empty-state[hidden]{display:none;}
 .empty-card{max-width:380px;text-align:center;padding:0 24px;}
@@ -237,6 +242,7 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .evo-row:hover{background:var(--surface-2);}
 .evo-row.selected{background:var(--surface-3);}
 .evo-row.evo-feature .evo-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;}
+.evo-row.evo-group .evo-title{font-family:'Space Grotesk',sans-serif;font-weight:500;font-size:12.5px;color:var(--text-mid);}
 .evo-row.status-drifted .evo-title, .evo-row.status-error .evo-title{color:var(--danger);}
 .evo-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);}
 .evo-toggle{width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-low);font-size:9px;cursor:pointer;}
@@ -267,3 +273,16 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .impact-panel .file-chip .range{white-space:nowrap;padding-left:8px;}
 .link-btn{display:block;margin:10px auto 0;background:transparent;border:none;padding:4px 0;color:var(--accent-b);font-size:12px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;}
 .link-btn:hover{color:var(--text-hi);}
+
+/* ---------- project folder ---------- */
+.rail-folder{margin-top:auto;}
+
+/* ---------- progress ---------- */
+.progress{margin-top:14px;text-align:left;}
+.progress-bar{height:6px;border-radius:999px;background:var(--surface-3);overflow:hidden;}
+.progress-bar span{display:block;height:100%;width:0;border-radius:999px;background:var(--accent-a);transition:width .3s ease;}
+.progress-bar.indeterminate span{width:35%;animation:progressSlide 1.3s ease-in-out infinite;}
+@keyframes progressSlide{0%{transform:translateX(-120%);}100%{transform:translateX(320%);}}
+.progress-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-mid);margin-top:8px;font-variant-ligatures:none;}
+.progress-log{font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.6;color:var(--text-low);background:var(--void);border:1px solid var(--border-soft);border-radius:8px;padding:8px 10px;margin:8px 0 0;max-height:132px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-variant-ligatures:none;}
+@media (prefers-reduced-motion: reduce){.progress-bar.indeterminate span{animation:none;width:100%;opacity:.5;}}

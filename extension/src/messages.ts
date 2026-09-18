@@ -22,7 +22,8 @@ export type WebviewMessage =
     | { type: "evolution" }
     | { type: "draftPlan" }
     | { type: "openPlan" }
-    | { type: "setApiKey" };
+    | { type: "setApiKey" }
+    | { type: "openFolder" };
 
 export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "ready",
@@ -35,7 +36,8 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "evolution",
     "draftPlan",
     "openPlan",
-    "setApiKey"
+    "setApiKey",
+    "openFolder"
 ];
 
 
@@ -46,7 +48,7 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
 export type SetupState = "missing" | "no-plan" | "invalid-plan" | "ready";
 
 // Where the CLI will get an OpenRouter key from. The key itself never leaves the host.
-export type ApiKeySource = "stored" | "environment" | "project" | null;
+export type ApiKeySource = "local" | "stored" | "environment" | "project" | null;
 
 export interface VerifiedStatus {
     status: string;
@@ -78,6 +80,8 @@ export type HostMessage =
         stdout: string;
         stderr: string;
     }
+    // A line the CLI printed while it was still running.
+    | { type: "progress"; requestType: WebviewMessage["type"]; line: string }
     // The user dismissed a confirmation dialog; no CLI call was made.
     | { type: "cancelled"; requestType: WebviewMessage["type"] };
 
@@ -117,6 +121,9 @@ export function buildCliArgs(
             return null;
         case "setApiKey":
             // Not a CLI call: the host asks for the key and keeps it in secret storage.
+            return null;
+        case "openFolder":
+            // Not a CLI call: the host shows VS Code's folder picker and reopens the window there.
             return null;
     }
 }

@@ -4,15 +4,18 @@ import {
     buildConstellation,
     buildFeatureGraph,
     colorAt,
+    constellationEdges,
     describeHistory,
     describeImpact,
     describeRules,
     describeViolation,
     escapeHtml,
     lensColors,
+    lensCoverage,
     FEATURE_PALETTE,
     nodeActions,
     onboardingState,
+    parseScanProgress,
     railModel,
     statusClass,
     statusDotStyle,
@@ -51,7 +54,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     let selectedId = null, onSelect = null, onOpen = null, dotColor = "var(--accent-a)", edgeColor = "var(--edge)";
     let panX = 0, panY = 0, scale = 1, panning = false, panStart = null, panOrigin = null;
 
-    if (opts.horizontal) contentEl.dataset.h = "1";
+    if (opts.horizontal || opts.hideHandles) contentEl.dataset.h = "1";
 
     function applyTransform() {
         contentEl.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
@@ -245,8 +248,10 @@ const impactInner = document.getElementById("impactInner");
 const emptyState = document.getElementById("emptyState");
 const emptyCard = document.getElementById("emptyCard");
 const implementBtn = document.getElementById("implementBtn");
+const constellationFlowTag = document.getElementById("constellationFlowTag");
+const constellationFlowLabel = document.getElementById("constellationFlowLabel");
 
-const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), { id: "const", horizontal: true, showToolbar: false });
+const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), { id: "const", showToolbar: false, hideHandles: true });
 const featureGraph = createGraph(featureCanvas, document.getElementById("featureGrid"), document.getElementById("featureContent"), { id: "feat", showToolbar: true });
 
 function activeGraph() { return inFeature ? featureGraph : constellationGraph; }
@@ -260,7 +265,12 @@ function lensById(id) { return plan()?.lenses.find(l => l.id === id); }
 // ================= RENDER FROM STATE =================
 function mountConstellation() {
     const nodes = buildConstellation(plan(), state.verifiedStatus);
-    constellationGraph.setData({ nodes, edges: [], edgeColor: "var(--text-low)", onOpen: n => enterFeature(n.id) });
+    const edges = constellationEdges(plan());
+
+    constellationFlowTag.hidden = edges.length === 0;
+    constellationFlowLabel.textContent = edges[0]?.source === "nodes" ? "links between features" : "plan order";
+
+    constellationGraph.setData({ nodes, edges, edgeColor: "var(--text-low)", onOpen: n => enterFeature(n.id) });
 }
 
 function mountFeature() {
@@ -280,11 +290,14 @@ function mountFeature() {
 }
 
 function renderLensSwitch() {
-    const lenses = plan()?.lenses ?? [];
+    const lenses = lensCoverage(plan(), currentFeatureId);
     const colors = lensColors(plan());
+
+    // An empty lens stays on the switch, dimmed and counted: "nothing here
+    // from this perspective" is a fact about the code worth reading.
     lensSwitch.innerHTML = lenses.map(lens => `
-        <button class="lens-btn${lens.id === currentLensId ? " active" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" style="--swatch:${colors[lens.id]}">
-            <span class="swatch"></span>${escapeHtml(lens.label)}
+        <button class="lens-btn${lens.id === currentLensId ? " active" : ""}${lens.empty ? " empty" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" style="--swatch:${colors[lens.id]}" title="${lens.empty ? "Nothing in this feature is tagged " + escapeHtml(lens.id) : escapeHtml(String(lens.count)) + " of this feature's steps"}">
+            <span class="swatch"></span>${escapeHtml(lens.label)}<span class="lens-count">${lens.count}</span>
         </button>`).join("");
     lensSwitch.classList.toggle("show", inFeature && lenses.length > 0);
     renderApproveLens();
@@ -484,11 +497,12 @@ const verifyBtn = document.getElementById("verifyBtn");
 let noticeKind = null;
 let verifyPromptDismissed = false;
 
-function renderBanner(el, { tone = "", title, body = "", action = null }, onClose) {
+function renderBanner(el, { tone = "", title, body = "", action = null, progress = null }, onClose) {
     el.className = `compile-banner show${tone ? ` ${tone}` : ""}`;
     el.innerHTML = `
         <div class="cb-head">${escapeHtml(title)}<button class="cb-close" aria-label="Dismiss">✕</button></div>
         ${body ? `<div class="cb-sub">${escapeHtml(body)}</div>` : ""}
+        ${progress ? progressBlock(progress) : ""}
         ${action ? `<div class="cb-actions"><button class="icon-btn cb-action">${escapeHtml(action.label)}</button></div>` : ""}`;
     el.querySelector(".cb-close").addEventListener("click", onClose);
     if (action) el.querySelector(".cb-action").addEventListener("click", action.run);
@@ -530,6 +544,42 @@ function renderVerifyPrompt(show) {
 // .planmap/. "scan" is init followed by an offline evolution run.
 const busy = new Set();
 const problems = {};
+// What the CLI has printed for each running request, newest last.
+const logs = {};
+const MAX_LOG_LINES = 400;
+
+function progressKey(requestType) {
+    if (requestType === "verify") return "verify";
+    if (requestType === "draftPlan") return "draftPlan";
+    if (requestType === "init" || requestType === "evolution") return busy.has("refresh") ? "refresh" : "scan";
+    return "action";
+}
+
+function onProgress(message) {
+    const key = progressKey(message.requestType);
+    const lines = logs[key] ?? (logs[key] = []);
+
+    lines.push(message.line);
+    if (lines.length > MAX_LOG_LINES) lines.splice(0, lines.length - MAX_LOG_LINES);
+
+    if (key === "scan" || key === "draftPlan") renderEmpty();
+    else if (key === "refresh") renderBanner(evoNotice, { title: "Refreshing Project Evolution", progress: key }, () => hideBanner(evoNotice));
+    else if (key === "verify") showNotice("verify-running", { title: "Verifying against code", progress: key });
+}
+
+// A bar the CLI's own output drives, with the last lines of it underneath.
+function progressBlock(key) {
+    const lines = logs[key] ?? [];
+    const progress = parseScanProgress(lines);
+    const indeterminate = progress.percent === null;
+
+    return `
+        <div class="progress">
+          <div class="progress-bar${indeterminate ? " indeterminate" : ""}"><span${indeterminate ? "" : ` style="width:${progress.percent}%"`}></span></div>
+          <div class="progress-label">${escapeHtml(progress.label)}${indeterminate || progress.finished ? "" : ` · ${progress.percent}%`}</div>
+          <pre class="progress-log">${escapeHtml(lines.slice(-8).join("\n"))}</pre>
+        </div>`;
+}
 
 function cliMessage(result) {
     const text = String(result.json?.message ?? "").trim() || String(result.stderr ?? "").trim() || String(result.stdout ?? "").trim();
@@ -540,6 +590,7 @@ function request(key, message) {
     if (busy.has(key)) return;
     busy.add(key);
     delete problems[key];
+    logs[key] = [];
     vscode.postMessage(message);
     refreshRequests();
 }
@@ -695,6 +746,8 @@ function renderEmpty() {
     if (!blocking) return;
 
     const withAi = Boolean(state?.aiKey);
+    const local = state?.aiKey === "local";
+    const aiSource = local ? "your local model" : "your OpenRouter key";
     const addKey = withAi ? "" : '<button class="link-btn" id="addKeyBtn">Add an OpenRouter key</button>';
 
     if (onboarding.kind === "scan") {
@@ -703,8 +756,9 @@ function renderEmpty() {
             <h2>PlanMap isn't set up yet</h2>
             <p>Scan this project to learn what your code currently does.</p>
             <button class="primary-btn" id="scanBtn"${scanning ? " disabled" : ""}>${scanning ? "Scanning…" : "Scan project"}</button>
-            <p class="fine">${withAi ? "Groups your code into features with your OpenRouter key · can take a minute" : "Takes ~10s · nothing leaves your machine"}</p>
+            ${scanning ? progressBlock("scan") : `<p class="fine">${!withAi ? "Takes ~10s · nothing leaves your machine" : local ? "Groups your code into features with your local model · nothing leaves your machine" : "Groups your code into features with your OpenRouter key · can take a minute"}</p>`}
             ${scanning ? "" : addKey}
+            ${scanning ? "" : '<button class="link-btn" id="otherFolderBtn">Open a different folder</button>'}
             ${problemBlock("scan")}`;
         document.getElementById("scanBtn").addEventListener("click", () => request("scan", { type: "init" }));
     } else if (onboarding.kind === "no-plan") {
@@ -714,16 +768,17 @@ function renderEmpty() {
         emptyCard.innerHTML = `
             <h2>${escapeHtml(found)}, no plan yet.</h2>
             <div class="choices">
-              <button class="choice" id="draftPlanBtn"${drafting ? " disabled" : ""}><span class="choice-label">${drafting ? "Drafting a plan…" : "Draft a plan with AI"}</span><span class="choice-note">${withAi ? "uses your OpenRouter key" : "needs OPENROUTER_API_KEY"}</span></button>
+              <button class="choice" id="draftPlanBtn"${drafting ? " disabled" : ""}><span class="choice-label">${drafting ? "Drafting a plan…" : "Draft a plan with AI"}</span><span class="choice-note">${withAi ? `uses ${aiSource}` : "needs OPENROUTER_API_KEY"}</span></button>
               <button class="choice recommended" id="writeRuleBtn"><span class="choice-label">Write one rule myself</span><span class="choice-note">no key needed</span></button>
             </div>
-            ${addKey}
+            ${drafting ? progressBlock("draftPlan") : addKey}
             ${problemBlock("scan")}
             ${problemBlock("draftPlan")}`;
         document.getElementById("draftPlanBtn").addEventListener("click", () => request("draftPlan", { type: "draftPlan" }));
         document.getElementById("writeRuleBtn").addEventListener("click", () => vscode.postMessage({ type: "openPlan" }));
     }
     document.getElementById("addKeyBtn")?.addEventListener("click", () => vscode.postMessage({ type: "setApiKey" }));
+    document.getElementById("otherFolderBtn")?.addEventListener("click", () => vscode.postMessage({ type: "openFolder" }));
 
     if (onboarding.kind === "invalid-plan") {
         emptyCard.innerHTML = `<h2>This plan can't be shown</h2><p>Fix <code>.planmap/plan.json</code> and the map will reload.</p><div class="problem">${escapeHtml(onboarding.problem)}</div>`;
@@ -752,6 +807,10 @@ function renderRail() {
     }
 
     for (const [id, view] of Object.entries(views)) view.classList.toggle("hidden", id !== rail.active);
+
+    const folderLabel = state?.projectName ? `Project: ${state.projectName}. Open another folder` : "Open another project folder";
+    openFolderBtn.title = folderLabel;
+    openFolderBtn.setAttribute("aria-label", folderLabel);
 
     driftBadge.hidden = !rail.badge;
     driftBadge.textContent = rail.badge ? String(rail.badge.count) : "";
@@ -782,6 +841,10 @@ railButtons.forEach(button => {
         next.focus();
     });
 });
+
+// Like File > Open Folder: VS Code reopens on the chosen folder and PlanMap starts there.
+const openFolderBtn = document.getElementById("openFolderBtn");
+openFolderBtn.addEventListener("click", () => vscode.postMessage({ type: "openFolder" }));
 
 const approveLensBtn = document.getElementById("approveLensBtn");
 const evoRefreshBtn = document.getElementById("evoRefreshBtn");
@@ -854,6 +917,7 @@ window.addEventListener("message", event => {
     const message = event.data;
     if (message?.type === "state") applyState(message.state);
     if (message?.type === "cliResult") onCliResult(message);
+    if (message?.type === "progress") onProgress(message);
     if (message?.type === "cancelled") onCancelled(message);
 });
 

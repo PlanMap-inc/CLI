@@ -20,6 +20,8 @@ const expected = {
     draftPlan: [{ type: "draftPlan" }, ["plan", "draft", root]],
     // Handled by the host as an unsaved editor - no CLI call, no write.
     openPlan: [{ type: "openPlan" }, null],
+    // Handled by the host: VS Code's folder picker, then the window reopens there.
+    openFolder: [{ type: "openFolder" }, null],
     // Handled by the host with VS Code's secret storage - no CLI call.
     setApiKey: [{ type: "setApiKey" }, null]
 };

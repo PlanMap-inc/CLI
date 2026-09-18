@@ -183,6 +183,11 @@ export function getEvolutionVocabulary(
 
             tags,
 
+            groups:
+                getEvolutionGroups(
+                    evolution
+                ),
+
             authoritative:
                 true
         };
@@ -316,9 +321,81 @@ export function getEvolutionVocabulary(
 
         tags,
 
+        groups:
+            getEvolutionGroups(
+                evolution
+            ),
+
         authoritative:
             false
     };
+}
+
+
+// --------------------------------------------------
+// GET EVOLUTION GROUPS
+// --------------------------------------------------
+// The group names already used inside each feature, so a later batch
+// nests its declarations under the same groups rather than inventing
+// parallel ones ("Authentication" and "Auth handling" side by side).
+// --------------------------------------------------
+
+export function getEvolutionGroups(
+    evolution
+) {
+    const groups =
+        {};
+
+    for (
+        const node
+        of evolution?.nodes || []
+    ) {
+
+        if (
+            node.labelSource !== "llm"
+        ) {
+            continue;
+        }
+
+        const feature =
+            String(
+                node.feature ||
+                node.category ||
+                ""
+            ).trim();
+
+        const group =
+            String(
+                node.group ||
+                ""
+            ).trim();
+
+        if (
+            !feature ||
+            !group
+        ) {
+            continue;
+        }
+
+        if (
+            !groups[feature]
+        ) {
+            groups[feature] =
+                [];
+        }
+
+        if (
+            !groups[feature].includes(
+                group
+            )
+        ) {
+            groups[feature].push(
+                group
+            );
+        }
+    }
+
+    return groups;
 }
 
 
@@ -454,6 +531,8 @@ export function getFallbackTags(
         [];
 
 
+    // Named for the fixed lens vocabulary, so a path-derived tag and a
+    // model-derived one are the same lens and filter together.
     const identity =
         String(
             event?.identity ||
@@ -515,7 +594,7 @@ export function getFallbackTags(
 
 
     // --------------------------------------------------
-    // API
+    // BACKEND, BY REQUEST HANDLING
     // --------------------------------------------------
 
     if (
@@ -540,13 +619,13 @@ export function getFallbackTags(
     ) {
 
         tags.push(
-            "api"
+            "backend"
         );
     }
 
 
     // --------------------------------------------------
-    // DATABASE
+    // DATA
     // --------------------------------------------------
 
     if (
@@ -574,13 +653,13 @@ export function getFallbackTags(
     ) {
 
         tags.push(
-            "database"
+            "data"
         );
     }
 
 
     // --------------------------------------------------
-    // AUTHENTICATION
+    // SECURITY
     // --------------------------------------------------
 
     if (
@@ -602,7 +681,7 @@ export function getFallbackTags(
     ) {
 
         tags.push(
-            "auth"
+            "security"
         );
     }
 
@@ -634,6 +713,68 @@ export function getFallbackTags(
 
         tags.push(
             "frontend"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // INTEGRATION
+    // --------------------------------------------------
+
+    if (
+        source.includes(
+            "oauth"
+        ) ||
+        source.includes(
+            "webhook"
+        ) ||
+        source.includes(
+            "stripe"
+        ) ||
+        source.includes(
+            "sdk"
+        ) ||
+        source.includes(
+            "client_id"
+        ) ||
+        source.includes(
+            "googleapis"
+        )
+    ) {
+
+        tags.push(
+            "integration"
+        );
+    }
+
+
+    // --------------------------------------------------
+    // PLATFORM
+    // --------------------------------------------------
+    // The last resort: every declaration carries a lens, so a lens is
+    // empty only when the code really has nothing to show through it.
+
+    if (
+        tags.length === 0 ||
+        source.includes(
+            "config"
+        ) ||
+        source.includes(
+            "health"
+        ) ||
+        source.includes(
+            "startup"
+        ) ||
+        source.includes(
+            "bootstrap"
+        ) ||
+        source.includes(
+            "logger"
+        )
+    ) {
+
+        tags.push(
+            "platform"
         );
     }
 
@@ -783,14 +924,41 @@ export function applyEvolutionClassification(
             }
 
 
+            // The level between the feature and its declarations. Cleared
+            // when the model returns none, so a re-run never leaves a node
+            // nested under a group it no longer belongs to.
+            if (
+                classification.group
+            ) {
+
+                node.group =
+                    classification.group;
+            }
+            else {
+
+                delete node.group;
+            }
+
+
             if (
                 Array.isArray(
                     classification.tags
                 )
             ) {
 
+                // A declaration with no usable lens from the model falls
+                // back to what its own path and facts show, so every node
+                // appears under at least one lens in both graphs.
+                const fallbackTags =
+                    fallbackMap.get(key)
+                        ?.tags;
+
                 node.tags =
-                    classification.tags;
+                    classification.tags.length > 0
+                        ? classification.tags
+                        : Array.isArray(fallbackTags)
+                            ? fallbackTags
+                            : [];
             }
 
 

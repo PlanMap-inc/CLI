@@ -54,4 +54,14 @@ const call = main.slice(callStart, main.indexOf("});", callStart));
 assert.ok(callStart > 0);
 assert.doesNotMatch(call, /vscode|postMessage|request\(/);
 
+// Project Evolution keeps its controls when the project has no plan: hiding
+// Refresh evolution there leaves no way to finish a half-labelled scan.
+const css = fs.readFileSync(path.resolve(HERE, "../webview/styles.css"), "utf8");
+const notReady = [...css.matchAll(/\.planmap-root\.not-ready ([^{,]+)/g)].map(match => match[1].trim());
+assert.ok(notReady.length > 0, "expected the not-ready rules");
+for (const selector of notReady) {
+    assert.match(selector, /^#viewPlanmap\b/, `"${selector}" hides chrome outside the Plan Graph`);
+}
+assert.match(section, /id="evoRefreshBtn"/, "the Evolution toolbar has Refresh evolution");
+
 console.log("PASS: evolution-readonly");

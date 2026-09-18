@@ -31,6 +31,87 @@ const FACT_FIELDS = new Set([
     ...ARRAY_FIELDS
 ]);
 
+export const NUMERIC_FACT_FIELDS =
+    Object.freeze([
+        ...NUMERIC_FIELDS
+    ]);
+
+export const LIST_FACT_FIELDS =
+    Object.freeze([
+        ...ARRAY_FIELDS
+    ]);
+
+
+// --------------------------------------------------
+// CLAUSE PROBLEM
+// --------------------------------------------------
+// The checks evaluateClause makes before it looks at any
+// facts. A clause that fails one of them can never be
+// verified, whatever the code does. Returns the reason,
+// or null for a verifiable clause.
+// --------------------------------------------------
+
+export function clauseProblem(
+    field,
+    clause
+) {
+    if (
+        !FACT_FIELDS.has(field)
+    ) {
+        return `${field} is not a supported fact field`;
+    }
+
+    if (
+        !clause ||
+        typeof clause !== "object" ||
+        Array.isArray(clause)
+    ) {
+        return `${field} has an invalid clause`;
+    }
+
+    const operator = clause.op;
+
+    if (
+        operator === "unchanged"
+    ) {
+        return null;
+    }
+
+    if (
+        ARRAY_OPERATORS.has(operator)
+    ) {
+        if (!ARRAY_FIELDS.has(field)) {
+            return `${field} is numeric; use >=, <=, ==, or !=`;
+        }
+
+        if (field === "numbers") {
+            return typeof clause.value === "number" &&
+                !Number.isNaN(clause.value)
+                ? null
+                : `${field} contains operators require a numeric value`;
+        }
+
+        return typeof clause.value === "string"
+            ? null
+            : `${field} contains operators require a string value`;
+    }
+
+    if (
+        COMPARISON_OPERATORS.has(operator)
+    ) {
+        if (!NUMERIC_FIELDS.has(field)) {
+            return `${field} is an array; use contains or notContains`;
+        }
+
+        return typeof clause.value === "number" &&
+            !Number.isNaN(clause.value)
+            ? null
+            : `${field} comparison requires a numeric value`;
+    }
+
+    return `Unsupported operator: ${operator}`;
+}
+
 export function evaluateClause(
     field,
     clause,

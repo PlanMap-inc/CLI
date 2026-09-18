@@ -35,8 +35,13 @@ const animatedSelectors = [...css.matchAll(/([^{}]+)\{[^}]*\banimation:[^}]*\}/g
     .filter(selector => !selector.startsWith("@media"));
 assert.deepEqual(
     animatedSelectors.sort(),
-    [".gnode.pulse .status-pill .dot", ".implement-btn.ready"].sort(),
-    "no canvas element other than a drifted node may animate"
+    [".gnode.pulse .status-pill .dot", ".implement-btn.ready", ".progress-bar.indeterminate span"].sort(),
+    "on the canvas only a drifted node animates; the rest is chrome that reports work in progress"
+);
+assert.deepEqual(
+    animatedSelectors.filter(selector => selector.includes(".gnode")),
+    [".gnode.pulse .status-pill .dot"],
+    "no node on the canvas animates except a drifted one"
 );
 
 console.log("PASS: status-map");

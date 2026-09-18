@@ -13,7 +13,24 @@ PlanMap keeps two graphs of a project and checks one against the other:
 
 Open a project folder and run **PlanMap: Open Plan Graph** from the Command Palette.
 
-1. **PlanMap: Set OpenRouter API Key** (optional). The key is kept in your system keychain and is used to group your code into features and to draft plans. Without it, PlanMap still works offline with path-based labels.
+To work on a different project, click the folder icon at the bottom of PlanMap's left rail, or run **PlanMap: Open Project Folder…**. Pick a folder and VS Code reopens on it, as File → Open Folder does, then PlanMap opens there on its own.
+
+1. **Start the model.** PlanMap names features with a local model by default: free, unlimited, and nothing leaves your machine. Install [Ollama](https://ollama.com), then:
+   ```bash
+   ollama pull qwen2.5-coder:7b
+   OLLAMA_CONTEXT_LENGTH=16384 ollama serve
+   ```
+   The larger context matters: the 4096-token default can cut a batch's reply short. Without a model running, PlanMap still works, labelling from file paths instead of features.
+
+   A hosted provider is far faster (seconds per batch instead of a minute). Set `planmap.llmEndpoint` and `planmap.llmModel`, and run **PlanMap: Set OpenRouter API Key** for the key — it is sent to whichever endpoint you configure. Any OpenAI-compatible provider works, for example:
+
+   | Provider | Endpoint | Model |
+   |---|---|---|
+   | Google AI Studio | `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions` | `gemini-3.8-flash` |
+   | Groq | `https://api.groq.com/openai/v1/chat/completions` | `llama-3.3-70b-versatile` |
+   | OpenRouter | `https://openrouter.ai/api/v1/chat/completions` | `nvidia/nemotron-3-ultra-550b-a55b:free` |
+
+   From a terminal the same settings are `PLANMAP_LLM_ENDPOINT`, `PLANMAP_LLM_MODEL` and `PLANMAP_LLM_API_KEY`. Free hosted models are capped per day; when that cap is hit mid-scan, the rest of the declarations keep path labels until you scan again.
 2. **Scan project** reads your code and builds Project Evolution.
 3. **Draft a plan with AI**, or **Write one rule myself** to open `.planmap/plan.json` and fill it in.
 4. Open a node and **Approve** it, or approve every node in a lens with **Approve <lens>**.

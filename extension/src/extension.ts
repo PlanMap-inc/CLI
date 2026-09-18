@@ -9,7 +9,7 @@ import {
     type HostMessage,
     type WebviewMessage
 } from "./messages";
-import { detectApiKeySource, readViewState } from "./state";
+import { applyPlanValidation, detectApiKeySource, pendingProjectMatches, readViewState } from "./state";
 import { watchPlanmap } from "./watcher";
 
 const PLAN_SKELETON = '{ "version": 1, "lenses": [], "features": [], "nodes": [] }\n';
@@ -19,21 +19,67 @@ const PLAN_SKELETON = '{ "version": 1, "lenses": [], "features": [], "nodes": []
 // put in a file.
 const API_KEY_SECRET = "planmap.openRouterApiKey";
 
+// Set just before PlanMap asks VS Code to reopen the window on another folder,
+// so PlanMap opens by itself once that folder has loaded.
+const OPEN_ON_START = "planmap.openOnStart";
+
 
 export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand("planmap.open", () => {
             PlanMapPanel.show(context);
         }),
+        vscode.commands.registerCommand("planmap.openProjectFolder", () => openProjectFolder(context)),
         vscode.commands.registerCommand("planmap.setApiKey", () => setApiKey(context)),
         vscode.commands.registerCommand("planmap.clearApiKey", () => clearApiKey(context)),
         context.secrets.onDidChange(event => {
             if (event.key === API_KEY_SECRET) PlanMapPanel.refresh();
         })
     );
+
+    const pending = context.globalState.get(OPEN_ON_START);
+
+    if (pending !== undefined) {
+        void context.globalState.update(OPEN_ON_START, undefined);
+
+        if (pendingProjectMatches(pending, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, Date.now())) {
+            PlanMapPanel.show(context);
+        }
+    }
 }
 
 export function deactivate() {}
+
+
+// --------------------------------------------------
+// PROJECT FOLDER
+// --------------------------------------------------
+
+// Like File > Open Folder: VS Code reloads this window on the chosen folder,
+// and PlanMap reopens there on its own (see activate).
+async function openProjectFolder(context: vscode.ExtensionContext) {
+    const current = vscode.workspace.workspaceFolders?.[0]?.uri;
+
+    const picked = await vscode.window.showOpenDialog({
+        title: "Open a project folder with PlanMap",
+        openLabel: "Open with PlanMap",
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        defaultUri: current
+    });
+
+    const folder = picked?.[0];
+    if (!folder) return;
+
+    if (current && folder.fsPath === current.fsPath) {
+        PlanMapPanel.show(context);
+        return;
+    }
+
+    await context.globalState.update(OPEN_ON_START, { path: folder.fsPath, at: Date.now() });
+    await vscode.commands.executeCommand("vscode.openFolder", folder, { forceNewWindow: false });
+}
 
 
 // --------------------------------------------------
@@ -75,7 +121,11 @@ class PlanMapPanel {
         const folder = vscode.workspace.workspaceFolders?.[0];
 
         if (!folder) {
-            vscode.window.showInformationMessage("Open a project folder to see its PlanMap.");
+            void vscode.window
+                .showInformationMessage("Open a project folder to see its PlanMap.", "Open Folder…")
+                .then(choice => {
+                    if (choice) void openProjectFolder(context);
+                });
             return;
         }
 
@@ -140,12 +190,24 @@ class PlanMapPanel {
     }
 
     private async postState() {
-        const [state, stored] = await Promise.all([
+        const [read, stored] = await Promise.all([
             readViewState(this.projectRoot),
             this.context.secrets.get(API_KEY_SECRET)
         ]);
 
-        const aiKey = stored ? "stored" : await detectApiKeySource(this.projectRoot, process.env);
+        // A plan the CLI would treat as empty is shown as invalid, with the CLI's own reasons.
+        const state = read.setup === "ready"
+            ? applyPlanValidation(read, await runCli(["plan", "validate", this.projectRoot, "--json"], this.cliOptions()))
+            : read;
+
+        // A local model needs no key at all, and is the CLI's default.
+        const endpoint =
+            vscode.workspace.getConfiguration("planmap").get<string>("llmEndpoint")?.trim() ||
+            "http://localhost:11434/v1/chat/completions";
+
+        const aiKey = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(endpoint)
+            ? "local"
+            : stored ? "stored" : await detectApiKeySource(this.projectRoot, process.env);
 
         this.post({ type: "state", state: { ...state, aiKey } });
     }
@@ -171,6 +233,11 @@ class PlanMapPanel {
             return;
         }
 
+        if (message.type === "openFolder") {
+            await openProjectFolder(this.context);
+            return;
+        }
+
         if (message.type === "setApiKey") {
             await setApiKey(this.context);
             await this.postState();
@@ -186,7 +253,12 @@ class PlanMapPanel {
         }
 
         const apiKey = await this.context.secrets.get(API_KEY_SECRET);
-        const result = await runCli(args, { ...this.cliOptions(), apiKey });
+
+        const result = await runCli(args, {
+            ...this.cliOptions(),
+            apiKey,
+            onLine: line => this.post({ type: "progress", requestType: message.type, line })
+        });
 
         this.post({
             type: "cliResult",
@@ -268,7 +340,13 @@ class PlanMapPanel {
             nodePath: nodePath || process.execPath,
             cliPath,
             cwd: this.projectRoot,
-            runAsNode: !nodePath
+            runAsNode: !nodePath,
+            // A local model (Ollama) instead of OpenRouter, when configured.
+            env: {
+                PLANMAP_LLM_ENDPOINT: config.get<string>("llmEndpoint")?.trim() ?? "",
+                PLANMAP_LLM_MODEL: config.get<string>("llmModel")?.trim() ?? "",
+                PLANMAP_LLM_BATCH_SIZE: String(config.get<number>("llmBatchSize") ?? "").trim()
+            }
         };
     }
 

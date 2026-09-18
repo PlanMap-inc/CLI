@@ -114,6 +114,45 @@ export async function detectApiKeySource(
     return found ? "project" : null;
 }
 
+// The CLI reads a plan that fails its own validation as an empty plan, so every
+// command would see no nodes while the map still drew them. "plan validate"
+// reports those errors, and the map shows them instead. A CLI without the
+// command (outcome "failed") leaves the state as read.
+export function applyPlanValidation(
+    state: ViewState,
+    check: { outcome: string; json: unknown }
+): ViewState {
+    const errors = (check.json as { errors?: unknown } | null | undefined)?.errors;
+
+    if (state.setup !== "ready" || check.outcome !== "findings" || !Array.isArray(errors) || errors.length === 0) {
+        return state;
+    }
+
+    return {
+        ...state,
+        setup: "invalid-plan",
+        plan: null,
+        problem: `The PlanMap CLI can't use this plan.json, so every command would treat the plan as empty:\n${errors.map(error => `- ${String(error)}`).join("\n")}`
+    };
+}
+
+// The folder PlanMap asked VS Code to open. PlanMap opens by itself only in
+// that folder and only right after the switch, not whenever it is opened later.
+export const OPEN_ON_START_WINDOW_MS = 2 * 60 * 1000;
+
+export function pendingProjectMatches(pending: unknown, folderPath: string | undefined, now: number): boolean {
+    const request = pending as { path?: unknown; at?: unknown } | null | undefined;
+    const age = typeof request?.at === "number" ? now - request.at : -1;
+
+    return (
+        typeof folderPath === "string" &&
+        typeof request?.path === "string" &&
+        request.path === folderPath &&
+        age >= 0 &&
+        age <= OPEN_ON_START_WINDOW_MS
+    );
+}
+
 export function declarationCount(baseline: unknown): number | null {
     const declarations = (baseline as { declarations?: unknown } | null)?.declarations;
     return Array.isArray(declarations) ? declarations.length : null;

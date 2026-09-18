@@ -22,6 +22,13 @@ export const LENS_PALETTE = [
     "#7fe0b0", "#6fa8ff", "#ff9f6f", "#5ec9c9", "#c89bff", "#ffd873", "#ff7fb0"
 ];
 
+// The lens vocabulary, in the order src/llm/lenses.js defines it. The Plan
+// Graph reads it from plan.json and Project Evolution from each node's tags,
+// so both views must agree on the order to agree on the colours.
+export const LENS_IDS = [
+    "frontend", "backend", "security", "data", "integration", "platform"
+];
+
 export const STATUSES = [
     "intended", "approved", "implemented", "drifted", "error", "superseded"
 ];
@@ -99,16 +106,19 @@ export function statusDotStyle(status, color) {
 // CONSTELLATION
 // --------------------------------------------------
 
-const CX = 200;
-const CY = 420;
-const CSTEP = 236;
+// Features stack bottom to top, like the steps inside a feature.
+const CX = 300;
+const CTOP_Y = 60;
+const CSTEP_Y = 150;
 
 export function nodesInFeature(plan, featureId) {
     return (plan?.nodes ?? []).filter(node => node.feature === featureId);
 }
 
 export function buildConstellation(plan, verifiedStatus) {
-    return (plan?.features ?? []).map((feature, index) => {
+    const features = plan?.features ?? [];
+
+    return features.map((feature, index) => {
         const members = nodesInFeature(plan, feature.id);
         const count = members.length;
 
@@ -118,10 +128,39 @@ export function buildConstellation(plan, verifiedStatus) {
             sub: `${count} ${count === 1 ? "node" : "nodes"}`,
             status: featureStatus(members, verifiedStatus),
             color: colorAt(FEATURE_PALETTE, index),
-            x: snap(CX + CSTEP * index),
-            y: snap(CY)
+            x: snap(CX),
+            y: snap(CTOP_Y + (features.length - 1 - index) * CSTEP_Y)
         };
     });
+}
+
+// What connects two features: a node in one with an edgesOut into another.
+// A plan with no links across features falls back to the order it lists them in.
+export function constellationEdges(plan) {
+    const featureOf = new Map(
+        (plan?.nodes ?? []).map(node => [node.id, node.feature])
+    );
+
+    const seen = new Set();
+    const edges = [];
+
+    for (const node of plan?.nodes ?? []) {
+        for (const target of node.edgesOut ?? []) {
+            const to = featureOf.get(target);
+            const key = `${node.feature}->${to}`;
+
+            if (!to || !node.feature || to === node.feature || seen.has(key)) continue;
+
+            seen.add(key);
+            edges.push({ from: node.feature, to, source: "nodes" });
+        }
+    }
+
+    if (edges.length > 0) return edges;
+
+    const ids = (plan?.features ?? []).map(feature => feature.id);
+
+    return ids.slice(0, -1).map((id, index) => ({ from: id, to: ids[index + 1], source: "order" }));
 }
 
 
@@ -174,7 +213,13 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
         source: node
     }));
 
-    return { nodes, edges };
+    // A feature whose nodes carry no links of their own is connected in plan
+    // order: the order they are drawn in, bottom to top.
+    const shown = edges.length > 0
+        ? edges
+        : ordered.slice(0, -1).map((node, row) => ({ from: node.id, to: ordered[row + 1].id, source: "order" }));
+
+    return { nodes, edges: shown };
 }
 
 function layerByLongestPath(members, edges) {
@@ -223,12 +268,35 @@ function layerByLongestPath(members, edges) {
 // LENSES
 // --------------------------------------------------
 
+// A lens keeps its colour from its position in the vocabulary, so the same
+// perspective is the same colour here and in Project Evolution. A lens a
+// project defined for itself takes a colour after the vocabulary's.
 export function lensColors(plan) {
+    const lenses = plan?.lenses ?? [];
     const colors = {};
-    (plan?.lenses ?? []).forEach((lens, index) => {
-        colors[lens.id] = colorAt(LENS_PALETTE, index);
+
+    lenses.forEach((lens, position) => {
+        const index = LENS_IDS.indexOf(lens.id);
+        colors[lens.id] = colorAt(LENS_PALETTE, index === -1 ? position : index);
     });
+
     return colors;
+}
+
+// Which lenses this feature's nodes are actually tagged with. A lens outside
+// it is shown, but marked empty: the reader learns this feature has nothing
+// to show from that perspective, rather than meeting a blank canvas.
+export function lensCoverage(plan, featureId) {
+    const tagged = new Set(
+        nodesInFeature(plan, featureId).flatMap(node => node.lensTags ?? [])
+    );
+
+    return (plan?.lenses ?? []).map(lens => ({
+        id: lens.id,
+        label: lens.label ?? lens.id,
+        count: nodesInFeature(plan, featureId).filter(node => (node.lensTags ?? []).includes(lens.id)).length,
+        empty: !tagged.has(lens.id)
+    }));
 }
 
 
@@ -379,5 +447,71 @@ export function describeImpact(entry) {
             Number.isFinite(entry?.depth) ? `depth ${entry.depth}` : null,
             entry?.confidence != null ? `${entry.confidence} confidence` : null
         ].filter(Boolean).join(" · ")
+    };
+}
+
+
+// --------------------------------------------------
+// SCAN PROGRESS
+// --------------------------------------------------
+// Reads the CLI's own output as it runs. Nothing here invents a step: every
+// number comes from a line the CLI printed.
+// --------------------------------------------------
+
+const DECLARATIONS = /^Found (\d+) declarations/;
+const BATCH_TOTAL = /^Evolution classification: (\d+) events in (\d+) batch\(es\)/;
+const BATCH_START = /^Classifying label batch (\d+)\/(\d+)/;
+const BATCH_DONE = /^Label batch (\d+) persisted successfully/;
+const BATCH_FAILED = /^Label batch (\d+) failed/;
+
+export function parseScanProgress(lines) {
+    let total = null;
+    let done = 0;
+    let failed = 0;
+    let declarations = null;
+    let finished = false;
+    let label = "Starting…";
+    let match;
+
+    for (const raw of lines ?? []) {
+        const line = String(raw).trim();
+
+        if ((match = DECLARATIONS.exec(line))) {
+            declarations = Number(match[1]);
+            label = `${declarations} ${declarations === 1 ? "declaration" : "declarations"} found`;
+        } else if (/^Baseline written/.test(line)) {
+            label = "Reading what the code does now";
+        } else if ((match = BATCH_TOTAL.exec(line))) {
+            total = Number(match[2]);
+            label = `${match[1]} to classify, in ${total} ${total === 1 ? "batch" : "batches"}`;
+        } else if ((match = BATCH_START.exec(line))) {
+            total = Number(match[2]);
+            label = `Classifying batch ${match[1]} of ${match[2]}`;
+        } else if ((match = BATCH_DONE.exec(line))) {
+            done = Math.max(done, Number(match[1]));
+            label = `Batch ${match[1]} classified`;
+        } else if ((match = BATCH_FAILED.exec(line))) {
+            failed += 1;
+            done = Math.max(done, Number(match[1]));
+            label = `Batch ${match[1]} kept path labels`;
+        } else if (/^Evolution written/.test(line)) {
+            finished = true;
+            label = failed > 0 ? `Done, ${failed} ${failed === 1 ? "batch" : "batches"} without AI` : "Done";
+        } else if (/^Plan drafted/.test(line)) {
+            finished = true;
+            label = "Plan drafted";
+        } else if (/^OPENROUTER_API_KEY not configured/.test(line)) {
+            label = "No API key: labelling from file paths";
+        }
+    }
+
+    return {
+        percent: finished ? 100 : total ? Math.round((done / total) * 100) : null,
+        label,
+        total,
+        done,
+        failed,
+        declarations,
+        finished
     };
 }

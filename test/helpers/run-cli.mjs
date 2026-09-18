@@ -25,6 +25,12 @@ export function runCli(
 ) {
     const mergedEnv = {
         ...process.env,
+        // PlanMap classifies with a local model by default. These tests are
+        // about the hosted path, and the OpenRouter mock keys on this URL.
+        PLANMAP_LLM_ENDPOINT:
+            "https://openrouter.ai/api/v1/chat/completions",
+        PLANMAP_LLM_MODEL:
+            "test-model",
         ...env,
         OPENROUTER_API_KEY: apiKey
     };

@@ -52,7 +52,7 @@ assert.deepEqual(describeImpact(verify.results[0].impact[0]), { identity: "b.js:
 
 // End to end: the messages the buttons send, run by the real CLI.
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-actions-"));
-const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "" };
+const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "", env: { PLANMAP_LLM_ENDPOINT: "https://openrouter.ai/api/v1/chat/completions" } };
 const run = message => runCli(buildCliArgs(message, root), options);
 const readPlan = () => JSON.parse(fs.readFileSync(path.join(root, ".planmap", "plan.json"), "utf8"));
 const planNode = id => readPlan().nodes.find(node => node.id === id);

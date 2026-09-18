@@ -13,6 +13,11 @@ import {
 } from "../../evolution/storage.js";
 
 import {
+    isLocalLlm,
+    llmAvailable
+} from "../../llm/config.js";
+
+import {
     updateEvolution
 } from "../../evolution/evolution.js";
 
@@ -46,8 +51,157 @@ import {
 // EVOLUTION BATCH CONFIGURATION
 // --------------------------------------------------
 
+// A local model has a smaller context window than a hosted one, so it gets
+// fewer declarations per request. PLANMAP_LLM_BATCH_SIZE overrides both.
 const BATCH_SIZE =
-    30;
+    Number.parseInt(
+        process.env.PLANMAP_LLM_BATCH_SIZE ?? "",
+        10
+    ) > 0
+        ? Number.parseInt(
+            process.env.PLANMAP_LLM_BATCH_SIZE,
+            10
+        )
+        : isLocalLlm()
+            ? 10
+            : 30;
+
+
+// --------------------------------------------------
+// CLASSIFY, SPLITTING A FAILED BATCH
+// --------------------------------------------------
+// A request can fail because the prompt or its reply did not fit the model's
+// context. Halving the batch makes both smaller, so the declarations are
+// classified instead of falling back to path labels wholesale. A single
+// declaration that still fails is the only thing left behind.
+// --------------------------------------------------
+
+async function classifyWithSplitting(
+    events,
+    classify,
+    report,
+    attempt = 0
+) {
+    try {
+
+        return {
+            classifications:
+                await classify(
+                    events
+                ),
+
+            failed: 0,
+
+            error: null
+        };
+
+    } catch (
+        error
+    ) {
+
+        // Two cases where waiting is the answer and splitting is not:
+        // a server that is restarting, and a rate limit. A hosted free tier
+        // often allows fewer tokens per minute than one batch costs, and
+        // says how long to wait.
+        const rateLimited =
+            /\(429\)|rate.?limit/i.test(
+                error.message
+            );
+
+        const waitSeconds =
+            rateLimited
+                ? Number(
+                    /try again in ([\d.]+)\s*s/i.exec(
+                        error.message
+                    )?.[1]
+                ) || 20
+                : 5;
+
+        if (
+            (
+                rateLimited ||
+                /Cannot reach the model/.test(error.message)
+            ) &&
+            attempt < 3
+        ) {
+            report(
+                rateLimited
+                    ? `rate limited; waiting ${waitSeconds}s before trying again.`
+                    : "the model did not answer; waiting 5s and trying again."
+            );
+
+            await new Promise(
+                resolve =>
+                    setTimeout(
+                        resolve,
+                        Math.ceil(
+                            (waitSeconds + 1) * 1000
+                        )
+                    )
+            );
+
+            return classifyWithSplitting(
+                events,
+                classify,
+                report,
+                attempt + 1
+            );
+        }
+
+        if (
+            events.length <= 1
+        ) {
+            return {
+                classifications: [],
+                failed: events.length,
+                error
+            };
+        }
+
+        report(
+            `${events.length} at once failed (${error.message}); retrying in two halves.`
+        );
+
+        const middle =
+            Math.ceil(
+                events.length / 2
+            );
+
+        const left =
+            await classifyWithSplitting(
+                events.slice(
+                    0,
+                    middle
+                ),
+                classify,
+                report
+            );
+
+        const right =
+            await classifyWithSplitting(
+                events.slice(
+                    middle
+                ),
+                classify,
+                report
+            );
+
+        return {
+            classifications: [
+                ...left.classifications,
+                ...right.classifications
+            ],
+
+            failed:
+                left.failed +
+                right.failed,
+
+            error:
+                left.error ||
+                right.error
+        };
+    }
+}
 
 
 // --------------------------------------------------
@@ -395,75 +549,38 @@ function buildFallbackData(
 // --------------------------------------------------
 // CREATE DETERMINISTIC BATCHES
 //
-// 1-Groups events by source directory.
-// 2-Sorts directories.
-// 3-Sorts events inside each directory.
-// 4-Splits into batches of 30.
+// 1-Sorts by directory, then time, then identity.
+// 2-Packs batches to BATCH_SIZE across directories, so a project
+//   with many small folders does not become many tiny requests.
 // --------------------------------------------------
 
 function createBatches(
     events
 ) {
 
-    const eventsByDirectory =
-        new Map();
-
-    for (
-        const event
-        of events
-    ) {
-
-        const directory =
-            getEventDirectory(
-                event
-            );
-
-        if (
-            !eventsByDirectory.has(
-                directory
-            )
-        ) {
-
-            eventsByDirectory.set(
-                directory,
-                []
-            );
-        }
-
-        eventsByDirectory
-            .get(
-                directory
-            )
-            .push(
-                event
-            );
-    }
-
-    const directories =
-        Array.from(
-            eventsByDirectory.keys()
-        ).sort();
-
-    const labelBatches =
-        [];
-
-    for (
-        const directory
-        of directories
-    ) {
-
-        const directoryEvents =
-            eventsByDirectory.get(
-                directory
-            );
-
-        directoryEvents.sort(
+    const sorted =
+        [...events].sort(
             (
                 left,
                 right
             ) => {
 
-                const timestampCompare =
+                const byDirectory =
+                    getEventDirectory(
+                        left
+                    ).localeCompare(
+                        getEventDirectory(
+                            right
+                        )
+                    );
+
+                if (
+                    byDirectory !== 0
+                ) {
+                    return byDirectory;
+                }
+
+                const byTimestamp =
                     String(
                         left.ts
                     ).localeCompare(
@@ -473,11 +590,9 @@ function createBatches(
                     );
 
                 if (
-                    timestampCompare !==
-                    0
+                    byTimestamp !== 0
                 ) {
-
-                    return timestampCompare;
+                    return byTimestamp;
                 }
 
                 return String(
@@ -490,23 +605,40 @@ function createBatches(
             }
         );
 
-        for (
-            let index = 0;
-            index < directoryEvents.length;
-            index += BATCH_SIZE
-        ) {
+    const labelBatches =
+        [];
 
-            labelBatches.push({
+    for (
+        let index = 0;
+        index < sorted.length;
+        index += BATCH_SIZE
+    ) {
 
-                directory,
+        const batchEvents =
+            sorted.slice(
+                index,
+                index + BATCH_SIZE
+            );
 
-                events:
-                    directoryEvents.slice(
-                        index,
-                        index + BATCH_SIZE
+        const directories =
+            [
+                ...new Set(
+                    batchEvents.map(
+                        getEventDirectory
                     )
-            });
-        }
+                )
+            ];
+
+        labelBatches.push({
+
+            directory:
+                directories.length === 1
+                    ? directories[0]
+                    : `${directories[0]} +${directories.length - 1} more`,
+
+            events:
+                batchEvents
+        });
     }
 
     return labelBatches;
@@ -819,11 +951,15 @@ export async function runEvolution(
         // --------------------------------------------------
 
         if (
-            !process.env.OPENROUTER_API_KEY
+            !llmAvailable()
         ) {
 
             console.warn(
                 "OPENROUTER_API_KEY not configured."
+            );
+
+            console.warn(
+                "Set PLANMAP_LLM_ENDPOINT to use a local model instead."
             );
 
             console.warn(
@@ -913,51 +1049,62 @@ export async function runEvolution(
                 // LOAD LLM
                 // --------------------------------------------------
 
-                let batchClassifications;
+                const {
+                    classifyEvolutionEvents
+                } = await import(
+                    "../../llm/llm.js"
+                );
 
-                try {
-
-                    const {
-                        classifyEvolutionEvents
-                    } = await import(
-                        "../../llm/llm.js"
-                    );
-
-                    batchClassifications =
-                        await classifyEvolutionEvents(
-                            batchLlmEvents,
-                            vocabulary.features,
-                            vocabulary.tags,
-                            Number(
-                                process.env.PLANMAP_MAX_TAGS ||
-                                8
+                const attempt =
+                    await classifyWithSplitting(
+                        batchLlmEvents,
+                        events =>
+                            classifyEvolutionEvents(
+                                events,
+                                vocabulary.features,
+                                vocabulary.tags,
+                                Number(
+                                    process.env.PLANMAP_MAX_TAGS ||
+                                    8
+                                ),
+                                vocabulary.authoritative,
+                                vocabulary.groups
                             ),
-                            vocabulary.authoritative
-                        );
-
-                    console.log(
-                        `Gemini classified ${batchClassifications.length} event(s) in batch ${batchIndex + 1}.`
+                        message =>
+                            console.warn(
+                                `Batch ${batchIndex + 1}: ${message}`
+                            )
                     );
 
-                } catch (
-                    error
+                const batchClassifications =
+                    attempt.classifications;
+
+                console.log(
+                    `Classified ${batchClassifications.length} of ${batch.events.length} in batch ${batchIndex + 1}.`
+                );
+
+                if (
+                    attempt.failed > 0
                 ) {
 
                     console.warn(
-                        `\nLabel batch ${batchIndex + 1} failed.`
+                        `\nLabel batch ${batchIndex + 1}: ${attempt.failed} declaration(s) could not be classified: ${attempt.error?.message ?? "unknown error"}`
                     );
 
                     console.warn(
-                        `Falling back to path-based labels for this batch: ${error.message}`
-                    );
-
-                    console.warn(
-                        "This batch will be retried automatically on a future run."
+                        "They keep path labels, and are retried automatically on a future run."
                     );
 
                     failedBatchCount++;
 
-                    batchClassifications = [];
+                } else if (
+                    batchClassifications.length <
+                    batch.events.length
+                ) {
+
+                    console.warn(
+                        `The model left ${batch.events.length - batchClassifications.length} out of batch ${batchIndex + 1}; they keep path labels and are retried on the next run.`
+                    );
                 }
 
 
@@ -1135,4 +1282,14 @@ export async function runEvolution(
             `\nEvolution written: ${evolutionPath}`
         );
     }
+
+    const labelled =
+        (updatedEvolution.nodes || []).filter(
+            node =>
+                node.labelSource === "llm"
+        ).length;
+
+    console.log(
+        `Labelled by the model: ${labelled} of ${(updatedEvolution.nodes || []).length}`
+    );
 }

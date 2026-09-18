@@ -13,8 +13,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.resolve(HERE, "../../src/cli/cli.js");
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-onboard-"));
-// apiKey "": a developer's own OPENROUTER_API_KEY must never reach these runs.
-const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "" };
+// No model is reached: an empty key on the hosted endpoint means the CLI
+// labels from file paths, so these runs stay offline and deterministic.
+const options = { nodePath: process.execPath, cliPath: CLI, cwd: root, runAsNode: false, apiKey: "", env: { PLANMAP_LLM_ENDPOINT: "https://openrouter.ai/api/v1/chat/completions" } };
 
 fs.writeFileSync(path.join(root, "a.js"), "export function a() { return 1; }\nexport function b() { return a(); }\n");
 
@@ -40,6 +41,27 @@ const draft = await runCli(["plan", "draft", root], options);
 assert.equal(draft.code, 2);
 assert.equal(draft.outcome, "nothing");
 assert.match(draft.stderr, /Cannot draft: OPENROUTER_API_KEY is not configured\./);
+
+// The default is a local model. With none running, the scan says so and
+// keeps path labels rather than failing silently.
+const offline = fs.mkdtempSync(path.join(os.tmpdir(), "planmap-ext-nomodel-"));
+fs.writeFileSync(path.join(offline, "b.js"), "export function b() { return 2; }\n");
+
+const offlineOptions = {
+    ...options,
+    cwd: offline,
+    env: { PLANMAP_LLM_ENDPOINT: "http://localhost:59999/v1/chat/completions" }
+};
+
+assert.equal((await runCli(["init", offline], offlineOptions)).outcome, "ok");
+
+const unreachable = await runCli(["evolution", offline], offlineOptions);
+const said = unreachable.stdout + unreachable.stderr;
+assert.match(said, /Cannot reach the model at http:\/\/localhost:59999/);
+assert.match(said, /ollama serve/);
+assert.match(said, /fell back to path labels/);
+
+fs.rmSync(offline, { recursive: true, force: true });
 assert.equal(fs.existsSync(path.join(root, ".planmap", "plan.json")), false, "a failed draft writes no plan");
 
 // "Write one rule myself" offers this skeleton; it must be a valid plan.

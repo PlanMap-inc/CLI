@@ -41,7 +41,8 @@ import {
 import {
     runPlanList,
     runPlanShow,
-    runPlanDraft
+    runPlanDraft,
+    runPlanValidate
 } from "./commands/plan.js";
 
 import {
@@ -152,6 +153,10 @@ if (
 
     console.error(
         "  node src/cli/cli.js plan show <project-folder> <identity>"
+    );
+
+    console.error(
+        "  node src/cli/cli.js plan validate <project-folder> [--json]"
     );
 
     console.error(
@@ -525,6 +530,18 @@ else if (
         );
     }
 
+    else if (
+        subcommand === "validate"
+    ) {
+        runPlanValidate(
+            args[2],
+            {
+                json:
+                    args.includes("--json")
+            }
+        );
+    }
+
     else {
         console.error(
             "Usage: planmap plan list <project>"
@@ -532,6 +549,10 @@ else if (
 
         console.error(
             "Usage: planmap plan show <project> <identity>"
+        );
+
+        console.error(
+            "Usage: planmap plan validate <project> [--json]"
         );
     }
 }

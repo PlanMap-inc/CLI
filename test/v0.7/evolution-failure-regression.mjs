@@ -67,7 +67,10 @@ function runEvolution(projectRoot, script) {
             apiKey: "test-key",
             nodeOptions: [`--import=${MOCK}`],
             env: {
-                PLANMAP_MOCK_SCRIPT: JSON.stringify(script)
+                PLANMAP_MOCK_SCRIPT: JSON.stringify(script),
+                // Batches are packed to BATCH_SIZE across directories, so one
+                // event per batch is what keeps batch N paired with event N here.
+                PLANMAP_LLM_BATCH_SIZE: "1"
             }
         }
     );

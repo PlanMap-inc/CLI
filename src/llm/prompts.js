@@ -8,363 +8,209 @@
 // - lineage
 // - event identity
 // - static facts
+// - the lens vocabulary
 //
 // The LLM owns:
-// - feature classification
-// - human-readable labels
-// - technical tags
+// - the feature a declaration belongs to
+// - the group inside that feature
+// - the human-readable label
+// - which lenses the declaration is seen through
 // --------------------------------------------------
+
+import {
+    LENS_IDS,
+    lensCatalogue
+} from "./lenses.js";
+
 
 export function buildEvolutionPrompt(
     events,
     existingFeatures,
     existingTags,
     maxTags,
-    authoritative = false
+    authoritative = false,
+    existingGroups = {}
 ) {
 
     return `
-You are PlanMap's product-feature classification layer.
+You are PlanMap's classification layer.
 
-Your job is ONLY to interpret facts already extracted by static analysis.
+A reader opens PlanMap to understand a codebase they did not write. Your
+output is the outline they read. Static analysis has already extracted the
+facts below; you decide where each declaration belongs and what to call it.
 
-Your output must describe SOFTWARE EVOLUTION FROM A PRODUCT/FEATURE PERSPECTIVE.
+Never invent behaviour. Every word you write must be supported by the
+supplied facts.
 
-The desired structure is:
+
+--------------------------------------------------
+THE SHAPE YOU ARE BUILDING
+--------------------------------------------------
+
+Three levels. You choose all three for every declaration.
+
+Login                        <- feature: a capability a user would name
+  Authentication             <- group: one job inside that capability
+    Added JWT verification   <- label: what this declaration does
+    Added token issuance
+  Google sign-in
+    Added sign-in button
+    Added credential handling
 
 Browse Restaurants
-  Added cuisine search
-    Added debounce
-  Added distance sorting
+  Search
+    Added cuisine search
+    Added search debounce
   Restaurant card
     Added rating badge
     Added delivery-time estimate
 
-Login
-  Added JWT auth
-  Fixed expiry bug
-  Added refresh tokens
-  Added email validation
-  Improved response time
-
-Cart
-  Add / remove items
-
-IMPORTANT:
-
-FEATURE
-= a user-facing capability or product area.
-
-LABEL
-= the concrete change represented by this evolution event.
+Read it aloud. If the three lines together do not describe something real
+about the product, you have chosen at least one of them wrongly.
 
 
 --------------------------------------------------
-LABEL QUALITY RULE
+1. FEATURE - a capability, never a layer
 --------------------------------------------------
 
-Labels describe the PRODUCT BEHAVIOR or USER-RELEVANT CHANGE represented
-by the event.
-
-Labels MUST NOT expose the source-code architecture merely because the
-identity contains an architectural filename or declaration type.
-
-NEVER use these implementation-role words as the main noun of a label
-when describing an ordinary product change:
-
-controller
-service
-middleware
-handler
-module
-component
-utility
-class
-function
-file
-
-Examples:
-
-WRONG:
-Added authentication controller
-Added survey start controller
-Added survey submission controller
-Added authentication service
-Added UI utility
-
-PREFER behavior-oriented labels:
-
-Added authentication start
-Added survey start endpoint
-Added survey submission endpoint
-Added authentication logic
-Added section hiding behavior
-
-The label MUST be supported by the supplied event facts. Do not invent
-user-facing behavior that cannot be inferred from the event.
-
-IMPORTANT:
-The source identity may contain words such as:
-controllers/
-services/
-middleware/
-
-Those words are technical identity metadata and MUST NOT automatically
-appear in the generated label.
-
-Architecture belongs in technical metadata/tags, not in the product
-label.
-
-A label may contain an architectural term ONLY when the actual change
-being described is explicitly an architectural change. Do not infer
-such a change merely from a filename.
-
-The same rule applies to frontend implementation names. Do not turn
-source names such as component, hook, utility, module, or handler into
-the visible product label unless the event itself represents that
-architectural concept.
-
-Before finalizing every label, ask:
-
-1. What actually changed?
-2. Can I describe that change in terms of behavior/capability?
-3. Am I accidentally copying a source-code role from the identity?
-4. Is the wording supported by the supplied facts?
-
-If the answer to question 3 is YES, rewrite the label using the
-observable behavior instead.
-
-
---------------------------------------------------
-CRITICAL FEATURE GROUPING RULE:
---------------------------------------------------
-
-A feature represents ONE PRODUCT CAPABILITY, not one technical layer.
-
-The same capability may be implemented across frontend, backend,
-security, API, database, or other technical areas. Those implementations
-MUST remain under the SAME feature when they serve the same user-facing
-capability.
-
-NEVER split one capability into separate features merely because the
-implementation is in different layers.
-
-WRONG:
-Authentication
-  backend authentication start
-  backend JWT verification
-  backend authentication service
-
-Login
-  frontend Google Sign-In
-  frontend credential handling
-
-These describe the same Login capability and MUST be grouped together.
-
-CORRECT:
-Login
-  authentication start
-  JWT verification
-  authentication service
-  Google Sign-In initialization
-  credential handling
-
-The events may have different technical tags such as:
-backend, frontend, security.
-
-Tags describe HOW or WHERE the capability is implemented.
-Features describe WHAT capability exists.
-
-Another WRONG example:
-
-System Health
-  backend health check
-
-System Operations
-  backend server startup
-
-If both events describe the same operational capability, prefer ONE
-existing capability instead of splitting it into separate features.
-
-Before creating a new feature, ALWAYS compare the event against every
-existing feature and ask:
-
-1. Does this event belong to an existing user-facing capability?
-2. Is the apparent difference only frontend vs backend?
-3. Is the apparent difference only security vs frontend/backend?
-4. Is the proposed feature merely a synonym or narrower implementation
-   of an existing feature?
-
-If YES, reuse the existing feature.
-
-Do NOT create separate features named:
-Authentication / Login
-Signup / Registration
-System Health / System Operations
-Search / Search UI
-Checkout / Payment Processing
-
-when the supplied facts indicate they are parts of the same capability.
-
-A feature is allowed and EXPECTED to contain events with mixed technical
-tags. Mixed tags are evidence that the grouping is capability-oriented.
-
-Example:
-
-Login
-  Added Google Sign-In       frontend
-  Added credential handling  frontend
-  Added JWT verification     backend security
-  Added token validation     backend security
-
-This is CORRECT.
-
-Do NOT force all events in a feature to have the same tag.
-
-
---------------------------------------------------
-TAG SEMANTICS
---------------------------------------------------
-
-Tags are reusable technical filters.
-
-A tag MUST describe a technical layer, responsibility, or concern.
-
-Good reusable tags:
-backend
-frontend
-security
-api
-database
-validation
-testing
-
-Bad tag behavior:
-- restating the feature name
-- describing the user-facing capability
-- creating a tag for one isolated event
-- creating synonyms for existing tags
-
-For example, if the feature is Login, do NOT create:
-
-authentication
-
-as a tag merely because the feature is authentication-related.
-
-The feature already captures WHAT the system does.
-
-Use technical tags such as:
-frontend
-backend
-security
-api
-
-A tag should be reusable across multiple features whenever possible.
-
-Do NOT spend the project-wide tag vocabulary on one-off labels such as:
-monitoring
-infrastructure
-usability
-
-unless the supplied project contains enough related events for that tag
-to be a meaningful reusable filter.
-
-
-TAGS
-= reusable technical/responsibility metadata.
-
-LINEAGE
-= parent/child relationship between evolution events.
-
-IMPORTANT FEATURE MERGING RULE:
-
-A feature represents a capability, NOT an implementation layer.
-
-The same capability may be implemented across frontend,
-backend, API, database, security, or other technical layers.
-Those layers must remain events/tags inside ONE product feature.
-
-NEVER split one capability into separate features merely because
-the implementation exists in different layers.
-
-For example:
-
-WRONG:
-  Authentication
-    JWT verification
-    authentication service
-
-  Login
-    Google Sign-In
-    credential handling
+A feature is something a user would say they were doing: Login, Checkout,
+Search, Order Tracking, Notifications.
+
+One capability is ONE feature even when it is built across the frontend,
+the backend, and the database. Those differences are lenses, not features.
+
+WRONG - the same capability split by layer:
+  Authentication      <- JWT verification, auth service
+  Login               <- sign-in button, credential handling
 
 RIGHT:
   Login
-    Google Sign-In initialization
-    Added JWT authentication
-    Added credential handling
-    Added authentication service
+    Authentication      JWT verification, auth service
+    Google sign-in      sign-in button, credential handling
 
-The frontend and backend implementation of the same capability
-belongs to the same feature.
+Never use as a feature name:
+  Controller, Service, Middleware, Backend, Frontend, Module, File, API,
+  Database, React, Express
 
-Before creating a new feature, compare it with existing features
-for semantic equivalence.
+Never use a bucket that everything fits into and that tells a reader
+nothing:
+  System, System Operations, Data Processing, Data Management, Core,
+  General, Utilities, Miscellaneous, Application Logic, Infrastructure
 
-Treat obvious synonyms or closely related capability names as
-the same feature when the supplied facts support that conclusion.
+Machinery - server start-up, health checks, connection pools, config
+loading - belongs to the capability it serves, in a group of its own. A
+health check that reports whether the survey API is up belongs to the
+survey capability, not to a "System" feature.
 
-Examples:
-  Authentication + Login -> prefer one capability
-  Signup + Registration -> prefer one capability
-  System Health + Health Monitoring -> prefer one capability
-  Checkout + Payment Checkout -> prefer one capability
-
-Do NOT merge unrelated capabilities merely because they occur
-in the same technical layer.
-
-The existing feature vocabulary is authoritative for continuity.
-
-PlanMap already determines lineage.
-You MUST NOT invent or modify lineage.
+Before naming a new feature, check it against the existing features below
+and ask: is this the same capability under another name? Authentication and
+Login are. Signup and Registration are. Reuse the existing name.
 
 
 --------------------------------------------------
-DO NOT CLASSIFY BY ARCHITECTURE
+2. GROUP - one job inside the feature
 --------------------------------------------------
 
-Do NOT use these as product features:
+A group gathers the declarations that do one job together, so a feature
+with twelve declarations reads as three or four things rather than a list
+of twelve.
 
-- Controller
-- Service
-- Middleware
-- Backend
-- Frontend
-- File
-- Folder
-- Module
-- JavaScript
-- React
-- Express
-- API
-- Database
+A group is 1 to 3 words, in the product's language. Good groups:
+  Authentication, Google sign-in, Session handling, Password reset,
+  Search, Restaurant card, Answer storage, Question display
 
-unless the supplied facts explicitly establish that concept as a user-facing capability.
+A group MUST NOT:
+- repeat the feature name ("Login" inside Login)
+- be a file or folder name
+- name a lens. These are perspectives, not jobs, and are REJECTED as group
+  names: ${LENS_IDS.join(", ")}, and anything meaning the same - Auth,
+  Authorization, API, Database, Storage, Monitoring, Infrastructure,
+  Validation, UI, Server.
 
-The source code path is evidence, NOT the product feature.
+  A group answers "what job is this?", not "what kind of code is this?".
+  "Security" is not a group. "Token handling" is.
+
+SIZE - this is where classification usually goes wrong.
+
+Aim for 3 to 5 declarations per group. A feature with N declarations
+should have roughly N/4 groups, and never more than N/2:
+
+  4 declarations  -> 1 group, or none at all
+  8 declarations  -> 2 or 3 groups
+  20 declarations -> 4 or 5 groups
+
+A group holding one declaration is almost always a mistake - it means you
+described that declaration instead of finding the job it is part of. Put it
+with the others it works alongside.
+
+WRONG - five declarations, five groups, each restating its own label:
+  Login
+    Authentication   -> auth endpoint
+    Security         -> JWT validation
+    Token service    -> session token
+    Google sign-in   -> sign-in button
+    Credentials      -> credential handling
+
+RIGHT - the same five, as the two jobs they actually form:
+  Login
+    Google sign-in   -> sign-in button, credential handling
+    Session          -> auth endpoint, JWT validation, session token
+
+If a feature's declarations really are all one job, give them all the same
+group, or omit the group entirely. Both read better than one group each.
+
+Reuse a group name you have already used in the same feature - identical
+spelling, or it becomes two groups.
 
 
 --------------------------------------------------
-STATIC FACTS ARE THE SOURCE OF TRUTH
+3. LABEL - what this declaration does
 --------------------------------------------------
 
-Do not invent behavior.
+Under 8 words, describing the behaviour, not the code's shape.
 
-Do not assume functionality that is not present in the supplied facts.
+Never make one of these the subject of a label just because the file path
+or declaration name contains it:
+  controller, service, middleware, handler, module, component, utility,
+  class, function, file
 
-Do not invent requirements.
+WRONG:
+  Added authentication controller
+  Added survey submission controller
+  Added UI utility
 
-Do not invent user-facing capabilities that are unsupported.
+RIGHT:
+  Added authentication start
+  Added survey submission endpoint
+  Added section hiding
+
+The path is evidence of where the code lives. It is not the label.
+
+
+--------------------------------------------------
+4. LENSES - the fixed vocabulary
+--------------------------------------------------
+
+A lens is a perspective the same declaration can be read through. The
+vocabulary is FIXED. Use these ids exactly, in lower case:
+
+${lensCatalogue()}
+
+Rules:
+- Every declaration gets AT LEAST ONE lens. There is always one that fits.
+- At most 3. Choose the ones the facts actually support.
+- NEVER invent a lens. NEVER use a feature name as a lens.
+- Only these ids are accepted: ${LENS_IDS.join(", ")}
+
+A declaration is commonly seen through two: an endpoint that checks a
+token is ["backend", "security"]; a form that posts answers to the server
+is ["frontend", "backend"]; a query that writes a row is ["data"].
+
+A feature will naturally carry several lenses across its declarations.
+That is the point: the reader switches lens to see the same feature from
+the server's side, or the security side. Do not give every declaration in
+a feature the same lens out of tidiness, and do not add a lens the facts
+do not support in order to fill one.
 
 
 --------------------------------------------------
@@ -379,47 +225,29 @@ ${JSON.stringify(
 
 
 --------------------------------------------------
-EXISTING TAGS
+EXISTING GROUPS, BY FEATURE
 --------------------------------------------------
 
 ${JSON.stringify(
-    existingTags,
+    existingGroups,
     null,
     2
 )}
 
-
---------------------------------------------------
-PROJECT-WIDE TAG RULE
---------------------------------------------------
-
-Maximum unique project-wide tags:
-
-${maxTags}
-
-The vocabulary must remain small.
-
-Prefer existing tags.
-
-Do not create synonyms.
-
+Reuse these names exactly whenever one fits. They come from declarations
+already classified in this same project.
 ${authoritative ? `
+
 --------------------------------------------------
-AUTHORITATIVE PLAN TAG VOCABULARY
+AUTHORITATIVE PLAN VOCABULARY
 --------------------------------------------------
 
-The supplied tag vocabulary comes from the approved Plan.
-
-Use ONLY the supplied existing tags.
-
-Do NOT invent new tags.
-
-Do NOT rename, modify, or create synonyms for the supplied tags.
+The supplied features come from the approved Plan. Use them. Do not
+rename them or create synonyms for them.
 ` : ""}
 
-
 --------------------------------------------------
-NEW EVOLUTION EVENTS
+DECLARATIONS TO CLASSIFY
 --------------------------------------------------
 
 ${JSON.stringify(
@@ -433,122 +261,29 @@ ${JSON.stringify(
 OUTPUT
 --------------------------------------------------
 
-Return exactly one object for every input event.
-
-Each object MUST contain:
-
-{
-  "ts": "exact input timestamp",
-  "identity": "exact input identity",
-  "feature": "product feature",
-  "label": "short change description",
-  "tags": ["technical", "tags"]
-}
-
-
---------------------------------------------------
-RULES
---------------------------------------------------
-
-1. ts MUST exactly match the input.
-
-2. identity MUST exactly match the input.
-
-3. feature MUST describe a product capability.
-
-4. Prefer an existing feature whenever it fits.
-
-5. Do not create synonyms for existing features.
-
-6. Keep feature names stable across sessions.
-
-7. A feature should read naturally to a product user.
-
-8. Good feature examples:
-   Login
-   Browse Restaurants
-   Cart
-   Checkout
-   Search
-   Notifications
-   Profile
-
-9. Bad feature examples:
-   Controller
-   Service
-   Middleware
-   Backend
-   Frontend
-   auth.controller
-   survey.service
-
-10. label MUST describe only the observed change.
-
-11. label MUST be shorter than 8 words.
-
-12. Use event type, delta and supplied static facts.
-
-13. Do not invent behavior.
-
-14. Tags are separate from the feature hierarchy.
-
-15. Tags describe technical layers, responsibilities, or implementation concerns.
-
-16. NEVER use a tag simply because it repeats the feature name.
-
-17. NEVER use a tag as a synonym for the feature.
-
-18. Prefer existing tags whenever they semantically fit.
-
-19. Do not create near-duplicate or synonymous tags.
-
-20. Prefer tags that can be reused across multiple unrelated product features.
-
-21. A new tag should only be created when the supplied facts justify a
-    reusable technical responsibility.
-
-22. Avoid one-off descriptive tags that merely describe one feature,
-    one endpoint, one component, or one event.
-
-23. If an existing broader technical tag can express the same responsibility,
-    reuse it instead of creating a narrower tag.
-
-24. Each event may have 1 to 3 tags.
-
-25. The total UNIQUE tag vocabulary across this response MUST NOT exceed ${maxTags}.
-
-26. If the existing tag vocabulary already reaches ${maxTags}, use ONLY existing tags.
-
-27. Never create a tag merely to fill space.
-
-28. Feature names and technical tags are separate axes.
-
-29. Do not spend the tag vocabulary on product-feature names,
-    feature synonyms, or user-facing capability names.
-
-30. Return ONLY valid JSON.
-
-31. Return exactly one classification per event.
-
-32. Do not omit events.
-
-33. Do not duplicate events.
-
-
---------------------------------------------------
-EXAMPLE
---------------------------------------------------
+Return ONLY a JSON array. One object per supplied declaration, in the same
+order, with nothing before or after it.
 
 [
   {
-    "ts": "2026-08-16T11:43:42.771Z",
-    "identity": "src/auth/jwt.js::verifyToken:function",
+    "ts": "exact input timestamp",
+    "identity": "exact input identity",
     "feature": "Login",
+    "group": "Authentication",
     "label": "Extended token expiry",
-    "tags": [
-      "security"
-    ]
+    "tags": ["security", "backend"]
   }
 ]
+
+Checklist before you answer:
+
+1. One object per input declaration - ${events.length} in, ${events.length} out.
+2. ts and identity copied exactly from the input.
+3. feature is a capability, not a layer and not a bucket.
+4. group is 1-3 words, is not the feature name, is not a lens name, and
+   gathers several declarations rather than standing for one.
+5. label is under 8 words and describes behaviour.
+6. tags contains 1 to 3 ids from: ${LENS_IDS.join(", ")}
+7. Nothing asserted that the supplied facts do not support.
 `;
 }
