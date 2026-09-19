@@ -35,9 +35,18 @@ const animatedSelectors = [...css.matchAll(/([^{}]+)\{[^}]*\banimation:[^}]*\}/g
     .filter(selector => !selector.startsWith("@media"));
 assert.deepEqual(
     animatedSelectors.sort(),
-    [".gnode.pulse .status-pill .dot", ".implement-btn.ready", ".progress-bar.indeterminate span"].sort(),
+    [".gnode.pulse .status-pill .dot", ".progress-bar.indeterminate span"].sort(),
     "on the canvas only a drifted node animates; the rest is chrome that reports work in progress"
 );
+
+// "Hand to agent" is gone: PlanMap explains and verifies, it does not hand
+// work on. A permanently disabled button advertising a feature that does
+// not exist costs more trust than the space it saves.
+const html = fs.readFileSync(path.resolve(HERE, "../webview/index.html"), "utf8");
+const main = fs.readFileSync(path.resolve(HERE, "../webview/main.js"), "utf8");
+for (const gone of ["implementBtn", "implement-btn", "Hand to agent", "pulseReady"]) {
+    assert.doesNotMatch(css + html + main, new RegExp(gone), `${gone} is still referenced`);
+}
 assert.deepEqual(
     animatedSelectors.filter(selector => selector.includes(".gnode")),
     [".gnode.pulse .status-pill .dot"],

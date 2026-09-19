@@ -1,6 +1,13 @@
 import fs from "node:fs";
 
 import {
+    addPlanNode,
+    renamePlanNode,
+    movePlanNode,
+    reorderPlanNode
+} from "../../plan/authoring.js";
+
+import {
     getPlanPath,
     readPlan,
     writePlan
@@ -287,6 +294,95 @@ export async function runPlanDraft(
 // reports the same validation errors instead.
 // 0 valid · 1 invalid · 2 no plan.json
 // --------------------------------------------------
+
+// --------------------------------------------------
+// AUTHORING
+// --------------------------------------------------
+// Add, rename, move and reorder, each reporting what it changed. The canvas
+// runs these; so can a terminal, with the same result.
+// --------------------------------------------------
+
+export function runPlanAuthoring(
+    action,
+    projectRoot,
+    args
+) {
+    const flag =
+        name => {
+            const at = args.indexOf(name);
+            return at === -1 ? null : args[at + 1] ?? null;
+        };
+
+    try {
+        if (action === "add") {
+            const node =
+                addPlanNode(
+                    projectRoot,
+                    flag("--feature"),
+                    flag("--title"),
+                    {
+                        intent: flag("--intent"),
+                        after: flag("--after")
+                    }
+                );
+
+            console.log(`Added: ${node.id} "${node.title}"`);
+            return 0;
+        }
+
+        if (action === "rename") {
+            const node =
+                renamePlanNode(
+                    projectRoot,
+                    args[1],
+                    flag("--title")
+                );
+
+            console.log(`Renamed: ${node.id} "${node.title}"`);
+            return 0;
+        }
+
+        if (action === "move") {
+            const node =
+                movePlanNode(
+                    projectRoot,
+                    args[1],
+                    args.includes("--reset") ? null : flag("--x"),
+                    args.includes("--reset") ? null : flag("--y")
+                );
+
+            console.log(
+                node.x === undefined
+                    ? `Moved: ${node.id} back to the layout`
+                    : `Moved: ${node.id} to ${node.x},${node.y}`
+            );
+            return 0;
+        }
+
+        if (action === "order") {
+            const node =
+                reorderPlanNode(
+                    projectRoot,
+                    args[1],
+                    {
+                        after: flag("--after"),
+                        toStart: args.includes("--first")
+                    }
+                );
+
+            console.log(`Reordered: ${node.id}`);
+            return 0;
+        }
+
+        console.error(`Unknown plan action: ${action}`);
+        return 2;
+    }
+    catch (error) {
+        console.error(error.message);
+        return 2;
+    }
+}
+
 
 export function runPlanValidate(
     projectRoot,

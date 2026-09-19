@@ -23,16 +23,18 @@ import {
     verifyResultFor
 } from "./model.js";
 import { createEvolutionView } from "./evolution-view.js";
+import { paint } from "./paint.js";
 
 // The webview has no filesystem access. It renders the state the host
 // posts, and asks the host for anything that has to touch .planmap/.
 const vscode = acquireVsCodeApi();
 
 const MIN_SCALE = 0.3;
+// Fitting stops here even when the content is taller than the canvas.
+const FIT_MIN_SCALE = 0.65;
 const MAX_SCALE = 2.2;
 const FLY_MS = 450;
 // Add, rename, delete, connect and compile need CLI commands that don't exist yet.
-const NODE_EDITING_UNAVAILABLE = "Node editing is not available yet — edit .planmap/plan.json directly";
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -54,6 +56,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     let nodes = [], edges = [];
     let selectedId = null, onSelect = null, onOpen = null, dotColor = "var(--accent-a)", edgeColor = "var(--edge)";
     let panX = 0, panY = 0, scale = 1, panning = false, panStart = null, panOrigin = null;
+    let dragging = null, suppressClick = false;
 
     if (opts.horizontal || opts.hideHandles) contentEl.dataset.h = "1";
 
@@ -80,18 +83,34 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         el.setAttribute("aria-label", `${n.title}, ${n.status}`);
         el.innerHTML = `
             <div class="handle top"></div>
-            <div class="bar" style="background:${n.color || dotColor}"></div>
+            <div class="bar" data-style="background:${n.color || dotColor}"></div>
             ${n.step ? `<div class="step">${n.step}</div>` : ""}
             <div class="title">${escapeHtml(n.title)}</div>
             ${n.sub ? `<div class="sub">${escapeHtml(n.sub)}</div>` : ""}
-            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
-            <div class="status-pill"><span class="dot" style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.status}</div>
+            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
+            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.status}</div>
             <div class="handle bottom"></div>`;
-        el.addEventListener("mousedown", e => e.stopPropagation());
+        paint(el);
+        // Dragging moves the step; a click that never moved opens it. The
+        // 4px threshold is what separates the two - without it every drag
+        // ends by opening the panel you were dragging out from under.
+        el.addEventListener("mousedown", e => {
+            e.stopPropagation();
+            if (!opts.onMove) return;
+            e.preventDefault();
+            dragging = { node: n, fromX: e.clientX, fromY: e.clientY, startX: n.x, startY: n.y, moved: false };
+        });
+
         el.addEventListener("click", e => {
             e.stopPropagation();
+            if (suppressClick) { suppressClick = false; return; }
             select(n.id);
             if (onOpen) onOpen(n);
+        });
+
+        el.addEventListener("dblclick", e => {
+            e.stopPropagation();
+            if (opts.onRename) opts.onRename(n);
         });
         contentEl.appendChild(el);
     }
@@ -119,14 +138,16 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         tb.className = "node-toolbar";
         tb.style.left = (n.x + NODE_W - 70) + "px";
         tb.style.top = (n.y - 34) + "px";
-        tb.innerHTML = `<button class="inert" title="${NODE_EDITING_UNAVAILABLE}" aria-disabled="true">✎</button>`
+        tb.innerHTML = '<button data-act="rename" title="Rename this step">✎</button>'
             + '<button data-act="detail" title="Show intent, rules and history">ⓘ</button>'
-            + `<button class="inert danger" title="${NODE_EDITING_UNAVAILABLE}" aria-disabled="true">🗑</button>`;
+            + '<button data-act="danger" class="danger" title="Remove this step from the plan">🗑</button>';
         tb.addEventListener("mousedown", e => e.stopPropagation());
         tb.addEventListener("click", e => {
             e.stopPropagation();
-            const btn = e.target.closest("button");
-            if (btn?.dataset.act === "detail" && onOpen) onOpen(n);
+            const act = e.target.closest("button")?.dataset.act;
+            if (act === "detail" && onOpen) onOpen(n);
+            if (act === "rename" && opts.onRename) opts.onRename(n);
+            if (act === "danger" && opts.onRemove) opts.onRemove(n);
         });
         contentEl.appendChild(tb);
     }
@@ -143,9 +164,10 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             const d = opts.horizontal
                 ? elbowPathH(a.x + NODE_W, a.y + NODE_H_EST / 2, b.x, b.y + NODE_H_EST / 2)
                 : elbowPath(a.x + NODE_W / 2, a.y, b.x + NODE_W / 2, b.y + NODE_H_EST);
-            markup += `<path class="edge-path" d="${d}" style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
+            markup += `<path class="edge-path" d="${d}" data-style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
         });
         svgEl.innerHTML = markup;
+        paint(svgEl);
     }
 
     canvasEl.addEventListener("mousedown", e => {
@@ -161,9 +183,42 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     }, { passive: false });
     document.addEventListener("mousemove", e => {
         if (panning) { panX = panOrigin.x + (e.clientX - panStart.x); panY = panOrigin.y + (e.clientY - panStart.y); applyTransform(); }
+
+        if (dragging) {
+            const dx = (e.clientX - dragging.fromX) / scale;
+            const dy = (e.clientY - dragging.fromY) / scale;
+
+            if (!dragging.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+
+            dragging.moved = true;
+            dragging.node.x = dragging.startX + dx;
+            dragging.node.y = dragging.startY + dy;
+
+            const el = contentEl.querySelector(`.gnode[data-id="${dragging.node.id}"]`);
+            if (el) { el.style.left = dragging.node.x + "px"; el.style.top = dragging.node.y + "px"; el.classList.add("dragging"); }
+            drawEdges();
+            contentEl.querySelector(".node-toolbar")?.remove();
+        }
     });
+
     document.addEventListener("mouseup", () => {
         if (panning) { panning = false; canvasEl.classList.remove("panning"); }
+
+        if (dragging) {
+            const { node, moved } = dragging;
+            dragging = null;
+            contentEl.querySelector(`.gnode[data-id="${node.id}"]`)?.classList.remove("dragging");
+
+            if (moved) {
+                // Snapped, so hand-placed steps still line up with the grid
+                // and with the ones the layout placed.
+                node.x = Math.round(node.x / 24) * 24;
+                node.y = Math.round(node.y / 24) * 24;
+                render();
+                suppressClick = true;
+                opts.onMove(node);
+            }
+        }
     });
 
     function zoomAround(mx, my, factor) {
@@ -180,8 +235,11 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         const minX = Math.min(...xs), maxX = Math.max(...xs) + NODE_W;
         const minY = Math.min(...ys), maxY = Math.max(...ys) + NODE_H_EST;
         const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
-        const pad = 70;
-        const s = clamp(Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h, 1.15), MIN_SCALE, MAX_SCALE);
+        const pad = 48;
+        // Never fit so small that the titles stop being readable. A long
+        // journey scrolls instead - a graph you cannot read explains nothing,
+        // and fitting used to land at 45%.
+        const s = clamp(Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h, 1.15), FIT_MIN_SCALE, MAX_SCALE);
         return { panX: rect.width / 2 - (minX + w / 2) * s, panY: rect.height / 2 - (minY + h / 2) * s, scale: s };
     }
 
@@ -250,12 +308,57 @@ const impactPanel = document.getElementById("impactPanel");
 const impactInner = document.getElementById("impactInner");
 const emptyState = document.getElementById("emptyState");
 const emptyCard = document.getElementById("emptyCard");
-const implementBtn = document.getElementById("implementBtn");
 const constellationFlowTag = document.getElementById("constellationFlowTag");
 const constellationFlowLabel = document.getElementById("constellationFlowLabel");
 
 const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), { id: "const", showToolbar: false, hideHandles: true });
-const featureGraph = createGraph(featureCanvas, document.getElementById("featureGrid"), document.getElementById("featureContent"), { id: "feat", showToolbar: true });
+// Authoring lives in Feature Space, where the steps are. Each callback is
+// one CLI command: the canvas never writes plan.json itself, so a step moved
+// here and a step moved from a terminal end up byte-identical.
+const featureGraph = createGraph(featureCanvas, document.getElementById("featureGrid"), document.getElementById("featureContent"), {
+    id: "feat",
+    showToolbar: true,
+    onMove: node => request("action", { type: "moveNode", target: node.id, x: node.x, y: node.y }),
+    onRename: node => renameStep(node),
+    onRemove: node => {
+        const source = node.source ?? {};
+        request("action", { type: "reject", target: node.id, force: source.status === "approved" });
+    }
+});
+
+// Renaming happens in the node, not in a dialog: you are looking at the step
+// while you retitle it. Escape abandons, Enter and blur commit, and an empty
+// title is a cancel rather than a step with no name.
+function renameStep(node) {
+    const el = featureCanvas.querySelector(`.gnode[data-id="${node.id}"] .title`);
+    if (!el || el.isContentEditable) return;
+
+    const before = el.textContent;
+    el.contentEditable = "plaintext-only";
+    el.classList.add("editing");
+    el.focus();
+    document.getSelection()?.selectAllChildren(el);
+
+    let done = false;
+
+    const finish = commit => {
+        if (done) return;
+        done = true;
+
+        const title = el.textContent.trim();
+        el.contentEditable = "false";
+        el.classList.remove("editing");
+
+        if (!commit || !title || title === before) { el.textContent = before; return; }
+        request("action", { type: "renameNode", target: node.id, title });
+    };
+
+    el.addEventListener("keydown", event => {
+        if (event.key === "Enter") { event.preventDefault(); finish(true); }
+        if (event.key === "Escape") { event.preventDefault(); finish(false); }
+    });
+    el.addEventListener("blur", () => finish(true), { once: true });
+}
 
 function activeGraph() { return inFeature ? featureGraph : constellationGraph; }
 function syncZoomLabel() { zoomLabel.textContent = Math.round(activeGraph().scale * 100) + "%"; }
@@ -299,11 +402,12 @@ function renderLensSwitch() {
     // An empty lens stays on the switch, dimmed and counted: "nothing here
     // from this perspective" is a fact about the code worth reading.
     lensSwitch.innerHTML = lenses.map(lens => `
-        <button class="lens-btn${lens.id === currentLensId ? " active" : ""}${lens.empty ? " empty" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" style="--swatch:${colors[lens.id]}" title="${lens.empty ? "Nothing in this feature is tagged " + escapeHtml(lens.id) : escapeHtml(String(lens.count)) + " of this feature's steps"}">
+        <button class="lens-btn${lens.id === currentLensId ? " active" : ""}${lens.empty ? " empty" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" data-style="--swatch:${colors[lens.id]}" title="${lens.empty ? "Nothing in this feature is tagged " + escapeHtml(lens.id) : escapeHtml(String(lens.count)) + " of this feature's steps"}">
             <span class="swatch"></span>${escapeHtml(lens.label)}<span class="lens-count">${lens.count}</span>
         </button>`).join("");
+    paint(lensSwitch);
     lensSwitch.classList.toggle("show", inFeature && lenses.length > 0);
-    renderApproveLens();
+    renderApprove();
     lensSwitch.querySelectorAll(".lens-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             currentLensId = btn.dataset.lens;
@@ -330,22 +434,16 @@ function updateHint() {
         const lens = lensById(currentLensId);
         const steps = featureGraph.nodes.length;
 
+        const owned = featureGraph.nodes.filter(node => node.owns).length;
+
         statusHint.textContent = lens
-            ? `${lens.label} · ${steps} ${steps === 1 ? "step" : "steps"} · ${LENS_QUESTIONS[lens.id] ?? ""}`
+            ? `${lens.label} · ${LENS_QUESTIONS[lens.id] ?? ""} · all ${steps} steps, ${owned} of them ${lens.label.toLowerCase()} work`
             : `Feature Space · ${steps} ${steps === 1 ? "step" : "steps"} · scroll to zoom, drag empty space to pan`;
     } else {
         const count = plan().features.length;
         statusHint.textContent = `Constellation · ${count} ${count === 1 ? "feature" : "features"} · scroll to zoom, drag empty space to pan`;
     }
 }
-
-// Implement stays disabled until the plan is compiled, and compiling needs
-// plan editing, which is not available yet. The gate is kept, unwired.
-function refreshCompileUI() {
-    implementBtn.disabled = true;
-    implementBtn.classList.remove("ready");
-}
-
 
 // ================= ZOOM LEVELS =================
 async function enterFeature(featureId) {
@@ -366,7 +464,7 @@ async function enterFeature(featureId) {
     mountFeature();
     const target = featureGraph.fitView();
     featureGraph.setView(scaledAboutCenter(target, 0.6, featureCanvas.clientWidth, featureCanvas.clientHeight));
-    renderBreadcrumb(); renderLensSwitch(); updateHint(); refreshCompileUI();
+    renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode();
     await featureGraph.flyTo(target);
 
     constellationGraph.setView(constellationHome);
@@ -389,7 +487,7 @@ async function exitFeature() {
     const home = constellationHome ?? constellationGraph.fitView();
     constellationGraph.setView(constellationGraph.zoomedOnto(origin, 2.4));
     constellationCanvas.classList.remove("hidden");
-    renderBreadcrumb(); renderLensSwitch(); updateHint(); refreshCompileUI();
+    renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode();
     await constellationGraph.flyTo(home);
 
     flying = false;
@@ -414,7 +512,7 @@ function openDetail(viewNode) {
     const rules = describeRules(node.rules);
     const history = describeHistory(node.history);
 
-    const statusBody = `<div class="badge-row"><div class="badge"><span class="dot" style="${statusDotStyle(viewNode.status, viewNode.color)}"></span>${viewNode.status}</div></div>`;
+    const statusBody = `<div class="badge-row"><div class="badge"><span class="dot" data-style="${statusDotStyle(viewNode.status, viewNode.color)}"></span>${viewNode.status}</div></div>`;
 
     const rulesBody = rules.length
         ? rules.map(rule => `<div class="rule-block"><div class="target">${escapeHtml(rule.kind)} · ${escapeHtml(rule.target)}</div>${rule.clauses.map(c => `<div class="clause">${escapeHtml(c)}</div>`).join("") || '<div class="clause">no assertions</div>'}</div>`).join("")
@@ -431,14 +529,14 @@ function openDetail(viewNode) {
     const lenses = readings.length
         ? section("The same step, read four ways", readings.map(([id, text]) => `
             <div class="lens-read">
-                <div class="badge" style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
+                <div class="badge" data-style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
                 <p class="lens-says">${escapeHtml(text)}</p>
                 ${LENS_QUESTIONS[id] ? `<p class="lens-asks">${escapeHtml(LENS_QUESTIONS[id])}</p>` : ""}
             </div>`).join(""))
         : (node.lensTags ?? []).length
         ? section("Seen through", node.lensTags.map(id => `
             <div class="lens-read">
-                <div class="badge" style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
+                <div class="badge" data-style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
                 ${LENS_QUESTIONS[id] ? `<p class="lens-asks">${escapeHtml(LENS_QUESTIONS[id])}</p>` : ""}
             </div>`).join(""))
         : "";
@@ -459,6 +557,7 @@ function openDetail(viewNode) {
         ${historyBlock}
         ${section("Decision", actionsBody(node))}`;
 
+    paint(impactInner);
     detailNodeId = node.id;
     impactPanel.classList.add("open");
     document.getElementById("impactCloseBtn").addEventListener("click", closeDetail);
@@ -521,6 +620,7 @@ function renderBanner(el, { tone = "", title, body = "", action = null, progress
         ${body ? `<div class="cb-sub">${escapeHtml(body)}</div>` : ""}
         ${progress ? progressBlock(progress) : ""}
         ${action ? `<div class="cb-actions"><button class="icon-btn cb-action">${escapeHtml(action.label)}</button></div>` : ""}`;
+    paint(el);
     el.querySelector(".cb-close").addEventListener("click", onClose);
     if (action) el.querySelector(".cb-action").addEventListener("click", action.run);
 }
@@ -592,7 +692,7 @@ function progressBlock(key) {
 
     return `
         <div class="progress">
-          <div class="progress-bar${indeterminate ? " indeterminate" : ""}"><span${indeterminate ? "" : ` style="width:${progress.percent}%"`}></span></div>
+          <div class="progress-bar${indeterminate ? " indeterminate" : ""}"><span${indeterminate ? "" : ` data-style="width:${progress.percent}%"`}></span></div>
           <div class="progress-label">${escapeHtml(progress.label)}${indeterminate || progress.finished ? "" : ` · ${progress.percent}%`}</div>
           <pre class="progress-log">${escapeHtml(lines.slice(-8).join("\n"))}</pre>
         </div>`;
@@ -630,21 +730,53 @@ function refreshRequests() {
     evoRefreshBtn.textContent = refreshing ? "Refreshing…" : "Refresh evolution";
 
     impactInner.querySelectorAll("[data-action]").forEach(button => button.classList.toggle("loading", busy.has("action")));
-    renderApproveLens();
+    renderApprove();
 }
 
-// Approves every intended node with the active lens - in all features, which the confirmation says.
-function renderApproveLens() {
-    const lens = inFeature && state?.setup === "ready" ? lensById(currentLensId) : null;
-    approveLensBtn.hidden = !lens;
-    if (!lens) return;
+// One button, two jobs, decided by where you are: the whole plan on the
+// Constellation, the perspective you are reading inside a feature. The label
+// comes from the lens object, never a hard-coded name, so a project that
+// renames its lenses renames the button too.
+function approveTarget() {
+    if (state?.setup !== "ready") return null;
 
-    const pending = (plan()?.nodes ?? []).filter(node => node.status === "intended" && (node.lensTags ?? []).includes(lens.id)).length;
-    approveLensBtn.textContent = busy.has("action") ? "Approving…" : `Approve ${lens.label}`;
-    approveLensBtn.classList.toggle("inert", pending === 0);
-    approveLensBtn.title = pending === 0
-        ? `No intended nodes are tagged ${lens.label}`
-        : `Approve all ${pending} intended ${lens.label} ${pending === 1 ? "node" : "nodes"}, in every feature`;
+    const nodes = plan()?.nodes ?? [];
+    const lens = inFeature ? lensById(currentLensId) : null;
+
+    if (lens) {
+        const pending = nodes.filter(node =>
+            node.status === "intended" && (node.lensTags ?? []).includes(lens.id)
+        ).length;
+
+        return {
+            label: `Approve ${lens.label}`,
+            pending,
+            message: { type: "approveLens", lensId: lens.id },
+            reason: `Every ${lens.label.toLowerCase()} step is already approved`,
+            hint: `Approve all ${pending} intended ${lens.label} ${pending === 1 ? "step" : "steps"}, in every feature`
+        };
+    }
+
+    const pending = nodes.filter(node => node.status === "intended").length;
+
+    return {
+        label: "Approve plan",
+        pending,
+        message: { type: "approveAll" },
+        reason: "Every step in the plan is already approved",
+        hint: `Approve all ${pending} intended ${pending === 1 ? "step" : "steps"} in the plan`
+    };
+}
+
+function renderApprove() {
+    const target = approveTarget();
+
+    approveBtn.hidden = !target;
+    if (!target) return;
+
+    approveBtn.textContent = busy.has("action") ? "Approving…" : target.label;
+    approveBtn.classList.toggle("inert", target.pending === 0);
+    approveBtn.title = target.pending === 0 ? target.reason : target.hint;
 }
 
 function runVerify() {
@@ -667,7 +799,12 @@ function onCliResult(result) {
             }
             break;
         case "approve":
+        case "approveAll":
         case "approveLens":
+        case "addNode":
+        case "renameNode":
+        case "moveNode":
+        case "reorderNode":
         case "reject":
         case "revise":
             finish("action", null);
@@ -686,13 +823,20 @@ function onCliResult(result) {
 }
 
 function onCancelled(message) {
-    if (["approve", "approveLens", "reject", "revise"].includes(message.requestType)) finish("action", null);
+    if (["approve", "approveAll", "approveLens", "reject", "revise", "addNode", "renameNode", "moveNode", "reorderNode"].includes(message.requestType)) finish("action", null);
 }
 
-const ACTION_DONE = { approve: "Approved", approveLens: "Approved", reject: "Rejected", revise: "Revised" };
-const ACTION_FAILED = { approve: "Couldn't approve", approveLens: "Some nodes couldn't be approved", reject: "Couldn't reject", revise: "Couldn't revise" };
+const ACTION_DONE = { approve: "Approved", approveAll: "Approved", approveLens: "Approved", reject: "Rejected", revise: "Revised", addNode: "Step added", renameNode: "Renamed", moveNode: "Moved", reorderNode: "Reordered" };
+const ACTION_FAILED = { approve: "Couldn't approve", approveAll: "Some steps couldn't be approved", approveLens: "Some steps couldn't be approved", reject: "Couldn't reject", revise: "Couldn't revise", addNode: "Couldn't add the step", renameNode: "Couldn't rename", moveNode: "Couldn't save the position", reorderNode: "Couldn't reorder" };
+
+// Authoring shows itself: the step moves, the title changes, the new step
+// appears. A banner saying "Moved" is a second telling of something you just
+// watched happen, so these report only when they fail.
+const QUIET_ACTIONS = ["moveNode", "renameNode", "reorderNode", "addNode"];
 
 function showActionResult(result) {
+    if (result.outcome === "ok" && QUIET_ACTIONS.includes(result.requestType)) return;
+
     const output = [String(result.stdout ?? "").trim(), String(result.stderr ?? "").trim()].filter(Boolean).join("\n");
 
     if (result.outcome === "ok") {
@@ -884,6 +1028,9 @@ function renderRail() {
 function setMainView(id) {
     activeView = id;
     renderRail();
+    // The change notice lives in whichever view is on screen, so it moves
+    // with you rather than waiting in the one you just left.
+    renderPendingScan();
 }
 
 railButtons.forEach(button => {
@@ -902,12 +1049,45 @@ railButtons.forEach(button => {
 const openFolderBtn = document.getElementById("openFolderBtn");
 openFolderBtn.addEventListener("click", () => vscode.postMessage({ type: "openFolder" }));
 
-const approveLensBtn = document.getElementById("approveLensBtn");
+const approveBtn = document.getElementById("approveBtn");
+const scanChip = document.getElementById("scanChip");
+const scanChipText = document.getElementById("scanChipText");
+const evoScanChip = document.getElementById("evoScanChip");
+const evoScanChipText = document.getElementById("evoScanChipText");
+
+// Clicking the chip does the thing it is telling you about.
+for (const chip of [scanChip, evoScanChip]) {
+    chip.addEventListener("click", () => request("refresh", { type: "evolution" }));
+}
 const evoRefreshBtn = document.getElementById("evoRefreshBtn");
 const evoNotice = document.getElementById("evoNotice");
 
-approveLensBtn.addEventListener("click", () => {
-    if (!approveLensBtn.classList.contains("inert") && currentLensId) request("action", { type: "approveLens", lensId: currentLensId });
+// Adding a step belongs to the feature you are inside: on the Constellation
+// there is no journey to add it to.
+const addNodeBtn = document.getElementById("addNodeBtn");
+
+addNodeBtn.addEventListener("click", () => {
+    if (addNodeBtn.classList.contains("inert")) return;
+
+    const feature = featureById(currentFeatureId);
+    if (!feature) return;
+
+    // The step is created named, then opened for renaming: a blank step on
+    // the canvas is harder to correct than a placeholder you retitle.
+    request("action", { type: "addNode", feature: feature.id, title: "New step" });
+});
+
+function renderAddNode() {
+    const can = inFeature && state?.setup === "ready";
+    addNodeBtn.classList.toggle("inert", !can);
+    addNodeBtn.title = can
+        ? `Add a step to ${featureById(currentFeatureId)?.name ?? "this feature"}`
+        : "Open a feature to add a step to it";
+}
+
+approveBtn.addEventListener("click", () => {
+    const target = approveTarget();
+    if (target && target.pending > 0) request("action", target.message);
 });
 // The only message the Evolution view's toolbar sends: re-derive it from the code.
 evoRefreshBtn.addEventListener("click", () => request("refresh", { type: "evolution" }));
@@ -930,37 +1110,33 @@ const evolutionView = createEvolutionView({
 // The code has moved and the outline has not. Said where the outline is,
 // with the button that fixes it, and it stays on screen until it is acted
 // on: a change you have to go looking for is a change you will miss.
+// What the scan found, as a chip beside the title in whichever view you are
+// looking at. It used to be a banner across the graph, which is a lot of
+// furniture for "one declaration changed" - and it rendered only into
+// Project Evolution, so a change made while reading the Plan Graph announced
+// itself into a hidden view and looked like detection being broken.
 function renderPendingScan() {
-    if (!state?.pendingScan || !state.scan) {
-        if (evoNotice.dataset.kind === "pending-scan") hideBanner(evoNotice);
+    const chips = [
+        [scanChip, scanChipText],
+        [evoScanChip, evoScanChipText]
+    ];
+
+    const scan = state?.pendingScan ? state.scan : null;
+
+    if (!scan || scan.changes === 0) {
+        for (const [chip] of chips) chip.hidden = true;
         return;
     }
 
-    const { changes, added, changed, deleted } = state.scan;
-    const parts = [
-        added ? `${added} new` : "",
-        changed ? `${changed} changed` : "",
-        deleted ? `${deleted} removed` : ""
-    ].filter(Boolean);
+    // Only significant changes reach here - the CLI has already decided what
+    // counts - so the wording says so rather than implying every keystroke.
+    const count = scan.significant || scan.changes;
+    const text = `${count} significant ${count === 1 ? "change" : "changes"}`;
 
-    evoNotice.dataset.kind = "pending-scan";
-
-    renderBanner(evoNotice, {
-        title: `${changes} ${changes === 1 ? "change" : "changes"} in your code`,
-        body: [
-            parts.length ? `${parts.join(", ")}.` : "",
-            "Project Evolution still shows the last scan. Refresh to fold them in."
-        ].filter(Boolean).join("\n"),
-        action: {
-            label: "Refresh evolution",
-            run: () => request("refresh", { type: "evolution" })
-        }
-    }, () => {
-        // Dismissing hides the banner but does not pretend the changes are
-        // gone: the rail keeps its count until a refresh folds them in.
-        evoNotice.dataset.kind = "";
-        hideBanner(evoNotice);
-    });
+    for (const [chip, label] of chips) {
+        chip.hidden = false;
+        label.textContent = text;
+    }
 }
 
 function applyState(next) {
@@ -993,7 +1169,7 @@ function applyState(next) {
         if (same) openDetail(same); else closeDetail();
     }
 
-    renderBreadcrumb(); renderLensSwitch(); updateHint(); refreshCompileUI(); syncZoomLabel();
+    renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode(); syncZoomLabel();
 }
 
 document.getElementById("zoomInBtn").addEventListener("click", () => activeGraph().zoomIn());

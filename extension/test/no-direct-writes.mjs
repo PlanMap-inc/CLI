@@ -36,7 +36,10 @@ for (const file of webviewFiles) {
 const hostFiles = listFiles(path.join(EXTENSION, "src"), [".ts"]);
 assert.ok(hostFiles.length >= 4, "expected the host source files");
 
-const hostForbidden = /\b(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|unlink|unlinkSync|rm|rmSync|rename|renameSync|copyFile|createWriteStream)\b/;
+// Only an actual call counts. "rename" and "rm" are also CLI verbs the host
+// passes through as arguments - ["plan", "rename", root] is the extension
+// asking the CLI to do the write, which is exactly the rule working.
+const hostForbidden = /\b(writeFile|writeFileSync|appendFile|appendFileSync|mkdir|mkdirSync|unlink|unlinkSync|rm|rmSync|rename|renameSync|copyFile|createWriteStream)\s*\(/;
 
 for (const file of hostFiles) {
     const source = fs.readFileSync(file, "utf8");

@@ -12,10 +12,18 @@ const expected = {
     verify: [{ type: "verify" }, ["verify", root, "--json"]],
     // approve and reject take the plan node id; the CLI matches id or identity.
     approve: [{ type: "approve", target: "plan_0001" }, ["approve", root, "plan_0001"]],
+    // The toolbar's one approve button on the Constellation: the whole plan.
+    approveAll: [{ type: "approveAll" }, ["approve", root, "--all"]],
     approveLens: [{ type: "approveLens", lensId: "security" }, ["approve", root, "--lens", "security"]],
     reject: [{ type: "reject", target: "plan_0001", force: false }, ["reject", root, "plan_0001"]],
     // plan revise matches identity only.
     revise: [{ type: "revise", identity }, ["plan", "revise", root, identity]],
+    // Authoring on the canvas: one CLI command each, so a step added or moved
+    // there is identical to one added or moved from a terminal.
+    addNode: [{ type: "addNode", feature: "feat_0001", title: "A step" }, ["plan", "add", root, "--feature", "feat_0001", "--title", "A step"]],
+    renameNode: [{ type: "renameNode", target: "plan_0001", title: "A better name" }, ["plan", "rename", root, "plan_0001", "--title", "A better name"]],
+    moveNode: [{ type: "moveNode", target: "plan_0001", x: 240, y: 96 }, ["plan", "move", root, "plan_0001", "--x", "240", "--y", "96"]],
+    reorderNode: [{ type: "reorderNode", target: "plan_0001", after: "plan_0002" }, ["plan", "order", root, "plan_0001", "--after", "plan_0002"]],
     evolution: [{ type: "evolution" }, ["evolution", root]],
     draftPlan: [{ type: "draftPlan" }, ["plan", "draft", root]],
     // Handled by the host as an unsaved editor - no CLI call, no write.
@@ -92,5 +100,22 @@ for (const [type, [message, args]] of Object.entries(expected)) {
         `${type} is a single step`
     );
 }
+
+// A title is someone's own words, so it may start with anything - it travels
+// as the value of --title and can never be read as a flag.
+assert.equal(isWebviewMessage({ type: "renameNode", target: "plan_0001", title: "--all" }), true);
+assert.equal(isWebviewMessage({ type: "renameNode", target: "plan_0001", title: "   " }), false, "a blank title is not a name");
+assert.equal(isWebviewMessage({ type: "addNode", feature: "f", title: "x".repeat(201) }), false, "a title has a ceiling");
+
+// A position is two finite numbers and nothing else.
+assert.equal(isWebviewMessage({ type: "moveNode", target: "p", x: 1, y: 2 }), true);
+assert.equal(isWebviewMessage({ type: "moveNode", target: "p", x: "1", y: 2 }), false);
+assert.equal(isWebviewMessage({ type: "moveNode", target: "p", x: NaN, y: 2 }), false);
+
+// "after: null" means first, which is a real instruction rather than a gap.
+assert.deepEqual(
+    buildCliArgs({ type: "reorderNode", target: "plan_0001", after: null }, root),
+    ["plan", "order", root, "plan_0001", "--first"]
+);
 
 console.log("PASS: message-bus");

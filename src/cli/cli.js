@@ -160,6 +160,22 @@ if (
     );
 
     console.error(
+        "  node src/cli/cli.js plan add <project-folder> --feature <name> --title \"...\" [--after <id>]"
+    );
+
+    console.error(
+        "  node src/cli/cli.js plan rename <project-folder> <id> --title \"...\""
+    );
+
+    console.error(
+        "  node src/cli/cli.js plan move <project-folder> <id> --x N --y N | --reset"
+    );
+
+    console.error(
+        "  node src/cli/cli.js plan order <project-folder> <id> --after <id> | --first"
+    );
+
+    console.error(
         "  node src/cli/cli.js approve <project-folder> [identity]"
     );
 
@@ -540,6 +556,24 @@ else if (
                     args.includes("--json")
             }
         );
+    }
+
+    else if (
+        ["add", "rename", "move", "order"].includes(
+            args[1]
+        )
+    ) {
+        const { runPlanAuthoring } =
+            await import(
+                "./commands/plan.js"
+            );
+
+        process.exitCode =
+            runPlanAuthoring(
+                args[1],
+                args[2],
+                args.slice(2)
+            );
     }
 
     else {

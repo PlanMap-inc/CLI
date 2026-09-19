@@ -358,7 +358,7 @@ class PlanMapPanel {
     // Removing a node, and approving a whole lens across every feature, are
     // confirmed in a VS Code dialog before the CLI runs.
     private async confirm(message: WebviewMessage): Promise<boolean> {
-        if (message.type !== "reject" && message.type !== "approveLens") return true;
+        if (message.type !== "reject" && message.type !== "approveLens" && message.type !== "approveAll") return true;
 
         const { plan } = await readViewState(this.projectRoot);
         const nodes = ((plan as { nodes?: unknown[] } | null)?.nodes ?? []) as Array<Record<string, unknown>>;
@@ -374,6 +374,11 @@ class PlanMapPanel {
                 ? `Reject ${name}? It is approved, and rejecting removes it from plan.json.`
                 : `Reject ${name}? Rejecting removes it from plan.json.`;
             action = "Reject";
+        } else if (message.type === "approveAll") {
+            const count = nodes.filter(node => node.status === "intended").length;
+
+            question = `Approve the whole plan? That locks in all ${count} intended ${count === 1 ? "step" : "steps"}, and Verify then checks the code against every one.`;
+            action = "Approve plan";
         } else {
             const lens = lenses.find(candidate => candidate.id === message.lensId);
             const label = typeof lens?.label === "string" ? lens.label : message.lensId;

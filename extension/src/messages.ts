@@ -16,9 +16,16 @@ export type WebviewMessage =
     // approve and reject take a plan node id (the CLI matches id or identity);
     // revise takes the identity, the only thing "plan revise" matches.
     | { type: "approve"; target: string }
+    | { type: "approveAll" }
     | { type: "approveLens"; lensId: string }
     | { type: "reject"; target: string; force: boolean }
     | { type: "revise"; identity: string }
+    // Authoring on the canvas. Each is one CLI command, so a step added or
+    // moved here is identical to one added or moved from a terminal.
+    | { type: "addNode"; feature: string; title: string }
+    | { type: "renameNode"; target: string; title: string }
+    | { type: "moveNode"; target: string; x: number; y: number }
+    | { type: "reorderNode"; target: string; after: string | null }
     | { type: "evolution" }
     | { type: "draftPlan" }
     | { type: "openPlan" }
@@ -30,9 +37,14 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "init",
     "verify",
     "approve",
+    "approveAll",
     "approveLens",
     "reject",
     "revise",
+    "addNode",
+    "renameNode",
+    "moveNode",
+    "reorderNode",
     "evolution",
     "draftPlan",
     "openPlan",
@@ -146,6 +158,8 @@ export function buildCliArgs(
             return ["verify", projectRoot, "--json"];
         case "approve":
             return ["approve", projectRoot, message.target];
+        case "approveAll":
+            return ["approve", projectRoot, "--all"];
         case "approveLens":
             return ["approve", projectRoot, "--lens", message.lensId];
         case "reject":
@@ -154,6 +168,16 @@ export function buildCliArgs(
                 : ["reject", projectRoot, message.target];
         case "revise":
             return ["plan", "revise", projectRoot, message.identity];
+        case "addNode":
+            return ["plan", "add", projectRoot, "--feature", message.feature, "--title", message.title];
+        case "renameNode":
+            return ["plan", "rename", projectRoot, message.target, "--title", message.title];
+        case "moveNode":
+            return ["plan", "move", projectRoot, message.target, "--x", String(message.x), "--y", String(message.y)];
+        case "reorderNode":
+            return message.after
+                ? ["plan", "order", projectRoot, message.target, "--after", message.after]
+                : ["plan", "order", projectRoot, message.target, "--first"];
         case "evolution":
             return ["evolution", projectRoot];
         case "draftPlan":
@@ -206,7 +230,19 @@ const ARGUMENT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
     approve: ["target"],
     approveLens: ["lensId"],
     reject: ["target"],
-    revise: ["identity"]
+    revise: ["identity"],
+    addNode: ["feature"],
+    renameNode: ["target"],
+    moveNode: ["target"],
+    reorderNode: ["target"]
+};
+
+// A title is what someone typed, so it may legitimately start with anything.
+// It is passed as the value of --title, never as a bare argument, so it can
+// never be read as a flag; it only has to be a non-empty string.
+const TEXT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
+    addNode: ["title"],
+    renameNode: ["title"]
 };
 
 
@@ -227,8 +263,29 @@ export function isWebviewMessage(value: unknown): value is WebviewMessage {
     const fields = ARGUMENT_FIELDS[type as WebviewMessage["type"]] ?? [];
     const record = value as Record<string, unknown>;
 
-    return fields.every(field => {
+    const argumentsOk = fields.every(field => {
         const argument = record[field];
         return typeof argument === "string" && argument.length > 0 && !argument.startsWith("-");
     });
+
+    const textOk = (TEXT_FIELDS[type as WebviewMessage["type"]] ?? []).every(field => {
+        const text = record[field];
+        return typeof text === "string" && text.trim().length > 0 && text.length <= 200;
+    });
+
+    // A move carries two finite numbers, and nothing else is a position.
+    const positionOk =
+        type !== "moveNode" ||
+        (["x", "y"] as const).every(field => {
+            const value = record[field];
+            return typeof value === "number" && Number.isFinite(value);
+        });
+
+    // "after" says where to put it, and null means "first".
+    const orderOk =
+        type !== "reorderNode" ||
+        record.after === null ||
+        (typeof record.after === "string" && record.after.length > 0 && !record.after.startsWith("-"));
+
+    return argumentsOk && textOk && positionOk && orderOk;
 }

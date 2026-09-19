@@ -9,18 +9,23 @@
 
 export const GRID = 24;
 export const NODE_W = 172;
-export const NODE_H_EST = 78;
+// Every node is this tall - styles.css pins a min-height so the rows sit
+// on an even pitch. fitView and the edge anchors both measure from it.
+export const NODE_H_EST = 104;
 
 // The demo's feature colours, in the demo's order. Assigned by index.
 export const FEATURE_PALETTE = [
     "#6fa8ff", "#ff9f6f", "#7fe0b0", "#ffd873", "#c89bff", "#6fe0e0", "#ff7fb0"
 ];
 
-// The demo's own dot colours, ordered to line up with the lens vocabulary
-// below, so each perspective keeps the hue the demo gave that concept.
-// Assigned by index; the rest are spare, for a lens a project adds itself.
+// The reference design's own dot colours, in the order LENS_IDS lists the
+// lenses, so each perspective keeps the hue that design gave that concept:
+// frontend purple, backend blue, database teal, security orange. The order
+// here and in LENS_IDS must move together - they came apart once and
+// database showed security's orange. The rest are spare, for a lens a
+// project adds itself.
 export const LENS_PALETTE = [
-    "#c89bff", "#6fa8ff", "#ff9f6f", "#5ec9c9", "#ff7fb0", "#ffd873", "#7fe0b0"
+    "#c89bff", "#6fa8ff", "#5ec9c9", "#ff9f6f", "#ff7fb0", "#ffd873", "#7fe0b0"
 ];
 
 // The lens vocabulary, in the order src/llm/lenses.js defines it. The Plan
@@ -120,10 +125,13 @@ export function statusDotStyle(status, color) {
 
 // Features stack bottom to top, in the order a person meets them, like the
 // steps inside one: the first thing you do sits at the bottom and the
-// journey climbs.
+// journey climbs. The pitch is a multiple of the 24px grid and 40px taller
+// than a node, which is what leaves a connector long enough to see: at 132
+// the rows snapped unevenly and the line between them came out 16px long,
+// so the lens colour on it was invisible.
 const CX = 300;
 const CTOP_Y = 60;
-const CSTEP_Y = 150;
+const CSTEP_Y = 144;
 
 export function nodesInFeature(plan, featureId) {
     return (plan?.nodes ?? []).filter(node => node.feature === featureId);
@@ -195,7 +203,7 @@ export function constellationEdges(plan) {
 // --------------------------------------------------
 
 const TOP_Y = 60;
-const STEP_Y = 150;
+const STEP_Y = 144;
 const CENTER_X = 300;
 
 export function nodeSub(node) {
@@ -234,6 +242,11 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
     // that language. A step the lens has no reading for keeps its own title.
     const reading = node => (lensId && node.readings?.[lensId]) || node.title;
 
+    // A step a person dragged keeps exactly where they put it; the rest are
+    // laid out. Mixing the two is the point: you move the one that matters
+    // and the others stay tidy.
+    const placed = node => Number.isFinite(node.x) && Number.isFinite(node.y);
+
     const nodes = ordered.map((node, row) => ({
         id: node.id,
         step: row + 1,
@@ -247,8 +260,13 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
         // reason to hide it: every step stands in every lens, and one
         // without a reading simply keeps the name it already had.
         renamed: Boolean(lensId && node.readings?.[lensId]),
-        x: snap(CENTER_X),
-        y: snap(TOP_Y + (ordered.length - 1 - row) * STEP_Y),
+        // Whether this perspective does the work here, rather than depending
+        // on the step or passing through it. Every step is still told.
+        owns: Boolean(lensId && (node.lensTags ?? []).includes(lensId)),
+        x: placed(node) ? node.x : snap(CENTER_X),
+        y: placed(node) ? node.y : snap(TOP_Y + (ordered.length - 1 - row) * STEP_Y),
+        // Where the layout would have put it, so "reset position" can.
+        moved: placed(node),
         source: node
     }));
 
@@ -330,13 +348,13 @@ export function lensColors(plan) {
 export function lensCoverage(plan, featureId) {
     const members = nodesInFeature(plan, featureId);
 
-    // A step belongs to a perspective when the scan tagged it with that lens,
-    // whether or not the draft found separate words for it. Counting only the
-    // readings made the number swing between runs on identical code, which
-    // made the lens itself look unreliable.
+    // Every step now carries a reading in every lens, so counting readings
+    // would print the step count four times over. The useful number is how
+    // many steps this perspective DOES THE WORK for; the rest it depends on
+    // or passes through, and still describes in its own words.
     return (plan?.lenses ?? []).map(lens => {
         const count = members.filter(node =>
-            node.readings?.[lens.id] || (node.lensTags ?? []).includes(lens.id)
+            (node.lensTags ?? []).includes(lens.id)
         ).length;
 
         return {

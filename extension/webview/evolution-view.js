@@ -8,6 +8,7 @@
 // --------------------------------------------------
 
 import { escapeHtml } from "./model.js";
+import { paint } from "./paint.js";
 import {
     buildEvolutionTree,
     countNodes,
@@ -108,12 +109,13 @@ export function createEvolutionView(el) {
         const tags = evolutionTags(evolution);
         const colors = tagColors(tags);
         const button = (tag, label) =>
-            `<button class="lens-btn${tag === activeTag ? " active" : ""}" data-tag="${escapeHtml(tag ?? "")}" role="radio" aria-checked="${tag === activeTag}" style="--swatch:${tag ? colors[tag] : "var(--text-low)"}"><span class="swatch"></span>${escapeHtml(label)}</button>`;
+            `<button class="lens-btn${tag === activeTag ? " active" : ""}" data-tag="${escapeHtml(tag ?? "")}" role="radio" aria-checked="${tag === activeTag}" data-style="--swatch:${tag ? colors[tag] : "var(--text-low)"}"><span class="swatch"></span>${escapeHtml(label)}</button>`;
 
         // Sentence case, so a lens is named the same here as in the Plan Graph.
         const name = tag => tag.charAt(0).toUpperCase() + tag.slice(1);
 
         el.tagSwitch.innerHTML = button(null, "All") + tags.map(tag => button(tag, name(tag))).join("");
+        paint(el.tagSwitch);
         el.tagSwitch.hidden = tags.length === 0;
 
         el.tagSwitch.querySelectorAll(".lens-btn").forEach(btn => {
@@ -154,7 +156,7 @@ export function createEvolutionView(el) {
                 <span class="evo-status-icon status-${escapeHtml(status || "none")}" title="${escapeHtml(status)}" aria-hidden="true">${evolutionIcon(status)}</span>
                 <span class="evo-title">${escapeHtml(item.title)}</span>
                 ${isNew ? '<span class="evo-new" title="Found by the last refresh">New</span>' : ""}
-                <span class="evo-tags">${item.tags.map(tag => `<span class="evo-tag"><span class="evo-tag-dot" style="background:${colors[tag]}"></span>${escapeHtml(tag)}</span>`).join("")}</span>`;
+                <span class="evo-tags">${item.tags.map(tag => `<span class="evo-tag"><span class="evo-tag-dot" data-style="background:${colors[tag]}"></span>${escapeHtml(tag)}</span>`).join("")}</span>`;
         }
 
         wrap.appendChild(row);
@@ -210,7 +212,7 @@ export function createEvolutionView(el) {
         const delta = describeDelta(node.delta);
 
         const tags = item.tags.length
-            ? item.tags.map(tag => `<div class="badge"><span class="dot" style="background:${colors[tag]}"></span>${escapeHtml(tag)}</div>`).join("")
+            ? item.tags.map(tag => `<div class="badge"><span class="dot" data-style="background:${colors[tag]}"></span>${escapeHtml(tag)}</div>`).join("")
             : '<div class="badge">untagged</div>';
 
         const against = node.verifiedAgainst ? `plan node <code>${escapeHtml(node.verifiedAgainst)}</code>` : "its approved plan node";
@@ -220,6 +222,7 @@ export function createEvolutionView(el) {
                 ? `<div class="drift-callout"><div class="h">Error</div>Verify hit an error checking this declaration against ${against}.</div>`
                 : "";
 
+        PAINT_DETAIL_MARK
         el.detailInner.innerHTML = `
             <div class="impact-head"><h3>${escapeHtml(item.title)}</h3><button class="impact-close" id="evoDetailClose" aria-label="Close detail">✕</button></div>
             <div class="impact-sub">${escapeHtml(item.identity ?? "no identity recorded")}</div>

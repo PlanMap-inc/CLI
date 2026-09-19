@@ -11,7 +11,7 @@
 <div class="planmap-root">
 
   <nav class="app-rail" aria-label="PlanMap views">
-    <svg class="rail-mark" viewBox="0 0 2000 2000" width="20" height="20" fill="none" stroke="currentColor"
+    <svg class="rail-mark" viewBox="0 0 2000 2000" width="30" height="30" fill="none" stroke="currentColor"
          stroke-width="95" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="PlanMap">
       <path d="M455 925 L665 545 Q710 480 795 480 L1180 480 Q1260 480 1300 545 L1545 925"/>
       <path d="M455 925 L1290 925"/>
@@ -47,22 +47,26 @@
       <div class="view" id="viewPlanmap">
         <div class="toolbar">
           <div class="breadcrumb" id="breadcrumb"><span class="crumb current">Constellation</span></div>
-          <div class="lens-switch plan" id="lensSwitch" role="radiogroup" aria-label="Lens"></div>
+          <button class="scan-chip" id="scanChip" hidden title="Refresh evolution to fold these in">
+            <span class="scan-dot"></span><span id="scanChipText"></span>
+          </button>
           <div class="view-controls">
-            <button class="icon-btn" id="approveLensBtn" hidden>Approve lens</button>
-            <button class="icon-btn inert" id="addNodeBtn" title="Node editing is not available yet — edit .planmap/plan.json directly" aria-disabled="true">+ Add node</button>
+            <!-- One approve button. Its label and its command follow where you
+                 are: the whole plan on the Constellation, the active lens
+                 inside a feature. main.js derives both from the lens object. -->
+            <button class="icon-btn" id="approveBtn">Approve plan</button>
+            <button class="icon-btn" id="addNodeBtn" title="Add a step to this feature">+ Add step</button>
             <div class="zoom-controls">
               <button id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
               <div class="zoom-label" id="zoomLabel">100%</div>
               <button id="zoomInBtn" title="Zoom in" aria-label="Zoom in">+</button>
               <button id="zoomResetBtn" class="reset-btn" title="Fit to content" aria-label="Fit to content">⤢</button>
             </div>
-            <div class="compile-controls">
-              <button class="icon-btn inert" id="compileBtn" title="Node editing is not available yet — edit .planmap/plan.json directly" aria-disabled="true">Approve plan</button>
-              <button class="icon-btn implement-btn" id="implementBtn" disabled title="Node editing is not available yet — edit .planmap/plan.json directly">Hand to agent</button>
-              <button class="icon-btn" id="verifyBtn" title="Check every approved plan node against the code">Verify against code</button>
-            </div>
+            <button class="icon-btn" id="verifyBtn" title="Check every approved plan node against the code">Verify against code</button>
           </div>
+          <!-- The perspective control sits last in the row and floats right:
+               it is what you reach for most inside a feature. -->
+          <div class="lens-switch plan" id="lensSwitch" role="radiogroup" aria-label="Lens"></div>
         </div>
         <div class="compile-banner" id="compileBanner" role="status"></div>
         <div class="workspace">
@@ -97,6 +101,9 @@
       <div class="view hidden" id="viewEvolution" data-vscode-context='{"preventDefaultContextMenuItems": true}'>
         <div class="toolbar">
           <div class="breadcrumb"><span class="crumb current" id="evoTitle">Project Evolution</span><span class="derived-chip">Read-only, derived from code</span></div>
+          <button class="scan-chip" id="evoScanChip" hidden title="Refresh evolution to fold these in">
+            <span class="scan-dot"></span><span id="evoScanChipText"></span>
+          </button>
           <div class="lens-switch" id="tagSwitch" role="radiogroup" aria-label="Filter by tag" hidden></div>
           <div class="view-controls">
             <button class="icon-btn" id="evoRefreshBtn" title="Scan the code again and rebuild Project Evolution">Refresh evolution</button>

@@ -581,60 +581,75 @@ ${lensCatalogue()}
   ["frontend", "backend"]; a query that writes a row is ["data"].
 
 --------------------------------------------------
-READINGS - the same step, in each perspective's words
+READINGS - the same step, told in four voices
 --------------------------------------------------
 
-"readings" names this ONE step again for each perspective, in that
-perspective's own language and with that perspective's facts. The step does
-not change, the code does not change, only the words do - and that is what
-makes a project legible to someone who thinks in one of these terms.
+Each perspective tells the WHOLE feature, in its own language. Not a subset,
+not a highlight: the complete journey as a frontend engineer would narrate
+it, then as a backend engineer would, then a DBA, then a security reviewer.
+Four tellings of one thing.
 
-The same sign-in step, read four ways:
+EVERY step gets a reading in EVERY lens. No omissions.
 
-  "title":    "Sign in with Google"
-  "readings": {
-    "frontend": "Press the Google sign-in button",
-    "backend":  "POST the credential to /auth/google",
-    "database": "Keep the session token in local storage",
-    "security": "Hand Google's token over to be checked"
-  }
+That is the rule that makes this work, and it is easy to get wrong. A
+perspective is never silent about a step it shares a journey with - it just
+speaks about it differently. There are three things a reading can say, and
+all three are useful:
 
-And a step that writes rows, where the database reading gets specific:
+  DOES THE WORK    this step is that perspective's own
+  DEPENDS ON IT    the perspective needs this step to have happened
+  UNTOUCHED        the perspective genuinely passes through
 
-  "title":    "Save the answers"
-  "readings": {
-    "frontend": "Confirm the survey was received",
-    "backend":  "Accept POST /survey/submit",
-    "database": "INSERT one row per answer, in one transaction",
-    "security": "Refuse a submission that is missing answers"
-  }
+Take one step, "start the server", read four ways:
 
-Be specific in the way that perspective is specific. A database reading
-names the table, the column or the operation when the facts give them. A
-backend reading names the route or the status code. A frontend reading names
-what the person actually sees happen. A security reading names the check.
+  "frontend": "Nothing renders until this is up"      <- depends on it
+  "backend":  "Listen on the configured port"         <- does the work
+  "database": "Open the connection pool"              <- does the work
+  "security": "No checks run before this"             <- untouched
 
-Rules:
+And a pure layout helper, "hide every section":
+
+  "frontend": "Clear the screen before the next question"
+  "backend":  "Runs in the browser, the server is idle"
+  "database":  "Nothing is read or written"
+  "security": "No input is accepted here"
+
+A relationship reading is honest and it keeps the story whole. Silence is
+not: a step left without a reading falls back to its default name, and the
+reader cannot tell it apart from one the perspective really owns. That is
+what made earlier outlines incoherent - five of seven steps in the frontend
+lens were backend steps wearing frontend clothes.
+
+EACH VOICE IS SPECIFIC IN ITS OWN WAY
+
+  frontend  names what the person sees or does
+            "Press the Google sign-in button", not "handle the response"
+  backend   names the route, the verb, the status code
+            "POST /auth/google, answer 200"
+  database  names the table, the column, the operation
+            "INSERT one row per answer, in one transaction"
+  security  names the check and what happens when it fails
+            "Reject a submission missing any answer"
+
+When the facts do not give you a table or a route, say what IS or IS NOT
+touched. "No rows are read here" is specific. "Handles data" is not.
+
+READ IT BACK BEFORE YOU ANSWER
+
+Take each lens's readings in step order and read them as one paragraph.
+Could someone who only ever read that lens follow this feature start to
+finish? If a line does not belong in that story, it is wrong - rewrite it as
+a relationship reading, do not delete it.
+
+RULES
+
 - Under 8 words each. No function names, no file names.
-- Grounded in the SUPPLIED FACTS for that declaration. A reading that the
-  facts do not support is worse than no reading.
-- Go through all four in turn for every step, and write the ones the facts
-  support. Most steps carry two or three. A request handler is a backend
-  step; it is also a security step if it rejects anything, and a database
-  step if it touches a row. A form handler is frontend AND backend, because
-  it gathers input and sends it.
-- Write a reading for every perspective the facts DO support, not only for
-  the ones in "lensTags".
-- Every lens you put in "lensTags" MUST have a reading. Saying a step is
-  security work and then finding no security words for it contradicts
-  itself.
-- OMIT only a perspective the facts genuinely say nothing about. A pure
-  layout helper has no data reading, and inventing one ("Touches no
-  storage") is noise. Leave it out and the step keeps its plain title
-  under that lens.
-- Only these keys: ${LENS_IDS.join(", ")}
-- Never repeat the title verbatim. If a perspective has nothing new to say
-  about this step, omit it.
+- Grounded in the SUPPLIED FACTS. Never invent a route, table or check the
+  facts do not show.
+- All four keys on every step: ${LENS_IDS.join(", ")}
+- Never repeat the title verbatim in any lens.
+- "lensTags" stays what it is: the perspectives that DO THE WORK. A
+  relationship reading does not earn a tag.
 
 Every rule MUST have:
 - kind: "behaviour"
@@ -1690,6 +1705,8 @@ export async function draftBrownfield(
                 .filter(
                     node =>
                         node?.status === "approved" ||
+                        node?.origin === "human_authored" ||
+                        node?.origin === "ai_edited_by_human" ||
                         (Array.isArray(node?.history) &&
                             node.history.length > 0)
                 )
@@ -1990,9 +2007,12 @@ export async function draftBrownfield(
                         // first drafted it. Replacing an approved node threw
                         // that decision away silently - and with it every
                         // verify result measured against it, since verify
-                        // only checks approved nodes.
+                        // only checks approved nodes. A node they wrote or
+                        // edited by hand is theirs for the same reason.
                         if (
                             node?.status === "approved" ||
+                            node?.origin === "human_authored" ||
+                            node?.origin === "ai_edited_by_human" ||
                             (Array.isArray(node?.history) &&
                                 node.history.length > 0)
                         ) {

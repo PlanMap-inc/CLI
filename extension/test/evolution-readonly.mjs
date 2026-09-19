@@ -37,7 +37,13 @@ const start = html.indexOf('id="viewEvolution"');
 const section = html.slice(start, html.indexOf("<script", start));
 assert.ok(start > 0, "the Evolution view exists");
 assert.match(section.slice(0, 200), /data-vscode-context='\{"preventDefaultContextMenuItems": true\}'/);
-assert.deepEqual([...section.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]), ["evoRefreshBtn", "evoExpandBtn", "evoCollapseBtn"]);
+// The view's own controls. The scan chip is one of them: it reports what the
+// code did and re-runs the same refresh as the button beside it, so it reads
+// and rebuilds - it never edits the outline.
+assert.deepEqual(
+    [...section.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]),
+    ["evoScanChip", "evoRefreshBtn", "evoExpandBtn", "evoCollapseBtn"]
+);
 
 // Refresh re-derives evolution from the code - the only message the view's toolbar sends.
 const mainSource = read("main.js");
