@@ -25,17 +25,78 @@ const plan = {
         { id: "n4", feature: "f" }
     ]
 };
+// A lens is a reading of the journey, not a filter over it: the same steps,
+// in the same places, whichever lens is on. Only which ones the lens speaks
+// to changes, so a reader can see what is being left out.
 const ids = lensId => buildFeatureGraph(plan, "f", {}, lensId).nodes.map(n => n.id).sort();
 
-assert.deepEqual(ids("security"), ["n1"]);
-assert.deepEqual(ids("backend"), ["n1", "n2"]);
-assert.deepEqual(ids(null), ["n1", "n2", "n3", "n4"], "no active lens shows everything");
-assert.deepEqual(buildFeatureGraph(plan, "f", {}, "security").edges, [], "edges to hidden nodes are dropped");
-assert.deepEqual(buildFeatureGraph(plan, "f", {}, "backend").edges, [{ from: "n1", to: "n2" }]);
+assert.deepEqual(ids("security"), ["n1", "n2", "n3", "n4"]);
+assert.deepEqual(ids("backend"), ["n1", "n2", "n3", "n4"]);
+assert.deepEqual(ids(null), ["n1", "n2", "n3", "n4"], "every lens shows every step");
 
-const backendYs = buildFeatureGraph(plan, "f", {}, "backend").nodes.map(n => n.y).sort((a, b) => a - b);
-// Rows snap to the grid, so the step is ~150px; a hidden row in between would double it.
-assert.ok(backendYs[1] - backendYs[0] < 200, "hidden nodes leave no gap in the column");
+// Nothing is dimmed or dropped: a lens that has no words for a step leaves
+// the step exactly as it was, at full strength, under its own name.
+for (const lensId of ["security", "backend", null]) {
+    const graph = buildFeatureGraph(plan, "f", {}, lensId);
+    assert.equal(graph.nodes.length, 4, `${lensId} lost a step`);
+    assert.ok(graph.nodes.every(node => node.renamed === false), "no readings in this fixture, so nothing is renamed");
+}
+
+// The shape never moves: same layout, same edges, whichever lens is on.
+const shape = lensId => {
+    const graph = buildFeatureGraph(plan, "f", {}, lensId);
+    return JSON.stringify([graph.nodes.map(n => [n.id, n.x, n.y]), graph.edges]);
+};
+assert.equal(shape("security"), shape(null), "a lens never moves a step");
+assert.equal(shape("backend"), shape(null));
+
+// And it never breaks the chain: the journey stays joined end to end.
+assert.equal(buildFeatureGraph(plan, "f", {}, "security").edges.length, buildFeatureGraph(plan, "f", {}).edges.length);
+
+// --------------------------------------------------
+// A LENS RENAMES, IT DOES NOT RESTRUCTURE
+// --------------------------------------------------
+// The same step said in each perspective's language: same node, same place,
+// same rules, different words. A step the lens has no reading for keeps its
+// own title rather than being given an invented one.
+
+const readable = {
+    features: [{ id: "g", name: "G" }],
+    nodes: [
+        {
+            id: "r1", feature: "g", title: "Sign in with Google",
+            lensTags: ["frontend", "security"], edgesOut: ["r2"],
+            readings: {
+                frontend: "Press the Google sign-in button",
+                security: "Hand Google's token over to be checked"
+            }
+        },
+        { id: "r2", feature: "g", title: "Save the answers", lensTags: ["database"], readings: { database: "INSERT one row per answer" } }
+    ]
+};
+
+const titleAt = lensId =>
+    Object.fromEntries(buildFeatureGraph(readable, "g", {}, lensId).nodes.map(n => [n.id, n.title]));
+
+assert.deepEqual(titleAt(null), { r1: "Sign in with Google", r2: "Save the answers" }, "no lens: the plain titles");
+assert.deepEqual(titleAt("frontend"), { r1: "Press the Google sign-in button", r2: "Save the answers" }, "the lens renames what it has a reading for, and leaves the rest alone");
+assert.deepEqual(titleAt("security"), { r1: "Hand Google's token over to be checked", r2: "Save the answers" });
+assert.deepEqual(titleAt("database"), { r1: "Sign in with Google", r2: "INSERT one row per answer" });
+
+// The plain title travels with the node, so a panel can show both.
+assert.deepEqual(
+    buildFeatureGraph(readable, "g", {}, "frontend").nodes.map(n => n.plainTitle),
+    ["Sign in with Google", "Save the answers"]
+);
+
+// Renaming never moves anything: same ids, same places, same edges.
+const frame = lensId => {
+    const graph = buildFeatureGraph(readable, "g", {}, lensId);
+    return JSON.stringify([graph.nodes.map(n => [n.id, n.x, n.y]), graph.edges]);
+};
+for (const lensId of [null, "frontend", "security", "database"]) {
+    assert.equal(frame(lensId), frame(null), `${lensId} moved a step`);
+}
 
 // A lens outside PlanMap's vocabulary is coloured by its position.
 const django = { lenses: [{ id: "models", label: "Models" }, { id: "views", label: "Views" }, { id: "tasks", label: "Tasks" }] };
@@ -44,9 +105,10 @@ assert.deepEqual(lensColors(django), { models: LENS_PALETTE[0], views: LENS_PALE
 // One in the vocabulary is coloured by its place there instead, wherever the
 // plan happens to list it: the same perspective must be the same colour in
 // the Plan Graph and in Project Evolution, which orders tags independently.
-const shuffled = { lenses: [{ id: "security", label: "Security" }, { id: "frontend", label: "Frontend" }] };
-assert.equal(lensColors(shuffled).security, LENS_PALETTE[LENS_IDS.indexOf("security")]);
-assert.equal(lensColors(shuffled).frontend, LENS_PALETTE[LENS_IDS.indexOf("frontend")]);
+const [first, second] = LENS_IDS;
+const shuffled = { lenses: [{ id: second, label: second }, { id: first, label: first }] };
+assert.equal(lensColors(shuffled)[second], LENS_PALETTE[LENS_IDS.indexOf(second)]);
+assert.equal(lensColors(shuffled)[first], LENS_PALETTE[LENS_IDS.indexOf(first)]);
 assert.deepEqual(
     LENS_IDS.map(id => lensColors({ lenses: [{ id }] })[id]),
     LENS_IDS.map((id, index) => LENS_PALETTE[index]),

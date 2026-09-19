@@ -67,6 +67,132 @@ export function createCompactDelta(
 
 
 // --------------------------------------------------
+// DESCRIBE A DELTA
+// --------------------------------------------------
+// A delta is {property: [before, after]}. Raw, that is arithmetic: a model
+// handed {"returns":[8,9]} describes what the function does instead of what
+// changed, because nothing tells it that 8 became 9, or what a return is.
+//
+// This turns each pair into one plain sentence, so the change itself is what
+// gets read. Nothing is inferred here - a count is a count, and a list says
+// which entries arrived and left. What that MEANS for the product is the
+// model's job, and this is what it needs to do it.
+// --------------------------------------------------
+
+const COUNT_NAMES = {
+    returns: ["return", "returns"],
+    throws: ["throw", "throws"],
+    awaits: ["await", "awaits"],
+    catches: ["catch block", "catch blocks"],
+    emptyCatches: ["empty catch block", "empty catch blocks"],
+    params: ["parameter", "parameters"],
+    returnsNullish: ["nullish return", "nullish returns"]
+};
+
+const LIST_VERBS = {
+    calls: "calls",
+    throwTypes: "throws",
+    numbers: "uses the number"
+};
+
+export function describeDelta(
+    delta
+) {
+    const lines = [];
+
+    for (
+        const [property, pair]
+        of Object.entries(delta || {})
+    ) {
+        if (
+            !Array.isArray(pair) ||
+            pair.length !== 2
+        ) {
+            continue;
+        }
+
+        const [before, after] = pair;
+
+        if (
+            Object.hasOwn(COUNT_NAMES, property) &&
+            typeof before === "number" &&
+            typeof after === "number"
+        ) {
+            if (before === after) {
+                continue;
+            }
+
+            const [one, many] = COUNT_NAMES[property];
+
+            const word =
+                value =>
+                    `${value} ${value === 1 ? one : many}`;
+
+            const gap =
+                Math.abs(after - before);
+
+            lines.push(
+                `${word(before)} became ${word(after)} (${gap} ${after > before ? "more" : "fewer"})`
+            );
+
+            continue;
+        }
+
+        if (
+            Object.hasOwn(LIST_VERBS, property) &&
+            Array.isArray(before) &&
+            Array.isArray(after)
+        ) {
+            const verb = LIST_VERBS[property];
+
+            const gone =
+                before.filter(
+                    item => !after.includes(item)
+                );
+
+            const came =
+                after.filter(
+                    item => !before.includes(item)
+                );
+
+            if (
+                gone.length === 0 &&
+                came.length === 0
+            ) {
+                continue;
+            }
+
+            const parts = [];
+
+            if (came.length) {
+                parts.push(
+                    `now ${verb} ${came.map(item => JSON.stringify(item)).join(", ")}`
+                );
+            }
+
+            if (gone.length) {
+                parts.push(
+                    `no longer ${verb} ${gone.map(item => JSON.stringify(item)).join(", ")}`
+                );
+            }
+
+            lines.push(
+                parts.join("; ")
+            );
+
+            continue;
+        }
+
+        lines.push(
+            `${property}: ${JSON.stringify(before)} became ${JSON.stringify(after)}`
+        );
+    }
+
+    return lines;
+}
+
+
+// --------------------------------------------------
 // APPEND EVENT
 // 1-Receives the project root and diff result.
 // 2-Ignores unchanged results.

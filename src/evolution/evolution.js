@@ -32,6 +32,23 @@ export function updateEvolution(
     const nodeIdsByEventKey =
         new Map();
 
+    // --------------------------------------------------
+    // The same event, keyed two ways.
+    //
+    // An event key is ts|identity|type, and the two writers disagree about
+    // the ts: "init" records a declaration that predates PlanMap with
+    // 1970-01-01, deliberately, meaning "already there when we started
+    // watching", while events.jsonl carries the real scan time. So a later
+    // change looked up its parent by exact key and missed every time, and
+    // every change to pre-existing code was left an orphan.
+    //
+    // Identity is what a change actually hangs from, so it is the fallback.
+    // Insertion order means the most recent node for an identity wins.
+    // --------------------------------------------------
+
+    const nodeIdsByIdentity =
+        new Map();
+
     for (
         const node
         of evolution.nodes
@@ -49,6 +66,15 @@ export function updateEvolution(
             eventKey,
             node.id
         );
+
+        if (
+            node.identity
+        ) {
+            nodeIdsByIdentity.set(
+                node.identity,
+                node.id
+            );
+        }
     }
 
     const lineage =
@@ -93,6 +119,28 @@ export function updateEvolution(
             parentId =
                 nodeIdsByEventKey.get(
                     parentKey
+                ) ||
+                nodeIdsByIdentity.get(
+                    lineageNode.parent.identity
+                ) ||
+                null;
+        }
+
+        // Lineage is built from the events being added, and the "added"
+        // that a change descends from was stored on an earlier run, so it
+        // is usually not in that list at all - leaving every change to
+        // existing code parentless, and the outline flat.
+        //
+        // A change hangs from whatever node already stands for that
+        // declaration.
+        if (
+            !parentId &&
+            event.type !== "added" &&
+            event.identity
+        ) {
+            parentId =
+                nodeIdsByIdentity.get(
+                    event.identity
                 ) || null;
         }
 
@@ -139,6 +187,15 @@ export function updateEvolution(
             eventKey,
             nodeId
         );
+
+        if (
+            event.identity
+        ) {
+            nodeIdsByIdentity.set(
+                event.identity,
+                nodeId
+            );
+        }
 
         nextNodeNumber++;
     }

@@ -332,6 +332,22 @@ export function applyEvolutionStatus(
             ? evolution.nodes
                 .map(
                     node => {
+                        // A verify result is a measurement, not a
+                        // derivation: it says what the code did when it was
+                        // checked against an approved rule. Re-deriving over
+                        // it threw every drift away on each refresh, and now
+                        // that the watcher asks you to refresh, that meant
+                        // losing the drift map constantly.
+                        //
+                        // It stands until a verify replaces it, or until the
+                        // plan node it was measured against is gone.
+                        if (
+                            node?.statusSource === "verified" &&
+                            node?.verifiedAgainst
+                        ) {
+                            return node;
+                        }
+
                         const status =
                             deriveEvolutionStatus(
                                 node,

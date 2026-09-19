@@ -47,26 +47,39 @@ supplied facts.
 THE SHAPE YOU ARE BUILDING
 --------------------------------------------------
 
-Three levels. You choose all three for every declaration.
+An outline. Every declaration gets a feature, a label, and however many
+headings belong between them - none, one, or several. The depth is yours,
+and it comes from the code, not from a rule.
 
 Login                        <- feature: a capability a user would name
-  Authentication             <- group: one job inside that capability
-    Added JWT verification   <- label: what this declaration does
+  Sign in                    <- a heading: one job inside that capability
+    Google                   <- a heading inside that, where it helps
+      Added sign-in button   <- label: what happened to this declaration
+      Added credential handling
+    Email
+      Added address validation
+      Added magic link
+  Tokens                     <- one level is enough here
+    Added JWT verification
     Added token issuance
-  Google sign-in
-    Added sign-in button
-    Added credential handling
+    Added refresh
 
 Browse Restaurants
   Search
     Added cuisine search
     Added search debounce
-  Restaurant card
+  Restaurant card            <- and none at all is fine too
     Added rating badge
-    Added delivery-time estimate
 
-Read it aloud. If the three lines together do not describe something real
-about the product, you have chosen at least one of them wrongly.
+"Sign in" divides because Google and Email are genuinely different ways in.
+"Tokens" does not, because its three declarations do one job. Read your
+outline aloud: every line should say something real about the product, and
+no line should exist only to hold one other line.
+
+Each declaration you are given carries a "type" - added, changed or deleted
+- and a changed one also carries "changed": plain sentences saying exactly
+what moved. Those sentences are the whole point of a changed entry. Use
+them.
 
 
 --------------------------------------------------
@@ -88,6 +101,20 @@ RIGHT:
     Authentication      JWT verification, auth service
     Google sign-in      sign-in button, credential handling
 
+A feature is a STAGE OF THE JOURNEY, not a whole half of the product.
+
+The Constellation draws one node per feature and joins them in order, so
+read together they should be the path a person walks:
+
+  Sign in -> Start the survey -> Answer the questions -> Submit -> Confirmed
+
+Two enormous features ("Login", "Survey") draw two boxes and explain
+nothing. Where a capability's declarations span several things a person does
+one after another, name those stages as separate features.
+
+A stage must own at least one declaration. Never invent one to pad the
+journey, and never split where the code shows no separate step.
+
 Never use as a feature name:
   Controller, Service, Middleware, Backend, Frontend, Module, File, API,
   Database, React, Express
@@ -98,9 +125,11 @@ nothing:
   General, Utilities, Miscellaneous, Application Logic, Infrastructure
 
 Machinery - server start-up, health checks, connection pools, config
-loading - belongs to the capability it serves, in a group of its own. A
-health check that reports whether the survey API is up belongs to the
-survey capability, not to a "System" feature.
+loading - belongs to the capability it SERVES, under a heading of its own.
+Ask what stops working if it fails. A server that serves the survey API
+belongs to the survey capability; a health check reporting on it belongs
+there too. Neither belongs to a "System" feature, and neither belongs to
+whichever capability happens to be listed first.
 
 Before naming a new feature, check it against the existing features below
 and ask: is this the same capability under another name? Authentication and
@@ -108,42 +137,58 @@ Login are. Signup and Registration are. Reuse the existing name.
 
 
 --------------------------------------------------
-2. GROUP - one job inside the feature
+2. PATH - the headings a declaration sits under
 --------------------------------------------------
 
-A group gathers the declarations that do one job together, so a feature
-with twelve declarations reads as three or four things rather than a list
-of twelve.
+"path" is a list of headings between the feature and this declaration. You
+choose how many. One is common, two is often clearer, three is right when a
+part of the project really does divide that far. There is no limit and no
+required number.
 
-A group is 1 to 3 words, in the product's language. Good groups:
-  Authentication, Google sign-in, Session handling, Password reset,
-  Search, Restaurant card, Answer storage, Question display
+  "feature": "Login", "path": ["Sign in"]
+  "feature": "Login", "path": ["Sign in", "Google"]
+  "feature": "Login", "path": ["Sign in", "Google", "Token exchange"]
 
-A group MUST NOT:
-- repeat the feature name ("Login" inside Login)
+Let the code decide. Add a level when it separates things a reader would
+otherwise have to tell apart by squinting at labels:
+
+  Login
+    Sign in
+      Google          sign-in button, credential handling
+      Email           address validation, magic link
+    Tokens
+      Verify JWT, sign token, refresh
+
+Here "Sign in" splits because Google and Email are genuinely different ways
+in. "Tokens" does not split, because its three declarations do one job. Both
+decisions came from the code, not from a rule about depth.
+
+A heading MUST NOT:
+- repeat the feature name, or the heading directly above it
+- name a layer or a lens. These are perspectives, already carried by tags,
+  and are REJECTED as headings: ${LENS_IDS.join(", ")}, frontend, backend,
+  ui, api, database, security, platform, integration, middleware,
+  controller, service
 - be a file or folder name
-- name a lens. These are perspectives, not jobs, and are REJECTED as group
-  names: ${LENS_IDS.join(", ")}, and anything meaning the same - Auth,
-  Authorization, API, Database, Storage, Monitoring, Infrastructure,
-  Validation, UI, Server.
+- be a bucket anything fits in: Utilities, Helpers, Core, General, Common,
+  Shared, Misc, Operations, Management, Handling, Processing, Logic
 
-  A group answers "what job is this?", not "what kind of code is this?".
-  "Security" is not a group. "Token handling" is.
+Each heading is 1 to 3 words, in the product's language.
 
 SIZE - this is where classification usually goes wrong.
 
-Aim for 3 to 5 declarations per group. A feature with N declarations
-should have roughly N/4 groups, and never more than N/2:
+A heading exists to gather several things. A heading with ONE declaration
+under it restates that declaration and is dropped when the graph is drawn,
+so it costs you a level and gains nothing. Before adding a level, check that
+at least two things will sit under it.
 
-  4 declarations  -> 1 group, or none at all
-  8 declarations  -> 2 or 3 groups
-  20 declarations -> 4 or 5 groups
+That is the only limit. Where a heading itself holds several distinguishable
+jobs, nest again - two, three and four levels are all normal, and a deeper
+outline explains a project better than a flat one. Reach for the second and
+third level whenever the things under a heading fall into groups of their
+own.
 
-A group holding one declaration is almost always a mistake - it means you
-described that declaration instead of finding the job it is part of. Put it
-with the others it works alongside.
-
-WRONG - five declarations, five groups, each restating its own label:
+WRONG - five declarations, five headings, each restating its own label:
   Login
     Authentication   -> auth endpoint
     Security         -> JWT validation
@@ -151,38 +196,91 @@ WRONG - five declarations, five groups, each restating its own label:
     Google sign-in   -> sign-in button
     Credentials      -> credential handling
 
-RIGHT - the same five, as the two jobs they actually form:
+RIGHT - the same five, as the two jobs they form:
   Login
-    Google sign-in   -> sign-in button, credential handling
-    Session          -> auth endpoint, JWT validation, session token
+    Sign in          -> sign-in button, credential handling
+    Tokens           -> auth endpoint, JWT validation, session token
 
 If a feature's declarations really are all one job, give them all the same
-group, or omit the group entirely. Both read better than one group each.
+single heading, or an empty path. Both read better than one heading each.
 
-Reuse a group name you have already used in the same feature - identical
-spelling, or it becomes two groups.
+Be consistent within a feature. Either every declaration in it has a
+heading, or none does. A feature where four declarations sit under headings
+and five float loose beside them reads as a job left half done - and the
+loose ones look like leftovers rather than the capability's own work. If you
+head any of them, head all of them.
+
+Reuse a trail you have already used - identical spelling at every level, or
+it becomes a second heading beside the first.
 
 
 --------------------------------------------------
-3. LABEL - what this declaration does
+3. LABEL - what happened, not what the code is
 --------------------------------------------------
 
-Under 8 words, describing the behaviour, not the code's shape.
+This is the line a reader scans to understand the project's story. It says
+what HAPPENED to the product. It is not a description of the declaration.
 
-Never make one of these the subject of a label just because the file path
-or declaration name contains it:
+Each declaration carries a "type", and the three take different labels.
+
+type "added" - this declaration did not exist before.
+  The label names the capability that arrived.
+    Added Google sign-in button
+    Added survey submission endpoint
+
+type "deleted" - it is gone.
+    Removed the old password reset
+
+type "changed" - it existed, and something about it moved. THE LABEL MUST
+DESCRIBE THE MOVEMENT. Read the "changed" lines supplied with the event;
+they say exactly what differs. Then say what that means for the product.
+
+  WRONG - describes the declaration, which is what it did before as well,
+  so a reader learns nothing about what happened:
+    Shows question and hides sections
+    Handles survey submission
+    Validates the token
+
+  RIGHT - describes the change:
+    changed: "8 returns became 9 returns (1 more)"  on showQuestion
+      -> Added a ninth survey question
+    changed: "0 throws became 2 throws (2 more)"  on submitSurvey
+      -> Started rejecting bad submissions
+    changed: "now calls \"bcrypt.compare\"; no longer calls \"=== \""
+      -> Switched to hashed password checks
+    changed: "3 parameters became 2 parameters (1 fewer)"
+      -> Dropped an argument from the survey call
+
+  Read the change together with the declaration's name and its feature. A
+  function called showQuestion that gains one more return path, in a feature
+  called Survey, is one more question. Say that.
+
+  Always try the product reading FIRST. Ask: someone using this product,
+  who has never seen the code - what would they notice? One more return in
+  showQuestion is one more question they answer. A new throw in a submit
+  path is a submission they now get turned away for. Name that.
+
+  "Added one more return path" is a last resort, not a default. Reach for
+  it only when the change genuinely carries no product meaning - a renamed
+  internal variable, a refactor that moves code without changing what
+  happens. Even then it beats describing what the declaration does, which
+  was equally true before the change and tells a reader nothing.
+
+Under 8 words, always.
+
+A declaration of kind "data" is a named list or table. Its label says what
+the list is for and how much is in it - "Added the nine-question survey
+order", "Added the route table" - not that a constant exists.
+
+Never make one of these the subject of a label because the file path or the
+declaration name contains it:
   controller, service, middleware, handler, module, component, utility,
   class, function, file
 
-WRONG:
-  Added authentication controller
-  Added survey submission controller
-  Added UI utility
-
-RIGHT:
-  Added authentication start
-  Added survey submission endpoint
-  Added section hiding
+WRONG:                        RIGHT:
+  Added authentication controller   Added authentication start
+  Added survey submission controller   Added survey submission endpoint
+  Added UI utility                Added section hiding
 
 The path is evidence of where the code lives. It is not the label.
 
@@ -225,7 +323,7 @@ ${JSON.stringify(
 
 
 --------------------------------------------------
-EXISTING GROUPS, BY FEATURE
+EXISTING HEADINGS, BY FEATURE
 --------------------------------------------------
 
 ${JSON.stringify(
@@ -234,8 +332,10 @@ ${JSON.stringify(
     2
 )}
 
-Reuse these names exactly whenever one fits. They come from declarations
-already classified in this same project.
+Written as trails, "Sign in > Google" meaning "Google" nested inside
+"Sign in". Reuse them exactly whenever one fits, and nest inside one rather
+than making a sibling. They come from declarations already classified in
+this same project.
 ${authoritative ? `
 
 --------------------------------------------------
@@ -269,7 +369,7 @@ order, with nothing before or after it.
     "ts": "exact input timestamp",
     "identity": "exact input identity",
     "feature": "Login",
-    "group": "Authentication",
+    "path": ["Sign in", "Google"],
     "label": "Extended token expiry",
     "tags": ["security", "backend"]
   }
@@ -278,11 +378,16 @@ order, with nothing before or after it.
 Checklist before you answer:
 
 1. One object per input declaration - ${events.length} in, ${events.length} out.
+1a. No two declarations share a label. They are different things and a
+    reader must be able to tell them apart. If two labels come out the
+    same, say what makes each one different.
 2. ts and identity copied exactly from the input.
 3. feature is a capability, not a layer and not a bucket.
-4. group is 1-3 words, is not the feature name, is not a lens name, and
-   gathers several declarations rather than standing for one.
-5. label is under 8 words and describes behaviour.
+4. every heading in path is 1-3 words, is not the feature name, the
+   heading above it, a lens or a layer, and gathers several declarations
+   rather than standing for one. Depth is yours to choose.
+5. label is under 8 words. For a "changed" declaration it describes what
+   the supplied "changed" lines say moved, never what the declaration does.
 6. tags contains 1 to 3 ids from: ${LENS_IDS.join(", ")}
 7. Nothing asserted that the supplied facts do not support.
 `;

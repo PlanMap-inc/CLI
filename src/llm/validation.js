@@ -20,8 +20,8 @@
 // --------------------------------------------------
 
 import {
-    canonicalLens,
-    canonicalLenses
+    canonicalLenses,
+    isLayerName
 } from "./lenses.js";
 
 
@@ -219,30 +219,57 @@ export function validateClassification(
 
 
         // --------------------------------------------------
-        // GROUP
+        // PATH
         // --------------------------------------------------
-        // The level between the feature and its declarations. Optional:
-        // a graph written before groups existed, or a model that omits
-        // one, leaves the declaration directly under its feature.
+        // The grouping levels between the feature and this declaration,
+        // however many the project warrants. Nothing here caps the depth;
+        // what gets dropped is a level that carries no information.
+        //
+        // "group" is the single-level spelling PlanMap wrote first, and is
+        // still accepted. Both are optional: without either, a declaration
+        // sits directly under its feature.
 
-        const rawGroup =
-            typeof classification.group ===
-            "string"
-                ? classification.group.trim()
-                : "";
+        const rawPath =
+            Array.isArray(classification.path)
+                ? classification.path
+                : [classification.group];
 
+        const path = [];
 
-        // A group names a job, never a layer: "Authentication", not
-        // "Security". A lens name here would put the same axis on two
-        // levels, so it is dropped and the declaration sits under its
-        // feature rather than under a heading that repeats a filter.
-        const group =
-            rawGroup &&
-            rawGroup.toLowerCase() !==
-                normalizedFeature &&
-            !canonicalLens(rawGroup)
-                ? rawGroup
-                : "";
+        for (
+            const step of rawPath
+        ) {
+            const cleaned =
+                typeof step === "string"
+                    ? step.trim()
+                    : "";
+
+            if (!cleaned) {
+                continue;
+            }
+
+            const key =
+                cleaned.toLowerCase();
+
+            // A level names a job, never a layer: "Authentication", not
+            // "Security". A lens here would put the same axis on two
+            // levels. Repeating the feature, or the level just above,
+            // adds a line and says nothing.
+            if (
+                key === normalizedFeature ||
+                isLayerName(cleaned) ||
+                path.some(
+                    already =>
+                        already.toLowerCase() === key
+                )
+            ) {
+                continue;
+            }
+
+            path.push(
+                cleaned
+            );
+        }
 
 
         // --------------------------------------------------
@@ -283,14 +310,25 @@ export function validateClassification(
         // STORE VALIDATED RESULT
         // --------------------------------------------------
 
+        // The model's own "path" and "group" are dropped from the spread
+        // before the checked path goes back on. Spreading them through
+        // meant that when every level failed a check, the unchecked
+        // originals survived - so a path was only ever filtered when at
+        // least one level passed.
+        const {
+            path: _rawPath,
+            group: _rawGroup,
+            ...rest
+        } = classification;
+
         validated.push({
-            ...classification,
+            ...rest,
             feature,
             label,
             tags,
 
-            ...(group
-                ? { group }
+            ...(path.length
+                ? { path }
                 : {})
         });
     }

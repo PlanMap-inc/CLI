@@ -296,9 +296,89 @@ function getParameterCount(
 // PROPERTY EXTRACTION
 // --------------------------------------------------
 
+// --------------------------------------------------
+// ENTRIES OF A NAMED LIST OR TABLE
+// --------------------------------------------------
+// The facts a function has - throws, returns, awaits - say nothing about a
+// list. What matters about one is what is in it and how many: a route
+// table's routes, a survey's questions, a status map's codes. Read straight
+// off the literal, so they are as checkable as any other fact.
+// --------------------------------------------------
+
+const QUOTES = /^["'`]|["'`]$/g;
+
+function readEntries(
+    declarationNode
+) {
+    const value =
+        declarationNode?.childForFieldName?.(
+            "value"
+        );
+
+    if (
+        value?.type !== "array" &&
+        value?.type !== "object"
+    ) {
+        return null;
+    }
+
+    const entries = [];
+
+    for (
+        let index = 0;
+        index < value.namedChildCount;
+        index++
+    ) {
+        const child =
+            value.namedChild(index);
+
+        if (
+            !child ||
+            child.type === "comment"
+        ) {
+            continue;
+        }
+
+        // An object's entries are its keys; an array's are its values.
+        const shown =
+            value.type === "object"
+                ? child.childForFieldName?.("key")?.text
+                : child.text;
+
+        if (
+            typeof shown === "string"
+        ) {
+            entries.push(
+                shown
+                    .replace(QUOTES, "")
+                    .trim()
+            );
+        }
+    }
+
+    return {
+        shape:
+            value.type,
+
+        entryCount:
+            entries.length,
+
+        // Bounded: a list of thousands is a fact about its length, and
+        // every entry would swamp the prompt it is there to inform.
+        entries:
+            entries.slice(0, 60)
+    };
+}
+
+
 export function extractProperties(
     declarationNode
 ) {
+
+    const list =
+        readEntries(
+            declarationNode
+        );
 
     const properties = {
 
@@ -534,6 +614,22 @@ export function extractProperties(
         ].sort(
             (a, b) => a - b
         );
+
+
+    // A named list carries its own facts instead of a function's, which for
+    // it are all zero and mean nothing.
+    if (
+        list
+    ) {
+        properties.shape =
+            list.shape;
+
+        properties.entryCount =
+            list.entryCount;
+
+        properties.entries =
+            list.entries;
+    }
 
 
     return properties;

@@ -12,6 +12,7 @@ import {
     escapeHtml,
     lensColors,
     lensCoverage,
+    LENS_QUESTIONS,
     FEATURE_PALETTE,
     nodeActions,
     onboardingState,
@@ -80,8 +81,10 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         el.innerHTML = `
             <div class="handle top"></div>
             <div class="bar" style="background:${n.color || dotColor}"></div>
+            ${n.step ? `<div class="step">${n.step}</div>` : ""}
             <div class="title">${escapeHtml(n.title)}</div>
             ${n.sub ? `<div class="sub">${escapeHtml(n.sub)}</div>` : ""}
+            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
             <div class="status-pill"><span class="dot" style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.status}</div>
             <div class="handle bottom"></div>`;
         el.addEventListener("mousedown", e => e.stopPropagation());
@@ -133,7 +136,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
     function drawEdges() {
         const svgEl = contentEl.querySelector("svg.edges");
-        let markup = `<defs><marker id="arrow-${opts.id}" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="${edgeColor}"/></marker></defs>`;
+        let markup = `<defs><marker id="arrow-${opts.id}" markerWidth="6" markerHeight="6" refX="3" refY="3"><circle cx="3" cy="3" r="2.1" fill="${edgeColor}"/></marker></defs>`;
         edges.forEach(e => {
             const a = nodes.find(n => n.id === e.from), b = nodes.find(n => n.id === e.to);
             if (!a || !b) return;
@@ -268,7 +271,7 @@ function mountConstellation() {
     const edges = constellationEdges(plan());
 
     constellationFlowTag.hidden = edges.length === 0;
-    constellationFlowLabel.textContent = edges[0]?.source === "nodes" ? "links between features" : "plan order";
+    constellationFlowLabel.textContent = edges[0]?.source === "nodes" ? "how one leads to the next" : "the order a person meets them";
 
     constellationGraph.setData({ nodes, edges, edgeColor: "var(--text-low)", onOpen: n => enterFeature(n.id) });
 }
@@ -325,12 +328,11 @@ function updateHint() {
     if (!state || state.setup !== "ready") { statusHint.textContent = ""; return; }
     if (inFeature) {
         const lens = lensById(currentLensId);
-        const shown = featureGraph.nodes.length;
-        statusHint.textContent = lens && shown === 0
-            ? `Feature Space · no nodes in this feature have the ${lens.label} lens`
-            : lens
-            ? `Feature Space · ${lens.label} lens · ${shown} ${shown === 1 ? "node" : "nodes"} · scroll to zoom, drag empty space to pan`
-            : "Feature Space · scroll to zoom, drag empty space to pan";
+        const steps = featureGraph.nodes.length;
+
+        statusHint.textContent = lens
+            ? `${lens.label} · ${steps} ${steps === 1 ? "step" : "steps"} · ${LENS_QUESTIONS[lens.id] ?? ""}`
+            : `Feature Space · ${steps} ${steps === 1 ? "step" : "steps"} · scroll to zoom, drag empty space to pan`;
     } else {
         const count = plan().features.length;
         statusHint.textContent = `Constellation · ${count} ${count === 1 ? "feature" : "features"} · scroll to zoom, drag empty space to pan`;
@@ -422,8 +424,23 @@ function openDetail(viewNode) {
         ? section("Approved", `<p>${escapeHtml(node.approvedBy ?? "unknown")}${node.approvedAt ? ` · ${escapeHtml(node.approvedAt.slice(0, 10))}` : ""}</p>`)
         : "";
 
-    const lenses = (node.lensTags ?? []).length
-        ? section("Lenses", `<div class="badge-row">${node.lensTags.map(id => `<div class="badge" style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>`).join("")}</div>`)
+    // Every perspective's name for this one step, together, so the reader
+    // can see it is the same step said four ways rather than four things.
+    const readings = Object.entries(node.readings ?? {});
+
+    const lenses = readings.length
+        ? section("The same step, read four ways", readings.map(([id, text]) => `
+            <div class="lens-read">
+                <div class="badge" style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
+                <p class="lens-says">${escapeHtml(text)}</p>
+                ${LENS_QUESTIONS[id] ? `<p class="lens-asks">${escapeHtml(LENS_QUESTIONS[id])}</p>` : ""}
+            </div>`).join(""))
+        : (node.lensTags ?? []).length
+        ? section("Seen through", node.lensTags.map(id => `
+            <div class="lens-read">
+                <div class="badge" style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
+                ${LENS_QUESTIONS[id] ? `<p class="lens-asks">${escapeHtml(LENS_QUESTIONS[id])}</p>` : ""}
+            </div>`).join(""))
         : "";
 
     const historyBlock = history.length
@@ -694,14 +711,46 @@ function showActionResult(result) {
 
 // Refresh re-derives evolution from the code. The CLI resets verify statuses
 // when it does, so drift returns after the next Verify.
+// What the scan found in the code, in a sentence. A refresh that changes
+// nothing has to say so out loud - silence is indistinguishable from a
+// refresh that is broken, which is exactly how this looked before.
+function describeScan(scan) {
+    if (!scan) return "";
+    if (scan.changes === 0) return "No code changes since the last scan.";
+
+    const parts = [
+        scan.added ? `${scan.added} new` : "",
+        scan.changed ? `${scan.changed} changed` : "",
+        scan.deleted ? `${scan.deleted} removed` : ""
+    ].filter(Boolean);
+
+    const what = scan.changes === 1 ? "1 declaration" : `${scan.changes} declarations`;
+
+    return parts.length ? `${what}: ${parts.join(", ")}.` : `${what}.`;
+}
+
 function showEvolutionResult(result) {
     const summary = String(result.stdout ?? "").split("\n").filter(line => /classification|LLM classifications/.test(line)).join("\n");
     const reverify = state?.plan ? "Verify again to bring drift back onto the map." : "";
+    const found = describeScan(state?.scan);
+
+    // Nothing moved, so nothing in the outline could move either. Said
+    // plainly, with the reason, because "PlanMap tracks functions" is the
+    // part that is never obvious from an unchanged screen.
+    const quiet = state?.scan && state.scan.changes === 0;
 
     const options = result.outcome === "ok"
-        ? { title: "Evolution refreshed", body: [summary, reverify].filter(Boolean).join("\n") }
+        ? quiet
+            ? {
+                title: "No changes found",
+                body: [
+                    "The code has not moved since the last scan, so the outline is unchanged.",
+                    "PlanMap follows functions and methods. Edits to anything else - route wiring, config, markup, comments - leave no declaration to record."
+                ].join("\n")
+            }
+            : { title: "Evolution refreshed", body: [found, summary, reverify].filter(Boolean).join("\n") }
         : result.outcome === "findings"
-            ? { title: "Evolution refreshed, partly without AI", body: [summary, "Some batches kept path labels.", cliMessage(result), reverify].filter(Boolean).join("\n") }
+            ? { title: "Evolution refreshed, partly without AI", body: [found, summary, "Some batches kept path labels.", cliMessage(result), reverify].filter(Boolean).join("\n") }
             : { tone: "danger", title: "Evolution didn't refresh", body: cliMessage(result) };
 
     renderBanner(evoNotice, options, () => hideBanner(evoNotice));
@@ -812,8 +861,15 @@ function renderRail() {
     openFolderBtn.title = folderLabel;
     openFolderBtn.setAttribute("aria-label", folderLabel);
 
-    driftBadge.hidden = !rail.badge;
-    driftBadge.textContent = rail.badge ? String(rail.badge.count) : "";
+    // Drift is the alarm and keeps the badge. Changes waiting to be folded
+    // in are news, not a problem, so they only show when nothing has drifted.
+    const waiting = state?.pendingScan ? state.scan?.changes ?? 0 : 0;
+    const badge = rail.badge ?? (waiting > 0 ? { count: waiting, label: `${waiting} unscanned` } : null);
+
+    driftBadge.hidden = !badge;
+    driftBadge.textContent = badge ? String(badge.count) : "";
+    driftBadge.classList.toggle("waiting", !rail.badge && waiting > 0);
+    if (badge) driftBadge.title = badge.label;
     const evolutionButton = railButtons.find(button => button.dataset.nav === "evolution");
     evolutionButton.setAttribute("aria-label", rail.badge ? `Project Evolution, ${rail.badge.label}` : "Project Evolution");
     evolutionButton.title = rail.badge ? `Project Evolution · ${rail.badge.label}` : "Project Evolution";
@@ -871,11 +927,48 @@ const evolutionView = createEvolutionView({
 
 
 // ================= WIRING =================
+// The code has moved and the outline has not. Said where the outline is,
+// with the button that fixes it, and it stays on screen until it is acted
+// on: a change you have to go looking for is a change you will miss.
+function renderPendingScan() {
+    if (!state?.pendingScan || !state.scan) {
+        if (evoNotice.dataset.kind === "pending-scan") hideBanner(evoNotice);
+        return;
+    }
+
+    const { changes, added, changed, deleted } = state.scan;
+    const parts = [
+        added ? `${added} new` : "",
+        changed ? `${changed} changed` : "",
+        deleted ? `${deleted} removed` : ""
+    ].filter(Boolean);
+
+    evoNotice.dataset.kind = "pending-scan";
+
+    renderBanner(evoNotice, {
+        title: `${changes} ${changes === 1 ? "change" : "changes"} in your code`,
+        body: [
+            parts.length ? `${parts.join(", ")}.` : "",
+            "Project Evolution still shows the last scan. Refresh to fold them in."
+        ].filter(Boolean).join("\n"),
+        action: {
+            label: "Refresh evolution",
+            run: () => request("refresh", { type: "evolution" })
+        }
+    }, () => {
+        // Dismissing hides the banner but does not pretend the changes are
+        // gone: the rail keeps its count until a refresh folds them in.
+        evoNotice.dataset.kind = "";
+        hideBanner(evoNotice);
+    });
+}
+
 function applyState(next) {
     state = next;
     renderEmpty();
-    evolutionView.setData(state.evolution, state.projectName);
+    evolutionView.setData(state.evolution, state.projectName, state.arrivals);
     renderRail();
+    renderPendingScan();
     if (state.setup !== "ready") { updateHint(); return; }
 
     if (inFeature && !featureById(currentFeatureId)) {

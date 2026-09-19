@@ -51,6 +51,10 @@ assert.match(main, /const views = \{ planmap: document\.getElementById\("viewPla
 assert.match(main, /railModel\(activeView, state\?\.verifiedStatus\)/);
 assert.match(main, /view\.classList\.toggle\("hidden", id !== rail\.active\)/);
 assert.match(main, /button\.addEventListener\("click", \(\) => setMainView\(button\.dataset\.nav\)\)/);
-assert.match(main, /driftBadge\.hidden = !rail\.badge/);
+// The badge shows drift first, and unscanned changes only when nothing has
+// drifted: a problem must never be displaced by news.
+assert.match(main, /const badge = rail\.badge \?\? \(waiting > 0/);
+assert.match(main, /driftBadge\.hidden = !badge/);
+assert.match(main, /driftBadge\.classList\.toggle\("waiting", !rail\.badge && waiting > 0\)/);
 
 console.log("PASS: nav-rail");

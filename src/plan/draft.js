@@ -32,7 +32,8 @@ import {
 } from "../evolution/classification.js";
 
 import {
-    getEvolutionVocabulary
+    getEvolutionVocabulary,
+    getEvolutionStages
 } from "../evolution/classification.js";
 
 import {
@@ -489,6 +490,7 @@ Every returned node MUST contain:
 - title
 - intent
 - lensTags
+- readings
 - rules
 
 
@@ -578,6 +580,62 @@ ${lensCatalogue()}
   is ["backend", "security"]; a form that posts to the server is
   ["frontend", "backend"]; a query that writes a row is ["data"].
 
+--------------------------------------------------
+READINGS - the same step, in each perspective's words
+--------------------------------------------------
+
+"readings" names this ONE step again for each perspective, in that
+perspective's own language and with that perspective's facts. The step does
+not change, the code does not change, only the words do - and that is what
+makes a project legible to someone who thinks in one of these terms.
+
+The same sign-in step, read four ways:
+
+  "title":    "Sign in with Google"
+  "readings": {
+    "frontend": "Press the Google sign-in button",
+    "backend":  "POST the credential to /auth/google",
+    "database": "Keep the session token in local storage",
+    "security": "Hand Google's token over to be checked"
+  }
+
+And a step that writes rows, where the database reading gets specific:
+
+  "title":    "Save the answers"
+  "readings": {
+    "frontend": "Confirm the survey was received",
+    "backend":  "Accept POST /survey/submit",
+    "database": "INSERT one row per answer, in one transaction",
+    "security": "Refuse a submission that is missing answers"
+  }
+
+Be specific in the way that perspective is specific. A database reading
+names the table, the column or the operation when the facts give them. A
+backend reading names the route or the status code. A frontend reading names
+what the person actually sees happen. A security reading names the check.
+
+Rules:
+- Under 8 words each. No function names, no file names.
+- Grounded in the SUPPLIED FACTS for that declaration. A reading that the
+  facts do not support is worse than no reading.
+- Go through all four in turn for every step, and write the ones the facts
+  support. Most steps carry two or three. A request handler is a backend
+  step; it is also a security step if it rejects anything, and a database
+  step if it touches a row. A form handler is frontend AND backend, because
+  it gathers input and sends it.
+- Write a reading for every perspective the facts DO support, not only for
+  the ones in "lensTags".
+- Every lens you put in "lensTags" MUST have a reading. Saying a step is
+  security work and then finding no security words for it contradicts
+  itself.
+- OMIT only a perspective the facts genuinely say nothing about. A pure
+  layout helper has no data reading, and inventing one ("Touches no
+  storage") is noise. Leave it out and the step keeps its plain title
+  under that lens.
+- Only these keys: ${LENS_IDS.join(", ")}
+- Never repeat the title verbatim. If a perspective has nothing new to say
+  about this step, omit it.
+
 Every rule MUST have:
 - kind: "behaviour"
 - target
@@ -591,6 +649,17 @@ ${NUMERIC_FACT_FIELDS.join("\n")}
 List facts hold a list. Use "contains" or "notContains" with ONE item as the value:
 throwTypes and calls: the value is a string, such as "Error" or "verifyToken"
 numbers: the value is a number, such as 0
+entries: the value is a string, such as "ninth_question" or "/auth/start"
+
+A declaration of kind "data" is a named list or table, not a function. Its
+throws, returns and awaits are all zero and say nothing; what it holds is
+the point. Use entryCount and entries for it:
+
+  "assert": { "entryCount": { "op": ">=", "value": 12 } }
+  "assert": { "entries": { "op": "contains", "value": "thank_you" } }
+
+Write its title and readings from what it holds. A list of screen ids in
+order is a journey - say so, and say how many steps it has.
 
 Any fact may also use "unchanged" with no value. It passes while the fact stays as it was when the node was approved.
 
@@ -669,9 +738,25 @@ A declaration you would rather not describe still gets a node: say plainly
 what it must keep doing.
 
 
+--------------------------------------------------
+THE ORDER OF THE FEATURES THEMSELVES
+--------------------------------------------------
+
+"featureOrder" lists every feature you used, in the order a person meets
+them using the product. Someone signs in before they answer questions, and
+pays before an order is tracked, so:
+
+  ["Login", "Survey"]
+
+This is the reader's way in: it is the first thing shown, before any single
+step. Order by the journey, never alphabetically and never by how much code
+each one holds.
+
+
 Return this exact top-level shape:
 
 {
+  "featureOrder": ["the first feature a person meets", "then the next"],
   "nodes": [
     {
       "identity": "file::name:type",
@@ -679,7 +764,8 @@ Return this exact top-level shape:
       "step": 1,
       "title": "the step, in the product's words",
       "intent": "one sentence: what must stay true",
-      "lensTags": ["backend"],
+      "lensTags": ["server"],
+      "readings": { "interface": "…", "server": "…", "safety": "…", "data": "…" },
       "rules": [
         {
           "kind": "behaviour",
@@ -708,7 +794,8 @@ function normalizeBrownfieldNodes(
     candidates,
     dropped = [],
     skipped = [],
-    lensesByIdentity = {}
+    lensesByIdentity = {},
+    stageByIdentity = {}
 ) {
     if (
         !parsed ||
@@ -865,6 +952,44 @@ function normalizeBrownfieldNodes(
                     draft.lensTags
                 );
 
+        // --------------------------------------------------
+        // READINGS
+        // --------------------------------------------------
+        // The same step named again in each perspective's language. Kept
+        // only for lenses PlanMap knows, and only where the model actually
+        // said something new: a reading that repeats the title adds a
+        // rename without adding a reading.
+        // --------------------------------------------------
+
+        const readings =
+            {};
+
+        const rawReadings =
+            draft.readings &&
+            typeof draft.readings === "object"
+                ? draft.readings
+                : {};
+
+        for (
+            const lensId of LENS_IDS
+        ) {
+            const reading =
+                typeof rawReadings[lensId] === "string"
+                    ? rawReadings[lensId].trim()
+                    : "";
+
+            if (
+                reading &&
+                reading.toLowerCase() !==
+                    String(draft.title || "")
+                        .trim()
+                        .toLowerCase()
+            ) {
+                readings[lensId] =
+                    reading;
+            }
+        }
+
         const rules =
             draft.rules.map(
                 rule => {
@@ -980,6 +1105,24 @@ function normalizeBrownfieldNodes(
             }
         }
 
+        // The scan already decided which stage this declaration belongs to.
+        // When the model names something else - usually the broad capability
+        // rather than the stage within it - that known answer is better than
+        // throwing the whole batch away over a label.
+        if (!featureId) {
+            const known =
+                stageByIdentity[
+                    draft.identity
+                ];
+
+            if (known) {
+                featureId =
+                    featureIdsByName.get(
+                        known
+                    ) || null;
+            }
+        }
+
         if (!featureId) {
             throw new Error(
                 `Brownfield draft for ${draft.identity} contains an unknown feature.`
@@ -1006,6 +1149,10 @@ function normalizeBrownfieldNodes(
                 draft.intent.trim(),
 
             lensTags,
+
+            ...(Object.keys(readings).length
+                ? { readings }
+                : {}),
 
             edgesOut:
                 Array.isArray(
@@ -1149,6 +1296,93 @@ function linkFeatureSteps(
 }
 
 
+// --------------------------------------------------
+// LINK THE STAGES TO EACH OTHER
+// --------------------------------------------------
+// The Constellation draws an edge between features when a node in one leads
+// to a node in another. Until now nothing ever did, so it always fell back
+// to "the order plan.json happens to list them" - an arrow that looked like
+// a journey and asserted nothing.
+//
+// The order is the model's featureOrder, already applied to plan.features.
+// Joining each stage's last step to the next stage's first makes the arrow
+// mean what it appears to mean: this is where the person goes next.
+// --------------------------------------------------
+
+function linkStages(
+    plan
+) {
+    const order =
+        plan.features
+            .map(
+                feature => feature.id
+            );
+
+    const inFeature =
+        id =>
+            plan.nodes.filter(
+                node =>
+                    node.feature === id
+            );
+
+    for (
+        let index = 0;
+        index < order.length - 1;
+        index++
+    ) {
+        const here =
+            inFeature(order[index]);
+
+        const next =
+            inFeature(order[index + 1]);
+
+        if (
+            here.length === 0 ||
+            next.length === 0
+        ) {
+            continue;
+        }
+
+        // The last step of this stage is the one nothing else follows.
+        const targets =
+            new Set(
+                here.flatMap(
+                    node => node.edgesOut || []
+                )
+            );
+
+        const last =
+            here.find(
+                node =>
+                    !targets.has(node.id)
+            ) || here[here.length - 1];
+
+        const entered =
+            new Set(
+                next.flatMap(
+                    node => node.edgesOut || []
+                )
+            );
+
+        const first =
+            next.find(
+                node =>
+                    !entered.has(node.id)
+            ) || next[0];
+
+        if (
+            last &&
+            first &&
+            !last.edgesOut.includes(first.id)
+        ) {
+            last.edgesOut.push(first.id);
+        }
+    }
+
+    return plan;
+}
+
+
 
 // --------------------------------------------------
 // BROWNFIELD FEATURE SEEDING
@@ -1157,6 +1391,78 @@ function linkFeatureSteps(
 // 2-Derives new features from evolution vocabulary.
 // 3-Keeps deterministic IDs.
 // --------------------------------------------------
+
+// --------------------------------------------------
+// ORDER THE FEATURES
+// --------------------------------------------------
+// The Constellation draws one node per feature, in the order the plan lists
+// them. Left unordered that reads as an arbitrary stack, so the model is
+// asked which order a person meets them in and the list is sorted to match.
+// Any feature the model leaves out keeps its current place, after the ones
+// it named.
+// --------------------------------------------------
+
+function applyFeatureOrder(
+    plan,
+    featureOrder
+) {
+    if (
+        !Array.isArray(featureOrder) ||
+        featureOrder.length === 0
+    ) {
+        return;
+    }
+
+    const rank =
+        new Map();
+
+    featureOrder.forEach(
+        (name, index) => {
+            if (
+                typeof name === "string" &&
+                name.trim()
+            ) {
+                rank.set(
+                    name.trim().toLowerCase(),
+                    index
+                );
+            }
+        }
+    );
+
+    const place =
+        feature =>
+            rank.has(
+                String(feature?.name || "")
+                    .trim()
+                    .toLowerCase()
+            )
+                ? rank.get(
+                    String(feature.name)
+                        .trim()
+                        .toLowerCase()
+                )
+                : Number.MAX_SAFE_INTEGER;
+
+    plan.features =
+        plan.features
+            .map(
+                (feature, index) => ({
+                    feature,
+                    index
+                })
+            )
+            .sort(
+                (left, right) =>
+                    place(left.feature) -
+                        place(right.feature) ||
+                    left.index - right.index
+            )
+            .map(
+                entry => entry.feature
+            );
+}
+
 
 function ensureBrownfieldVocabulary(
     plan,
@@ -1333,6 +1639,29 @@ export async function draftBrownfield(
             plan
         );
 
+    // The Constellation is one node per feature, joined in order, so the
+    // plan's features are the journey's stages rather than its two or three
+    // broad capabilities. The classification has already found them, filed
+    // as the first heading under each capability, so they are promoted here
+    // instead of being asked for a second time.
+    //
+    // An authoritative plan keeps its own features: they were approved.
+    if (
+        !vocabulary.authoritative
+    ) {
+        const stages =
+            getEvolutionStages(
+                evolution
+            );
+
+        if (
+            stages.length > vocabulary.features.length
+        ) {
+            vocabulary.features =
+                stages;
+        }
+    }
+
     if (
         !Array.isArray(
             vocabulary.features
@@ -1352,6 +1681,44 @@ export async function draftBrownfield(
         vocabulary
     );
 
+    // A declaration whose node a person has ruled on is settled: it is not
+    // sent to the model, so it costs nothing to redraft and cannot come back
+    // as a second node for the same identity.
+    const settled =
+        new Set(
+            (plan.nodes || [])
+                .filter(
+                    node =>
+                        node?.status === "approved" ||
+                        (Array.isArray(node?.history) &&
+                            node.history.length > 0)
+                )
+                .map(
+                    node => node.identity
+                )
+                .filter(Boolean)
+        );
+
+    const open =
+        candidates.filter(
+            candidate =>
+                !settled.has(
+                    candidate.identity
+                )
+        );
+
+    if (
+        open.length === 0
+    ) {
+        return {
+            drafted: 0,
+            batches: 0,
+            dropped: [],
+            skipped: [],
+            settled: settled.size
+        };
+    }
+
     const baseline =
         readBaseline(
             projectRoot
@@ -1370,6 +1737,12 @@ export async function draftBrownfield(
         {};
 
     const groupByIdentity =
+        {};
+
+    // Which stage each declaration already belongs to: its first heading
+    // when that heading became a stage of its own, and the capability
+    // otherwise. Used when the model names a feature outside the list.
+    const stageByIdentity =
         {};
 
     for (
@@ -1399,16 +1772,36 @@ export async function draftBrownfield(
                 ? node.feature.trim()
                 : "";
 
+        const trail =
+            Array.isArray(node.path)
+                ? node.path
+                : [node.group];
+
         if (
             feature
         ) {
+            const head =
+                typeof trail[0] === "string"
+                    ? trail[0].trim()
+                    : "";
+
+            stageByIdentity[
+                node.identity
+            ] =
+                head &&
+                vocabulary.features.includes(head)
+                    ? head
+                    : vocabulary.features.includes(feature)
+                        ? feature
+                        : stageByIdentity[node.identity];
+
             groupByIdentity[
                 node.identity
             ] = {
                 feature,
 
-                ...(node.group
-                    ? { group: node.group }
+                ...(trail.filter(Boolean).length
+                    ? { headings: trail.filter(Boolean) }
                     : {})
             };
         }
@@ -1418,7 +1811,7 @@ export async function draftBrownfield(
         {};
 
     for (
-        const candidate of candidates
+        const candidate of open
     ) {
         factsByIdentity[
             candidate.identity
@@ -1447,7 +1840,7 @@ export async function draftBrownfield(
         new Map();
 
     for (
-        const candidate of candidates
+        const candidate of open
     ) {
         const separator =
             candidate.identity.indexOf(
@@ -1569,7 +1962,8 @@ export async function draftBrownfield(
                 batch,
                 dropped,
                 skipped,
-                lensesByIdentity
+                lensesByIdentity,
+                stageByIdentity
             );
 
         const batchIdentities =
@@ -1592,6 +1986,19 @@ export async function draftBrownfield(
                             return true;
                         }
 
+                        // A node a person has ruled on is theirs, whoever
+                        // first drafted it. Replacing an approved node threw
+                        // that decision away silently - and with it every
+                        // verify result measured against it, since verify
+                        // only checks approved nodes.
+                        if (
+                            node?.status === "approved" ||
+                            (Array.isArray(node?.history) &&
+                                node.history.length > 0)
+                        ) {
+                            return true;
+                        }
+
                         return (
                             node?.origin !==
                                 "ai_drafted"
@@ -1599,14 +2006,39 @@ export async function draftBrownfield(
                     }
                 );
 
+        applyFeatureOrder(
+            plan,
+            parsed?.featureOrder
+        );
+
+        const linked =
+            linkFeatureSteps([
+                ...preservedNodes,
+                ...nodes
+            ]);
+
+        // A feature no node belongs to draws an empty box on the
+        // Constellation. Features are derived from the scan and the
+        // vocabulary shifts between runs, so leftovers accumulate; a
+        // feature earns its place by holding a step.
+        const used =
+            new Set(
+                linked.map(
+                    node => node.feature
+                )
+            );
+
         const nextPlan = {
             ...plan,
 
+            features:
+                plan.features.filter(
+                    feature =>
+                        used.has(feature.id)
+                ),
+
             nodes:
-                linkFeatureSteps([
-                    ...preservedNodes,
-                    ...nodes
-                ])
+                linked
         };
 
         const errors =
@@ -1626,6 +2058,10 @@ export async function draftBrownfield(
                     .join("\n")}`
             );
         }
+
+        linkStages(
+            nextPlan
+        );
 
         writePlan(
             projectRoot,

@@ -153,9 +153,62 @@ export function pendingProjectMatches(pending: unknown, folderPath: string | und
     );
 }
 
+// --------------------------------------------------
+// WHAT A SCAN LOOKS AT
+// --------------------------------------------------
+// Mirrors src/baseline/scanner.js. The source watcher uses it so it only
+// reacts to files a scan could actually read - reacting to the rest would
+// report changes PlanMap has no way to record.
+// --------------------------------------------------
+
+const SKIPPED_DIRECTORIES = [
+    "node_modules",
+    ".git",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    "out",
+    ".turbo",
+    ".cache",
+    // PlanMap's own output. Reacting to it here would loop.
+    ".planmap"
+];
+
+export function isSkipped(filePath: string): boolean {
+    const parts = filePath.split(/[\\/]/);
+    return SKIPPED_DIRECTORIES.some(name => parts.includes(name));
+}
+
 export function declarationCount(baseline: unknown): number | null {
     const declarations = (baseline as { declarations?: unknown } | null)?.declarations;
     return Array.isArray(declarations) ? declarations.length : null;
+}
+
+
+// --------------------------------------------------
+// WHAT A REFRESH BROUGHT IN
+// --------------------------------------------------
+// The ids in the outline before a refresh, against the ids after it. The
+// difference is what the scan found: nothing is invented, and nothing is
+// guessed from a timestamp.
+// --------------------------------------------------
+
+export async function evolutionNodeIds(projectRoot: string): Promise<string[]> {
+    const evolution = await readJson(path.join(projectRoot, ".planmap", "evolution.json"));
+    if (!evolution.ok) return [];
+
+    const nodes = (evolution.value as { nodes?: unknown } | null)?.nodes;
+    if (!Array.isArray(nodes)) return [];
+
+    return nodes
+        .map(node => (node as { id?: unknown } | null)?.id)
+        .filter((id): id is string => typeof id === "string");
+}
+
+export async function sinceRefresh(projectRoot: string, before: string[]): Promise<string[]> {
+    const seen = new Set(before);
+    return (await evolutionNodeIds(projectRoot)).filter(id => !seen.has(id));
 }
 
 export async function readViewState(projectRoot: string): Promise<ViewState> {

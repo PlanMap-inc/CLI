@@ -52,17 +52,20 @@ export function tagColors(tags) {
 // --------------------------------------------------
 // TREE
 // --------------------------------------------------
-// Four levels, so a feature with a dozen declarations reads as a few jobs
-// rather than a flat list:
+// The shape is the project's, not a fixed schema. A declaration carries a
+// path of however many grouping levels its part of the project needs:
 //
-//   feature      the capability            <- node.feature
-//     group      one job inside it         <- node.group
-//       entry    a declaration             <- node.label
-//         change what happened to it later <- node.parent
+//   feature        the capability                <- node.feature
+//     path[0]      one job inside it             <- node.path
+//       path[1]    a job inside that, if useful
+//         ...      as deep as the code warrants
+//           entry  a declaration                 <- node.label
+//             change  what happened to it later  <- node.parent
 //
-// The group level is skipped for a declaration the scan gave no group, and
-// for a feature where no declaration has one, so a graph written before
-// groups existed reads exactly as it did.
+// Nothing here caps the depth. What prunes it is a rule about information
+// rather than a number: a level with a single child tells a reader nothing
+// the child did not already say, so it is folded away. A graph written
+// before paths existed, carrying one "group" string, reads exactly as it did.
 // --------------------------------------------------
 
 const UNCLASSIFIED = "Unclassified";
@@ -71,8 +74,14 @@ function featureOf(node) {
     return node.feature || UNCLASSIFIED;
 }
 
-function groupOf(node) {
-    return typeof node.group === "string" && node.group.trim() ? node.group.trim() : null;
+// The grouping levels between a feature and this declaration. "group" is the
+// single-level spelling PlanMap wrote first, and still reads.
+function pathOf(node) {
+    const raw = Array.isArray(node.path) ? node.path : [node.group];
+
+    return raw
+        .map(step => (typeof step === "string" ? step.trim() : ""))
+        .filter(Boolean);
 }
 
 // The parent node, unless it is missing or its chain loops back.
@@ -88,6 +97,19 @@ function resolveParent(node, byId) {
     }
 
     return parent ?? null;
+}
+
+// A level that does not branch adds a line without adding information, so
+// its children move up in its place. Applied bottom-up, so a chain of
+// single-child levels collapses the whole way.
+function foldThrough(item) {
+    item.children = item.children.map(child => (child.group || child.feature ? foldThrough(child) : child));
+
+    if (item.group && item.children.length === 1) {
+        return item.children[0];
+    }
+
+    return item;
 }
 
 export function buildEvolutionTree(evolution) {
@@ -110,29 +132,35 @@ export function buildEvolutionTree(evolution) {
         if (!features.has(name)) {
             features.set(name, {
                 id: `feature:${name}`, feature: true, title: name,
-                status: null, tags: [], children: [], groups: new Map()
+                status: null, tags: [], children: [], levels: new Map()
             });
         }
         return features.get(name);
     };
 
-    // Where a declaration hangs: its feature, or a group inside it.
+    // Walks the path, making each level it has not seen before. A level is
+    // keyed by the whole path above it, so "Sign in > Tokens" under Login is
+    // never confused with "Tokens" under Survey.
     const parentFor = node => {
-        const feature = featureItem(featureOf(node));
-        const group = groupOf(node);
+        let here = featureItem(featureOf(node));
+        let trail = here.title;
 
-        if (!group) return feature;
+        for (const step of pathOf(node)) {
+            trail += ` > ${step}`;
 
-        if (!feature.groups.has(group)) {
-            const item = {
-                id: `group:${feature.title}:${group}`, group: true, title: group,
-                status: null, tags: [], children: []
-            };
-            feature.groups.set(group, item);
-            feature.children.push(item);
+            if (!here.levels.has(step)) {
+                const level = {
+                    id: `group:${trail}`, group: true, title: step,
+                    status: null, tags: [], children: [], levels: new Map()
+                };
+                here.levels.set(step, level);
+                here.children.push(level);
+            }
+
+            here = here.levels.get(step);
         }
 
-        return feature.groups.get(group);
+        return here;
     };
 
     for (const node of nodes) {
@@ -145,22 +173,19 @@ export function buildEvolutionTree(evolution) {
         }
 
         // Orphans - a missing or looping parent, or one filed under another
-        // feature - sit at the top of their own feature or group.
+        // feature - sit at the top of the level their path names.
         parentFor(node).children.push(items.get(node));
     }
 
-    // A lone group adds a level without telling the reader anything.
-    for (const feature of features.values()) {
-        if (feature.children.length === 1 && feature.children[0].group) {
-            feature.children = feature.children[0].children;
-        }
-        delete feature.groups;
-    }
+    const strip = item => {
+        delete item.levels;
+        item.children.forEach(child => { if (child.group || child.feature) strip(child); });
+        return item;
+    };
 
-    return [...features.values()];
+    return [...features.values()].map(feature => strip(foldThrough(feature)));
 }
 
-// Declarations and their changes. Features and groups are headings, not entries.
 export function countNodes(tree) {
     return tree.reduce((sum, item) => sum + (item.feature || item.group ? 0 : 1) + countNodes(item.children), 0);
 }
@@ -177,8 +202,9 @@ export function pruneByTag(tree, tag) {
     return tree.map(prune).filter(Boolean);
 }
 
-// Features and groups open, so the outline reads top to bottom. A
-// declaration's own history starts collapsed; a tag filter opens what it kept.
+// Every grouping level opens, however deep, so the outline reads top to
+// bottom. Only a declaration's own history starts collapsed, because that is
+// the past rather than the shape. A tag filter opens what it kept.
 export function isCollapsed(item, depth, { filtered = false, toggled = new Map() } = {}) {
     if (item.children.length === 0) return false;
     if (toggled.has(item.id)) return toggled.get(item.id);

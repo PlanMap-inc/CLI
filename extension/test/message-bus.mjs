@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { WEBVIEW_MESSAGE_TYPES, buildCliArgs, isWebviewMessage } from "../out/messages.js";
+import { WEBVIEW_MESSAGE_TYPES, buildCliArgs, buildCliSteps, isWebviewMessage, readScanSummary } from "../out/messages.js";
 
 const root = "/work/project";
 const identity = "src/auth.js::verifyToken:function";
@@ -54,5 +54,43 @@ assert.equal(isWebviewMessage({ type: "approve", target: 42 }), false);
 assert.equal(isWebviewMessage({ type: "approve", target: "--all" }), false, "a flag can't be smuggled in as a target");
 assert.equal(isWebviewMessage({ type: "approveLens", lensId: "--feature" }), false);
 assert.equal(isWebviewMessage({ type: "revise", identity: "-x" }), false);
+
+// --------------------------------------------------
+// REFRESH EVOLUTION IS TWO COMMANDS
+// --------------------------------------------------
+// "evolution" only turns recorded events into the outline; "check" is what
+// reads the code and records them. Running the second alone rebuilds the
+// same graph however much the code has moved on - which is exactly what it
+// did, and why a refresh appeared to do nothing.
+
+assert.deepEqual(
+    buildCliSteps({ type: "evolution" }, root),
+    [["check", root, "--json"], ["evolution", root]],
+    "a refresh must read the code before it rebuilds the outline, and report what it found"
+);
+
+// The summary the view reports comes straight from the CLI's own counts.
+assert.deepEqual(
+    readScanSummary({ summary: { changes: 3, significant: 3, added: 1, deleted: 1 } }),
+    { changes: 3, added: 1, deleted: 1, significant: 3, changed: 1 },
+    "changed is what is left once new and removed are taken out"
+);
+assert.deepEqual(
+    readScanSummary({ summary: { changes: 0, significant: 0, added: 0, deleted: 0 } }),
+    { changes: 0, added: 0, deleted: 0, significant: 0, changed: 0 },
+    "a scan that found nothing is a result, not a missing one"
+);
+assert.equal(readScanSummary(null), null);
+assert.equal(readScanSummary({}), null, "output without a summary reports nothing rather than zeroes");
+
+// Everything else stays one command, and matches buildCliArgs exactly.
+for (const [type, [message, args]] of Object.entries(expected)) {
+    if (type === "evolution") continue;
+    assert.deepEqual(
+        buildCliSteps(message, root),
+        args ? [args] : [],
+        `${type} is a single step`
+    );
+}
 
 console.log("PASS: message-bus");

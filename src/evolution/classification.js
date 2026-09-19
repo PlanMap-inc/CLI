@@ -335,10 +335,156 @@ export function getEvolutionVocabulary(
 // --------------------------------------------------
 // GET EVOLUTION GROUPS
 // --------------------------------------------------
-// The group names already used inside each feature, so a later batch
-// nests its declarations under the same groups rather than inventing
-// parallel ones ("Authentication" and "Auth handling" side by side).
+// The heading trails already used inside each feature, written as
+// "Sign in > Google", so a later batch nests under headings that exist
+// rather than inventing parallel ones ("Authentication" beside "Auth
+// handling").
 // --------------------------------------------------
+
+// The smallest a Constellation node can usefully be. One step cannot be
+// told from four perspectives, and a map of one-step nodes explains less
+// than a map of a few real ones.
+const MIN_STAGE_STEPS = 2;
+
+
+// --------------------------------------------------
+// GET EVOLUTION STAGES
+// --------------------------------------------------
+// The Constellation draws one node per plan feature and joins them in
+// order, so those features should read as the journey a person walks. The
+// classification already finds the stages - it files them as the first
+// heading under a capability ("Survey > Start", "Survey > Submit") - so a
+// stage is promoted to a feature of its own rather than asked for twice.
+//
+// A capability with no headings, or only one, stays whole: there is no
+// journey to split.
+// --------------------------------------------------
+
+export function getEvolutionStages(
+    evolution
+) {
+    // feature -> heading -> how many declarations sit under it.
+    const byFeature =
+        new Map();
+
+    for (
+        const node
+        of evolution?.nodes || []
+    ) {
+        if (
+            node.labelSource !== "llm"
+        ) {
+            continue;
+        }
+
+        const feature =
+            String(
+                node.feature ||
+                node.category ||
+                ""
+            ).trim();
+
+        if (!feature) {
+            continue;
+        }
+
+        const path =
+            Array.isArray(node.path)
+                ? node.path
+                : [node.group];
+
+        const head =
+            typeof path[0] === "string"
+                ? path[0].trim()
+                : "";
+
+        if (
+            !byFeature.has(feature)
+        ) {
+            byFeature.set(
+                feature,
+                new Map()
+            );
+        }
+
+        const heads =
+            byFeature.get(feature);
+
+        // "" is the bucket for declarations with no heading of their own.
+        heads.set(
+            head,
+            (heads.get(head) || 0) + 1
+        );
+    }
+
+    const stages = [];
+
+    const add =
+        name => {
+            if (
+                name &&
+                !stages.includes(name)
+            ) {
+                stages.push(name);
+            }
+        };
+
+    for (
+        const [feature, heads]
+        of byFeature
+    ) {
+        // A stage becomes a Constellation node, and a node with one step
+        // cannot be read from four perspectives - there is nothing to see
+        // the journey from. A heading has to carry at least two
+        // declarations to stand on its own; the thin ones fold back into
+        // the capability, where they are a step among others.
+        const strong =
+            [...heads]
+                .filter(
+                    ([head, count]) =>
+                        head && count >= MIN_STAGE_STEPS
+                )
+                .map(
+                    ([head]) => head
+                );
+
+        const covered =
+            strong.reduce(
+                (total, head) =>
+                    total + heads.get(head),
+                0
+            );
+
+        const total =
+            [...heads.values()]
+                .reduce(
+                    (sum, count) =>
+                        sum + count,
+                    0
+                );
+
+        // Fewer than two stages is not a journey: keep the capability whole.
+        if (
+            strong.length < 2
+        ) {
+            add(feature);
+            continue;
+        }
+
+        strong.forEach(add);
+
+        // Whatever the strong headings did not take still needs somewhere
+        // to live, and the capability's own name is where it belongs.
+        if (
+            covered < total
+        ) {
+            add(feature);
+        }
+    }
+
+    return stages;
+}
+
 
 export function getEvolutionGroups(
     evolution
@@ -364,15 +510,24 @@ export function getEvolutionGroups(
                 ""
             ).trim();
 
-        const group =
-            String(
-                node.group ||
-                ""
-            ).trim();
+        const path =
+            Array.isArray(node.path)
+                ? node.path
+                : [node.group];
+
+        const trail =
+            path
+                .map(
+                    step =>
+                        typeof step === "string"
+                            ? step.trim()
+                            : ""
+                )
+                .filter(Boolean);
 
         if (
             !feature ||
-            !group
+            trail.length === 0
         ) {
             continue;
         }
@@ -384,14 +539,27 @@ export function getEvolutionGroups(
                 [];
         }
 
-        if (
-            !groups[feature].includes(
-                group
-            )
+        // Every level, and every level above it, so a later batch can nest
+        // under a heading that already exists instead of making a sibling.
+        for (
+            let depth = 1;
+            depth <= trail.length;
+            depth++
         ) {
-            groups[feature].push(
-                group
-            );
+            const shown =
+                trail
+                    .slice(0, depth)
+                    .join(" > ");
+
+            if (
+                !groups[feature].includes(
+                    shown
+                )
+            ) {
+                groups[feature].push(
+                    shown
+                );
+            }
         }
     }
 
@@ -594,7 +762,7 @@ export function getFallbackTags(
 
 
     // --------------------------------------------------
-    // BACKEND, BY REQUEST HANDLING
+    // SERVER, BY REQUEST HANDLING
     // --------------------------------------------------
 
     if (
@@ -653,13 +821,13 @@ export function getFallbackTags(
     ) {
 
         tags.push(
-            "data"
+            "database"
         );
     }
 
 
     // --------------------------------------------------
-    // SECURITY
+    // SAFETY
     // --------------------------------------------------
 
     if (
@@ -687,7 +855,7 @@ export function getFallbackTags(
 
 
     // --------------------------------------------------
-    // FRONTEND
+    // INTERFACE
     // --------------------------------------------------
 
     if (
@@ -718,7 +886,7 @@ export function getFallbackTags(
 
 
     // --------------------------------------------------
-    // INTEGRATION
+    // OUTSIDE SERVICES - part of what the server does
     // --------------------------------------------------
 
     if (
@@ -743,13 +911,13 @@ export function getFallbackTags(
     ) {
 
         tags.push(
-            "integration"
+            "backend"
         );
     }
 
 
     // --------------------------------------------------
-    // PLATFORM
+    // MACHINERY - also the server
     // --------------------------------------------------
     // The last resort: every declaration carries a lens, so a lens is
     // empty only when the code really has nothing to show through it.
@@ -774,7 +942,7 @@ export function getFallbackTags(
     ) {
 
         tags.push(
-            "platform"
+            "backend"
         );
     }
 
@@ -924,17 +1092,23 @@ export function applyEvolutionClassification(
             }
 
 
-            // The level between the feature and its declarations. Cleared
-            // when the model returns none, so a re-run never leaves a node
-            // nested under a group it no longer belongs to.
+            // The grouping levels between the feature and this
+            // declaration. Cleared when the model returns none, so a re-run
+            // never leaves a node nested under a heading it has left. The
+            // older single "group" is dropped once a path replaces it.
             if (
-                classification.group
+                Array.isArray(classification.path) &&
+                classification.path.length > 0
             ) {
 
-                node.group =
-                    classification.group;
+                node.path =
+                    classification.path;
+
+                delete node.group;
             }
             else {
+
+                delete node.path;
 
                 delete node.group;
             }

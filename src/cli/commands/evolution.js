@@ -8,6 +8,10 @@ import {
 } from "../../evolution/events.js";
 
 import {
+    describeDelta
+} from "../../watching/events.js";
+
+import {
     readEvolution,
     writeEvolution
 } from "../../evolution/storage.js";
@@ -475,6 +479,18 @@ function buildLlmEvents(
                     );
             }
 
+            const delta =
+                event.delta ||
+                {};
+
+            // What changed, in sentences rather than arithmetic. A model
+            // handed {"returns":[8,9]} describes the declaration; handed
+            // "8 returns became 9 returns" it describes the change.
+            const changed =
+                describeDelta(
+                    delta
+                );
+
             return {
                 ts:
                     event.ts,
@@ -485,9 +501,11 @@ function buildLlmEvents(
                 type:
                     event.type,
 
-                delta:
-                    event.delta ||
-                    {},
+                delta,
+
+                ...(changed.length
+                    ? { changed }
+                    : {}),
 
                 facts
             };

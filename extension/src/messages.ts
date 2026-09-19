@@ -67,6 +67,49 @@ export interface ViewState {
     // baseline.json declarations.length, or null before the first scan.
     declarationCount: number | null;
     aiKey: ApiKeySource;
+    // Evolution node ids the last refresh added. Empty on a plain re-read,
+    // so a node is marked as new only by a run that actually brought it in.
+    arrivals?: string[];
+    // What the last refresh's scan found in the code, from "check --json".
+    // Present only after a refresh, and zeroed counts are meaningful: they
+    // say the code has not moved since the last scan.
+    scan?: ScanSummary;
+    // The code has moved on and the outline has not caught up yet. Set by
+    // the source watcher, cleared by the refresh that folds the changes in.
+    pendingScan?: boolean;
+}
+
+// What one "check" run found. Mirrors the CLI's own summary block.
+export interface ScanSummary {
+    changes: number;
+    added: number;
+    deleted: number;
+    significant: number;
+    // Declarations whose facts moved: changes that are neither new nor gone.
+    changed: number;
+}
+
+// The CLI's summary, or null when the output was not the shape we expect.
+export function readScanSummary(json: unknown): ScanSummary | null {
+    const summary = (json as { summary?: unknown } | null)?.summary;
+    if (!summary || typeof summary !== "object") return null;
+
+    const count = (key: string) => {
+        const value = (summary as Record<string, unknown>)[key];
+        return typeof value === "number" && Number.isFinite(value) ? value : 0;
+    };
+
+    const changes = count("changes");
+    const added = count("added");
+    const deleted = count("deleted");
+
+    return {
+        changes,
+        added,
+        deleted,
+        significant: count("significant"),
+        changed: Math.max(0, changes - added - deleted)
+    };
 }
 
 export type HostMessage =
@@ -126,6 +169,35 @@ export function buildCliArgs(
             // Not a CLI call: the host shows VS Code's folder picker and reopens the window there.
             return null;
     }
+}
+
+// --------------------------------------------------
+// CLI STEPS
+// --------------------------------------------------
+// Most actions are one command. Refreshing evolution is two, and running
+// only the second is why new code never appeared in the outline:
+//
+//   check      reads the code, compares it with the baseline, and records
+//              what was added, changed or deleted as durable events
+//   evolution  turns those events into the outline
+//
+// "evolution" alone re-reads events nobody has written to since the last
+// scan, so it faithfully rebuilds the same graph every time.
+// --------------------------------------------------
+
+export function buildCliSteps(message: WebviewMessage, projectRoot: string): string[][] {
+    if (message.type === "evolution") {
+        return [
+            // --json so the view can say what the scan found, including
+            // that it found nothing: a refresh that silently rebuilds the
+            // same outline is indistinguishable from one that is broken.
+            ["check", projectRoot, "--json"],
+            ["evolution", projectRoot]
+        ];
+    }
+
+    const args = buildCliArgs(message, projectRoot);
+    return args ? [args] : [];
 }
 
 // Values that become CLI arguments. A value starting with "-" would be read

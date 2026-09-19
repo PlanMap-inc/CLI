@@ -24,10 +24,12 @@ const plan = {
 // Constellation: one node per feature, with the member count.
 const constellation = buildConstellation(plan, {});
 assert.equal(constellation.length, 3);
-assert.deepEqual(constellation.map(n => n.sub), ["4 nodes", "3 nodes", "0 nodes"]);
+assert.deepEqual(constellation.map(n => n.sub), ["4 steps", "3 steps", "0 steps"]);
+assert.deepEqual(constellation.map(n => n.step), [1, 2, 3], "features are numbered in the order they are met");
 assert.deepEqual(constellation.map(n => n.title), ["Login", "Orders", "Ratings"]);
 
-// Features stack bottom to top in plan order, in one column.
+// Features stack bottom to top in plan order, in one column: the first
+// thing a person does sits at the bottom, and the journey climbs.
 const featureY = constellation.map(n => n.y);
 assert.ok(featureY[0] > featureY[1] && featureY[1] > featureY[2], "the first feature sits at the bottom");
 assert.equal(new Set(constellation.map(n => n.x)).size, 1);
@@ -56,7 +58,7 @@ assert.deepEqual(auth.edges, [
 
 // A chain lays out as one column, each step above the one it follows.
 const y = Object.fromEntries(auth.nodes.map(n => [n.id, n.y]));
-assert.ok(y.a1 > y.a2 && y.a2 > y.a3 && y.a3 > y.a4, "steps flow upward");
+assert.ok(y.a1 > y.a2 && y.a2 > y.a3 && y.a3 > y.a4, "steps climb"),
 assert.equal(new Set(auth.nodes.map(n => n.x)).size, 1);
 
 // A cycle (o1 -> o3 -> o1) still produces a finite layout and keeps both edges.

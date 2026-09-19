@@ -18,7 +18,7 @@ export const FEATURE_PALETTE = [
 
 // The demo's own dot colours, ordered to line up with the lens vocabulary
 // below, so each perspective keeps the hue the demo gave that concept.
-// Assigned by index; the seventh is spare, for a lens a project adds itself.
+// Assigned by index; the rest are spare, for a lens a project adds itself.
 export const LENS_PALETTE = [
     "#c89bff", "#6fa8ff", "#ff9f6f", "#5ec9c9", "#ff7fb0", "#ffd873", "#7fe0b0"
 ];
@@ -27,8 +27,19 @@ export const LENS_PALETTE = [
 // Graph reads it from plan.json and Project Evolution from each node's tags,
 // so both views must agree on the order to agree on the colours.
 export const LENS_IDS = [
-    "frontend", "backend", "security", "data", "integration", "platform"
+    "frontend", "backend", "database", "security"
 ];
+
+// What each perspective asks of a step, from src/llm/lenses.js. A lens is a
+// question you put to the whole journey, so the interface can say what the
+// question was rather than showing a coloured word and leaving the reader
+// to guess. A lens a project adds itself has no question, and shows none.
+export const LENS_QUESTIONS = {
+    frontend: "What does the person see and do?",
+    backend: "What does the server do when the request arrives?",
+    database: "What is read or written, and where?",
+    security: "What decides whether this is allowed?"
+};
 
 export const STATUSES = [
     "intended", "approved", "implemented", "drifted", "error", "superseded"
@@ -107,7 +118,9 @@ export function statusDotStyle(status, color) {
 // CONSTELLATION
 // --------------------------------------------------
 
-// Features stack bottom to top, like the steps inside a feature.
+// Features stack bottom to top, in the order a person meets them, like the
+// steps inside one: the first thing you do sits at the bottom and the
+// journey climbs.
 const CX = 300;
 const CTOP_Y = 60;
 const CSTEP_Y = 150;
@@ -118,15 +131,23 @@ export function nodesInFeature(plan, featureId) {
 
 export function buildConstellation(plan, verifiedStatus) {
     const features = plan?.features ?? [];
+    const order = (plan?.lenses ?? []).map(lens => lens.id);
 
     return features.map((feature, index) => {
         const members = nodesInFeature(plan, feature.id);
         const count = members.length;
 
+        // Which perspectives this capability is built from, in lens order.
+        // Three dots say "this one is interface and server, no data" at a
+        // glance, which "7 steps" alone never could.
+        const present = new Set(members.flatMap(node => node.lensTags ?? []));
+
         return {
             id: feature.id,
+            step: index + 1,
             title: feature.name,
-            sub: `${count} ${count === 1 ? "node" : "nodes"}`,
+            sub: `${count} ${count === 1 ? "step" : "steps"}`,
+            lenses: order.filter(id => present.has(id)),
             status: featureStatus(members, verifiedStatus),
             color: colorAt(FEATURE_PALETTE, index),
             x: snap(CX),
@@ -169,8 +190,8 @@ export function constellationEdges(plan) {
 // FEATURE SPACE
 // --------------------------------------------------
 // Plan nodes carry no positions, so they are ordered by longest path over
-// edgesOut and stacked one per row, bottom-to-top, matching the demo's
-// "step order". A lens shows only the nodes tagged with it.
+// edgesOut and stacked one per row, bottom-to-top: step 1 at the bottom, and
+// the feature climbs. A lens shows only the nodes tagged with it.
 // --------------------------------------------------
 
 const TOP_Y = 60;
@@ -181,9 +202,13 @@ export function nodeSub(node) {
     return node?.identity ? node.identity.split("::").pop() : "greenfield";
 }
 
+// A lens is a way of reading the journey, not a filter over it. Every step
+// stays, in the same place, whichever lens is on: the feature keeps one
+// shape, and switching perspective shows which parts of that one shape the
+// perspective speaks to. Removing the others would leave a different
+// journey each time, and a reader could not tell what was being left out.
 export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null) {
-    const members = nodesInFeature(plan, featureId)
-        .filter(node => !lensId || (node.lensTags ?? []).includes(lensId));
+    const members = nodesInFeature(plan, featureId);
     const ids = new Set(members.map(node => node.id));
 
     const edges = [];
@@ -203,12 +228,25 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
     // node between; route around it if plans with branches make that confusing.
     const ordered = [...members].sort((a, b) => layer.get(a.id) - layer.get(b.id));
 
+    // A perspective renames the step in its own words. Same step, same
+    // place, same rules - only the wording changes, which is the whole
+    // point: a reader who thinks in one of these terms reads the journey in
+    // that language. A step the lens has no reading for keeps its own title.
+    const reading = node => (lensId && node.readings?.[lensId]) || node.title;
+
     const nodes = ordered.map((node, row) => ({
         id: node.id,
-        title: node.title,
+        step: row + 1,
+        title: reading(node),
+        // What it is called when no lens is on, so the panel can show both.
+        plainTitle: node.title,
         sub: nodeSub(node),
         status: effectiveStatus(node, verifiedStatus),
         lensTags: node.lensTags ?? [],
+        // Whether this perspective had its own words for the step. Not a
+        // reason to hide it: every step stands in every lens, and one
+        // without a reading simply keeps the name it already had.
+        renamed: Boolean(lensId && node.readings?.[lensId]),
         x: snap(CENTER_X),
         y: snap(TOP_Y + (ordered.length - 1 - row) * STEP_Y),
         source: node
@@ -284,20 +322,30 @@ export function lensColors(plan) {
     return colors;
 }
 
-// Which lenses this feature's nodes are actually tagged with. A lens outside
-// it is shown, but marked empty: the reader learns this feature has nothing
-// to show from that perspective, rather than meeting a blank canvas.
+// How much each perspective has to say about this feature: the number of
+// steps it has its own words for. Every step is shown under every lens, so
+// this is not how many you will see - it is how much of the feature this
+// perspective re-describes, and a zero says the feature has nothing to tell
+// you from there.
 export function lensCoverage(plan, featureId) {
-    const tagged = new Set(
-        nodesInFeature(plan, featureId).flatMap(node => node.lensTags ?? [])
-    );
+    const members = nodesInFeature(plan, featureId);
 
-    return (plan?.lenses ?? []).map(lens => ({
-        id: lens.id,
-        label: lens.label ?? lens.id,
-        count: nodesInFeature(plan, featureId).filter(node => (node.lensTags ?? []).includes(lens.id)).length,
-        empty: !tagged.has(lens.id)
-    }));
+    // A step belongs to a perspective when the scan tagged it with that lens,
+    // whether or not the draft found separate words for it. Counting only the
+    // readings made the number swing between runs on identical code, which
+    // made the lens itself look unreliable.
+    return (plan?.lenses ?? []).map(lens => {
+        const count = members.filter(node =>
+            node.readings?.[lens.id] || (node.lensTags ?? []).includes(lens.id)
+        ).length;
+
+        return {
+            id: lens.id,
+            label: lens.label ?? lens.id,
+            count,
+            empty: count === 0
+        };
+    });
 }
 
 

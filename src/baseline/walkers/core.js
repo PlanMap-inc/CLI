@@ -169,6 +169,35 @@ function visitNode(
             currentScope = [...scope, name];
         }
 
+        // --------------------------------------------------
+        // const sections = ["welcome", "first_question", ...]
+        // --------------------------------------------------
+        // A named list or table at the top of a module is a declaration in
+        // every sense that matters here: it is named, it is depended on, and
+        // changing it changes behaviour. Indexing only functions meant a
+        // project's routes, its question order, its status codes and its
+        // config were invisible - so a file made entirely of them reported
+        // no declarations and no changes, however much it moved.
+        //
+        // Only at module scope: a list inside a function is that function's
+        // business, and is already covered by its facts.
+        if (
+            (
+                value?.type === "array" ||
+                value?.type === "object"
+            ) &&
+            name !== "<anonymous>" &&
+            scope.length === 0
+        ) {
+            declarations.push(
+                createDeclaration(
+                    node,
+                    name,
+                    "data"
+                )
+            );
+        }
+
         // const MyClass = class { ... }
         if (
             value?.type === "class" &&

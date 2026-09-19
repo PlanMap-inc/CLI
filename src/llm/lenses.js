@@ -19,22 +19,35 @@ export const LENSES = [
         id: "frontend",
         label: "Frontend",
         question:
-            "What does a person see, type, or click?",
+            "What does the person see and do?",
 
         covers:
-            "screens, forms, buttons, rendering, showing and hiding, " +
-            "and anything that reads or writes the page"
+            "pages, screens, forms, buttons, clicks, rendering, showing and " +
+            "hiding, validation messages, and anything that reads or writes " +
+            "the page"
     },
 
     {
         id: "backend",
         label: "Backend",
         question:
-            "What happens on the server when a request arrives?",
+            "What does the server do when the request arrives?",
 
         covers:
-            "routes, endpoints, request handling, responses, " +
-            "and rules that run server-side"
+            "routes, endpoints, controllers, services, request and response " +
+            "handling, status codes, middleware, start-up and health checks, " +
+            "and calls out to other services"
+    },
+
+    {
+        id: "database",
+        label: "Database",
+        question:
+            "What is read or written, and where?",
+
+        covers:
+            "queries, inserts, updates, tables, columns, transactions, " +
+            "connection pools, migrations, schemas, caches, and local storage"
     },
 
     {
@@ -44,40 +57,9 @@ export const LENSES = [
             "What decides whether this is allowed?",
 
         covers:
-            "signing in, tokens, sessions, passwords, permission checks, " +
-            "and checking anything a stranger can send"
-    },
-
-    {
-        id: "data",
-        label: "Data",
-        question:
-            "What is stored, read back, or shaped?",
-
-        covers:
-            "saving, loading, queries, schemas, migrations, files, and caches"
-    },
-
-    {
-        id: "integration",
-        label: "Integration",
-        question:
-            "What outside this project does it depend on?",
-
-        covers:
-            "third-party APIs and SDKs, sign-in providers, payment and email " +
-            "services, and webhooks"
-    },
-
-    {
-        id: "platform",
-        label: "Platform",
-        question:
-            "What has to be running for any of it to work?",
-
-        covers:
-            "start-up, configuration, environment, health checks, logging, " +
-            "and build or deploy"
+            "signing in, tokens, sessions, passwords, hashing, permission " +
+            "checks, validating anything a stranger can send, and the errors " +
+            "thrown when a check fails"
     }
 ];
 
@@ -98,48 +80,56 @@ export const LENS_IDS =
 
 const SYNONYMS = {
     ui: "frontend",
+    interface: "frontend",
     client: "frontend",
     view: "frontend",
     views: "frontend",
     presentation: "frontend",
     dom: "frontend",
+    component: "frontend",
+    browser: "frontend",
 
-    api: "backend",
     server: "backend",
+    api: "backend",
     routing: "backend",
     controller: "backend",
     service: "backend",
     middleware: "backend",
     "business-logic": "backend",
+    integration: "backend",
+    external: "backend",
+    "third-party": "backend",
+    sdk: "backend",
+    webhook: "backend",
+    platform: "backend",
+    infrastructure: "backend",
+    infra: "backend",
+    config: "backend",
+    configuration: "backend",
+    ops: "backend",
+    devops: "backend",
+    monitoring: "backend",
+    logging: "backend",
+    bootstrap: "backend",
 
+    data: "database",
+    db: "database",
+    persistence: "database",
+    storage: "database",
+    model: "database",
+    models: "database",
+    sql: "database",
+    query: "database",
+
+    safety: "security",
     auth: "security",
     authentication: "security",
     authorization: "security",
     authorisation: "security",
+    oauth: "security",
     validation: "security",
     crypto: "security",
-
-    database: "data",
-    db: "data",
-    persistence: "data",
-    storage: "data",
-    model: "data",
-    models: "data",
-
-    external: "integration",
-    "third-party": "integration",
-    sdk: "integration",
-    oauth: "integration",
-
-    infrastructure: "platform",
-    infra: "platform",
-    config: "platform",
-    configuration: "platform",
-    ops: "platform",
-    monitoring: "platform",
-    logging: "platform",
-    devops: "platform",
-    bootstrap: "platform"
+    "error-handling": "security"
 };
 
 
@@ -223,4 +213,70 @@ export function lensCatalogue() {
                 `  Covers: ${lens.covers}`
         )
         .join("\n\n");
+}
+
+
+// --------------------------------------------------
+// LAYER NAMES
+// --------------------------------------------------
+// Words that name a layer rather than a job, and so must never become a
+// grouping level: the lens vocabulary already carries that axis, and
+// repeating it nests the same distinction twice.
+//
+// Deliberately much narrower than the synonym table. "Authentication",
+// "Validation" and "Monitoring" all map onto a lens, but each also names
+// real work a part of a project does, so each makes a good heading. Only
+// words that are purely an axis are refused.
+// --------------------------------------------------
+
+const LAYER_NAMES = new Set([
+    ...LENS_IDS,
+    "interface",
+    "server",
+    "safety",
+    "data",
+    "ui",
+    "client",
+    "api",
+    "db",
+    "infrastructure",
+    "infra",
+    "platform",
+    "integration",
+    "middleware",
+    "controller",
+    "service",
+    "services",
+    "utils",
+    "utilities",
+    "helpers",
+    "misc",
+    "miscellaneous",
+    "core",
+    "general",
+    "common",
+    "shared",
+    "operations",
+    "ops",
+    "management",
+    "handling",
+    "processing",
+    "logic",
+    "functionality",
+    "features",
+    "components",
+    "modules"
+]);
+
+export function isLayerName(
+    value
+) {
+    return (
+        typeof value === "string" &&
+        LAYER_NAMES.has(
+            value
+                .trim()
+                .toLowerCase()
+        )
+    );
 }

@@ -8,7 +8,7 @@ import {
     pruneByTag,
     tagColors
 } from "../webview/evolution.js";
-import { LENS_PALETTE } from "../webview/model.js";
+import { LENS_IDS, LENS_PALETTE } from "../webview/model.js";
 
 const shape = items => items.map(item => [item.feature ? `feature:${item.title}` : item.id, shape(item.children)]);
 
@@ -43,9 +43,12 @@ assert.equal(countNodes(tree), 8, "pruning never mutates the full tree");
 // Tags present, in the shared vocabulary's order rather than the order the
 // scan happened to write them, so a lens is the same colour in both views.
 assert.deepEqual(evolutionTags(evolution), ["frontend", "backend", "security"]);
+// Each takes the colour of its place in the vocabulary, not of its place in
+// this project's tag list.
+const atVocabulary = id => LENS_PALETTE[LENS_IDS.indexOf(id)];
 assert.deepEqual(
     tagColors(evolutionTags(evolution)),
-    { frontend: LENS_PALETTE[0], backend: LENS_PALETTE[1], security: LENS_PALETTE[2] }
+    { frontend: atVocabulary("frontend"), backend: atVocabulary("backend"), security: atVocabulary("security") }
 );
 
 // A tag outside the vocabulary is coloured by its own position.
@@ -68,41 +71,90 @@ assert.equal(isCollapsed(feature, 0, { toggled: new Map([["f", true]]) }), true)
 
 
 // --------------------------------------------------
-// GROUPS
+// HEADINGS, AT WHATEVER DEPTH
 // --------------------------------------------------
-// The level between a feature and its declarations, so a big feature reads
-// as a few jobs. A declaration with no group hangs from the feature itself.
+// A declaration carries a path of headings between it and its feature. The
+// outline nests as deep as that path goes - nothing caps it - and folds
+// away any heading that does not actually group.
 
 const grouped = buildEvolutionTree({
     nodes: [
-        { id: "j", parent: null, feature: "Login", group: "Authentication", tags: ["security"] },
-        { id: "k", parent: null, feature: "Login", group: "Authentication", tags: ["backend"] },
-        { id: "k1", parent: "k", feature: "Login", group: "Authentication", tags: [] },
-        { id: "m", parent: null, feature: "Login", group: "Google sign-in", tags: ["frontend"] },
-        { id: "n", parent: null, feature: "Login", tags: ["platform"] }
+        { id: "j", parent: null, feature: "Login", path: ["Sign in", "Google"], tags: ["security"] },
+        { id: "k", parent: null, feature: "Login", path: ["Sign in", "Google"], tags: ["backend"] },
+        { id: "k1", parent: "k", feature: "Login", path: ["Sign in", "Google"], tags: [] },
+        { id: "m", parent: null, feature: "Login", path: ["Sign in", "Email"], tags: ["frontend"] },
+        { id: "n", parent: null, feature: "Login", path: ["Sign in", "Email"], tags: ["frontend"] },
+        { id: "o", parent: null, feature: "Login", path: ["Tokens"], tags: ["security"] },
+        { id: "p", parent: null, feature: "Login", path: ["Tokens"], tags: ["security"] },
+        { id: "q", parent: null, feature: "Login", tags: ["backend"] }
     ]
 });
 
+assert.deepEqual(shape(grouped), [
+    ["feature:Login", [
+        ["group:Login > Sign in", [
+            ["group:Login > Sign in > Google", [["j", []], ["k", [["k1", []]]]]],
+            ["group:Login > Sign in > Email", [["m", []], ["n", []]]]
+        ]],
+        ["group:Login > Tokens", [["o", []], ["p", []]]],
+        ["q", []]
+    ]]
+], "headings nest as deep as the path, and an unheaded declaration sits at the top");
+
+assert.equal(countNodes(grouped), 8, "headings are not entries, however deep");
+
+// Depth is not capped. Four headings nest as four headings, as long as each
+// one actually branches - a sibling at every level keeps them all standing.
+const deep = buildEvolutionTree({
+    nodes: [
+        { id: "d1", parent: null, feature: "F", path: ["a", "b", "c", "d"], tags: [] },
+        { id: "d2", parent: null, feature: "F", path: ["a", "b", "c", "d"], tags: [] },
+        { id: "s1", parent: null, feature: "F", path: ["a", "b", "c", "other"], tags: [] },
+        { id: "s2", parent: null, feature: "F", path: ["a", "b", "other"], tags: [] },
+        { id: "s3", parent: null, feature: "F", path: ["a", "other"], tags: [] },
+        { id: "s4", parent: null, feature: "F", path: ["other"], tags: [] }
+    ]
+});
+const depthOf = item => (item.children.length ? 1 + Math.max(...item.children.map(depthOf)) : 1);
+assert.equal(depthOf(deep[0]), 6, "feature + four headings + the declaration");
+
+// A heading with one child restates that child, so it is folded away -
+// however long the chain of them is. This is the only thing that limits
+// depth, and it is about information, not a number.
+const folded = buildEvolutionTree({
+    nodes: [
+        { id: "s", parent: null, feature: "Login", path: ["Sign in", "Google", "Deeply", "Nested"], tags: [] },
+        { id: "t", parent: null, feature: "Login", path: ["Tokens"], tags: [] },
+        { id: "u", parent: null, feature: "Login", path: ["Tokens"], tags: [] }
+    ]
+});
+assert.deepEqual(shape(folded), [
+    ["feature:Login", [["s", []], ["group:Login > Tokens", [["t", []], ["u", []]]]]]
+], "a chain of single-child headings collapses to the declaration itself");
+
+// A heading that really does group is kept, even as the only one.
+const sole = buildEvolutionTree({
+    nodes: [
+        { id: "v", parent: null, feature: "Health", path: ["Checks"], tags: [] },
+        { id: "w", parent: null, feature: "Health", path: ["Checks"], tags: [] }
+    ]
+});
+assert.deepEqual(shape(sole), [["feature:Health", [["group:Health > Checks", [["v", []], ["w", []]]]]]]);
+
+// The single "group" string PlanMap wrote first still reads, and nests
+// exactly where the same name in a path would.
 assert.deepEqual(
-    grouped.map(item => [item.title, item.children.map(child => [child.title ?? child.id, child.group === true])]),
-    [["Login", [["Authentication", true], ["Google sign-in", true], ["n", false]]]]
+    shape(buildEvolutionTree({
+        nodes: [
+            { id: "v", parent: null, feature: "Health", group: "Checks", tags: [] },
+            { id: "w", parent: null, feature: "Health", group: "Checks", tags: [] }
+        ]
+    })),
+    shape(sole),
+    "a graph written before paths existed nests the same way"
 );
 
-assert.equal(countNodes(grouped), 5, "groups are headings, not entries");
-
-// A change still nests under the declaration it changed, inside the group.
-assert.deepEqual(shape(grouped)[0][1][0][1], [["j", []], ["k", [["k1", []]]]]);
-
-// One group in a feature adds a level and says nothing, so it is dropped.
-const single = buildEvolutionTree({
-    nodes: [
-        { id: "p", parent: null, feature: "Health", group: "Checks", tags: [] },
-        { id: "q", parent: null, feature: "Health", group: "Checks", tags: [] }
-    ]
-});
-assert.deepEqual(shape(single), [["feature:Health", [["p", []], ["q", []]]]]);
-
-// A graph written before groups existed reads exactly as it did.
+// A graph with no headings at all reads exactly as it did.
 assert.deepEqual(shape(buildEvolutionTree(evolution)), shape(tree));
 
 console.log("PASS: evolution-filter");

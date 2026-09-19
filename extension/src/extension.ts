@@ -4,13 +4,15 @@ import { readFile } from "fs/promises";
 
 import { runCli } from "./cli";
 import {
-    buildCliArgs,
+    buildCliSteps,
     isWebviewMessage,
+    readScanSummary,
+    type ScanSummary,
     type HostMessage,
     type WebviewMessage
 } from "./messages";
-import { applyPlanValidation, detectApiKeySource, pendingProjectMatches, readViewState } from "./state";
-import { watchPlanmap } from "./watcher";
+import { applyPlanValidation, detectApiKeySource, evolutionNodeIds, pendingProjectMatches, readViewState, sinceRefresh } from "./state";
+import { watchPlanmap, watchSources } from "./watcher";
 
 const PLAN_SKELETON = '{ "version": 1, "lenses": [], "features": [], "nodes": [] }\n';
 
@@ -117,6 +119,20 @@ class PlanMapPanel {
     private readonly disposables: vscode.Disposable[] = [];
     private readonly panel: vscode.WebviewPanel;
 
+    // Ids the last refresh added to the outline, so the view can point at
+    // them. Cleared once the user has been shown them.
+    private arrivals: string[] = [];
+
+    // What the last refresh's scan found in the code. Kept so a plain
+    // re-read does not wipe the report the user is still looking at.
+    private scan: ScanSummary | undefined;
+
+    // True while the code has moved on and the outline has not caught up.
+    private pendingScan = false;
+
+    // One check at a time: saves come in bursts and a scan reads every file.
+    private scanning = false;
+
     static show(context: vscode.ExtensionContext) {
         const folder = vscode.workspace.workspaceFolders?.[0];
 
@@ -168,6 +184,12 @@ class PlanMapPanel {
 
         this.disposables.push(watchPlanmap(projectRoot, () => this.postState()));
 
+        // Your code, watched continuously. "check" is local and cheap, so
+        // detection is free and automatic; turning what it finds into the
+        // outline calls a model, so that stays on the Refresh button where
+        // you can see it coming.
+        this.disposables.push(watchSources(projectRoot, () => this.rescan()));
+
         void this.render(webviewRoot);
     }
 
@@ -209,15 +231,46 @@ class PlanMapPanel {
             ? "local"
             : stored ? "stored" : await detectApiKeySource(this.projectRoot, process.env);
 
-        this.post({ type: "state", state: { ...state, aiKey } });
+        this.post({ type: "state", state: { ...state, aiKey, arrivals: this.arrivals, scan: this.scan, pendingScan: this.pendingScan } });
+    }
+
+    // What the code looks like now, against the last scan. Runs on every
+    // save, so it must never touch a model and never write anything: the
+    // only thing it changes is what the view is able to tell you.
+    private async rescan() {
+        if (this.scanning) return;
+        this.scanning = true;
+
+        try {
+            const result = await runCli(
+                ["check", this.projectRoot, "--json"],
+                this.cliOptions()
+            );
+
+            if (result.outcome === "failed") return;
+
+            const summary = readScanSummary(result.json);
+            if (!summary) return;
+
+            // Only speak up when something is actually waiting. A quiet
+            // save should stay quiet.
+            if (summary.changes === 0 && !this.scan) return;
+
+            this.scan = summary;
+            this.pendingScan = summary.changes > 0;
+            await this.postState();
+        } finally {
+            this.scanning = false;
+        }
     }
 
     private post(message: HostMessage) {
         void this.panel.webview.postMessage(message);
     }
 
-    // Every plan or code message becomes exactly one CLI invocation. The CLI
-    // owns .planmap/; the watcher and the re-read below pick up its writes.
+    // Every plan or code message becomes CLI invocations - one for most, two
+    // for a refresh. The CLI owns .planmap/; the watcher and the re-read below
+    // pick up its writes.
     private async onMessage(raw: unknown) {
         if (!isWebviewMessage(raw)) return;
 
@@ -244,8 +297,8 @@ class PlanMapPanel {
             return;
         }
 
-        const args = buildCliArgs(message, this.projectRoot);
-        if (!args) return;
+        const steps = buildCliSteps(message, this.projectRoot);
+        if (steps.length === 0) return;
 
         if (!(await this.confirm(message))) {
             this.post({ type: "cancelled", requestType: message.type });
@@ -254,11 +307,40 @@ class PlanMapPanel {
 
         const apiKey = await this.context.secrets.get(API_KEY_SECRET);
 
-        const result = await runCli(args, {
-            ...this.cliOptions(),
-            apiKey,
-            onLine: line => this.post({ type: "progress", requestType: message.type, line })
-        });
+        // What the outline holds before the run, so the view can mark what
+        // this refresh brought in.
+        const before = await evolutionNodeIds(this.projectRoot);
+
+        let result!: Awaited<ReturnType<typeof runCli>>;
+
+        if (message.type === "evolution") {
+            this.scan = undefined;
+            this.pendingScan = false;
+        }
+
+        for (const args of steps) {
+            result = await runCli(args, {
+                ...this.cliOptions(),
+                apiKey,
+                onLine: line => this.post({ type: "progress", requestType: message.type, line })
+            });
+
+            // What that step found in the code, so the view can report it.
+            // "check" exits 1 when it has findings, which is the interesting
+            // case, so the summary is read before the outcome is judged.
+            if (args[0] === "check") {
+                this.scan = readScanSummary(result.json) ?? undefined;
+            }
+
+            // Exit 1 is a finding, not a failure: "check" reports exactly that
+            // when the code has moved on, which is when the next step matters
+            // most. Only a real failure stops the run.
+            if (result.outcome === "failed") break;
+        }
+
+        if (result.outcome !== "failed") {
+            this.arrivals = await sinceRefresh(this.projectRoot, before);
+        }
 
         this.post({
             type: "cliResult",

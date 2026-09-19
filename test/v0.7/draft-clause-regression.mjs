@@ -26,7 +26,12 @@ import {
         params: 2,
         throwTypes: ["Error"],
         calls: ["verifyToken"],
-        numbers: [0]
+        numbers: [0],
+        // A named list's own facts. Present here because this block checks
+        // that the two agree for a declaration that HAS every fact - a real
+        // function has no entryCount, and both correctly say so.
+        entryCount: 12,
+        entries: ["first_question"]
     };
 
     const fields = [

@@ -45,11 +45,15 @@ export function createEvolutionView(el) {
     let projectName = "";
     let activeTag = null;
     let selectedId = null;
+    // Ids the last refresh brought in, so a reader can see what a scan found
+    // rather than re-reading the whole outline to look for it.
+    let arrivals = new Set();
     const toggled = new Map();
 
-    function setData(nextEvolution, nextProjectName) {
+    function setData(nextEvolution, nextProjectName, nextArrivals) {
         evolution = nextEvolution;
         projectName = nextProjectName ?? "";
+        if (Array.isArray(nextArrivals)) arrivals = new Set(nextArrivals);
         if (activeTag && !evolutionTags(evolution).includes(activeTag)) activeTag = null;
         render();
 
@@ -92,9 +96,12 @@ export function createEvolutionView(el) {
         for (const item of shown) el.tree.appendChild(buildRow(item, 0, colors));
 
         const visible = countNodes(shown);
+        const found = arrivals.size;
+        const newly = found > 0 ? ` · ${found} new since the last refresh` : "";
+
         el.hint.textContent = activeTag
             ? `Project Evolution · ${visible} of ${total} entries tagged ${activeTag} · read-only`
-            : `Project Evolution · ${total} ${total === 1 ? "entry" : "entries"} · derived from code, read-only`;
+            : `Project Evolution · ${total} ${total === 1 ? "entry" : "entries"}${newly} · derived from code, read-only`;
     }
 
     function renderTags() {
@@ -141,9 +148,12 @@ export function createEvolutionView(el) {
             const status = item.status ?? "";
             row.className = `evo-row status-${escapeHtml(status || "none")}${item.id === selectedId ? " selected" : ""}`;
             row.setAttribute("aria-label", `${item.title}, ${status || "no status"}`);
+            const isNew = arrivals.has(item.id);
+            if (isNew) row.classList.add("is-new");
             row.innerHTML = `${toggleMark}
                 <span class="evo-status-icon status-${escapeHtml(status || "none")}" title="${escapeHtml(status)}" aria-hidden="true">${evolutionIcon(status)}</span>
                 <span class="evo-title">${escapeHtml(item.title)}</span>
+                ${isNew ? '<span class="evo-new" title="Found by the last refresh">New</span>' : ""}
                 <span class="evo-tags">${item.tags.map(tag => `<span class="evo-tag"><span class="evo-tag-dot" style="background:${colors[tag]}"></span>${escapeHtml(tag)}</span>`).join("")}</span>`;
         }
 

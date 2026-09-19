@@ -5,13 +5,18 @@ const NUMERIC_FIELDS = new Set([
     "awaits",
     "catches",
     "emptyCatches",
-    "params"
+    "params",
+    // A named list's length. "The survey keeps nine questions" is a rule a
+    // plan can hold and verify checks, the same as "this throws at least once".
+    "entryCount"
 ]);
 
 const ARRAY_FIELDS = new Set([
     "throwTypes",
     "calls",
-    "numbers"
+    "numbers",
+    // What is in that list: routes, question ids, status names.
+    "entries"
 ]);
 
 const COMPARISON_OPERATORS = new Set([

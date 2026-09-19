@@ -395,16 +395,17 @@ function assertNoPlan(
         [
             "frontend",
             "backend",
-            "security",
-            "data",
-            "integration",
-            "platform"
+            "database",
+            "security"
         ]
     );
 }
 
 /*
- * 6. Invalid feature must fail closed.
+ * 6. A feature the plan does not have falls back to the one the scan
+ *    already recorded for that declaration, rather than costing the whole
+ *    batch its nodes. The stage is not guessed - it is read back from
+ *    evolution.json, which decided it during the scan.
  */
 {
     const root = project();
@@ -473,15 +474,40 @@ function assertNoPlan(
 
     assert.equal(
         result.code,
-        1
+        0,
+        `${result.stdout}\n${result.stderr}`
     );
 
-    assert.match(
-        result.stderr,
-        /unknown feature/
+    const recovered =
+        JSON.parse(
+            fs.readFileSync(
+                path.join(
+                    root,
+                    ".planmap",
+                    "plan.json"
+                ),
+                "utf8"
+            )
+        );
+
+    assert.equal(
+        recovered.nodes.length,
+        1,
+        "the node is kept, filed under the feature the scan gave it"
     );
 
-    assertNoPlan(root);
+    const feature =
+        recovered.features.find(
+            entry =>
+                entry.id ===
+                recovered.nodes[0].feature
+        );
+
+    assert.equal(
+        feature.name,
+        "getName",
+        "the scan's own answer, not the model's invention"
+    );
 }
 
 /*

@@ -53,7 +53,11 @@ const VALID_FACT_FIELDS = [
     "awaits",
     "catches",
     "emptyCatches",
-    "params"
+    "params",
+    // A named list's own facts. Kept in step with src/plan/evaluate.js,
+    // which decides what verify can actually check.
+    "entryCount",
+    "entries"
 ];
 
 
