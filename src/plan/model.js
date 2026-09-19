@@ -405,6 +405,20 @@ function validateNode(
         );
     }
 
+    // The behavioural area this step belongs to, as headings between its
+    // feature and itself - the same shape and the same name Project
+    // Evolution uses, because it is the same hierarchy.
+    if (
+        node.path !== undefined &&
+        !isStringArray(
+            node.path
+        )
+    ) {
+        errors.push(
+            `${prefix}.path must be an array of strings`
+        );
+    }
+
     if (
         node.lensTags !== undefined &&
         !isStringArray(

@@ -32,8 +32,7 @@ import {
 } from "../evolution/classification.js";
 
 import {
-    getEvolutionVocabulary,
-    getEvolutionStages
+    getEvolutionVocabulary
 } from "../evolution/classification.js";
 
 import {
@@ -56,6 +55,10 @@ import {
     canonicalLenses,
     lensCatalogue
 } from "../llm/lenses.js";
+
+import {
+    BEHAVIOUR_LINE
+} from "../llm/behaviour.js";
 
 
 // --------------------------------------------------
@@ -498,10 +501,12 @@ Every returned node MUST contain:
 TITLE AND INTENT QUALITY
 --------------------------------------------------
 
-A plan reads as the product's own story, in the order a user lives it.
-
-title = the step, named as the product behaves.
-Keep it under 7 words. No function names. No file names.
+A plan reads as the product's own story, in the order a user lives it. The
+reader is answering one question at every node: what is the system doing
+here? Not: what does this function sound like?
+${BEHAVIOUR_LINE}
+The title obeys that standard exactly. It also never contains a function
+name or a file name - those are printed underneath it as evidence.
 
 NEVER start a title with: Ensure, Handle, Manage, Process, Validate that,
 Verify that, Implement, Support.
@@ -600,19 +605,24 @@ all three are useful:
   DEPENDS ON IT    the perspective needs this step to have happened
   UNTOUCHED        the perspective genuinely passes through
 
-Take one step, "start the server", read four ways:
+Take one step from a parcel-delivery project - "open the depot API" - read
+four ways. These are shapes, not phrases to reuse; your words come from the
+declarations you were given:
 
-  "frontend": "Nothing renders until this is up"      <- depends on it
+  "frontend": "The tracking page waits for this"      <- depends on it
   "backend":  "Listen on the configured port"         <- does the work
   "database": "Open the connection pool"              <- does the work
-  "security": "No checks run before this"             <- untouched
+  "security": "Checks begin once a route is hit"      <- untouched
 
-And a pure layout helper, "hide every section":
+And a pure layout helper from the same project, "collapse the parcel list":
 
-  "frontend": "Clear the screen before the next question"
-  "backend":  "Runs in the browser, the server is idle"
-  "database":  "Nothing is read or written"
-  "security": "No input is accepted here"
+  "frontend": "Fold the list down to one row"
+  "backend":  "The browser folds it without the server"
+  "database":  "The rows are already on the page"
+  "security": "Anyone viewing the list may fold it"
+
+Notice that the last two do not begin with "No" or "Nothing", and could not
+be pasted onto a different step. That is the bar.
 
 A relationship reading is honest and it keeps the story whole. Silence is
 not: a step left without a reading falls back to its default name, and the
@@ -620,16 +630,61 @@ reader cannot tell it apart from one the perspective really owns. That is
 what made earlier outlines incoherent - five of seven steps in the frontend
 lens were backend steps wearing frontend clothes.
 
+EVERY READING IS A BEHAVIOUR LINE
+
+A reading is held to the same standard as a title - the whole standard,
+including the banned phrases. This is where vague lines have come from
+before, because a reading feels like a gloss and gets written like one.
+It is not a gloss. It is that perspective's own explanation of what the
+system does at this step, and it must stand on its own.
+
 EACH VOICE IS SPECIFIC IN ITS OWN WAY
 
   frontend  names what the person sees or does
-            "Press the Google sign-in button", not "handle the response"
+            "Press the book-a-collection button", not "handle the response"
   backend   names the route, the verb, the status code
-            "POST /auth/google, answer 200"
+            "Answer 200, or 409 on a duplicate", not "return status code"
   database  names the table, the column, the operation
-            "INSERT one row per answer, in one transaction"
+            "Insert one row per parcel, in one transaction",
+            not "handle the saving"
   security  names the check and what happens when it fails
-            "Reject a submission missing any answer"
+            "Reject a booking with no address", not "verify the data"
+
+Those are shapes from another project. Take the form; take your nouns from
+the declarations you were given.
+
+A relationship reading - DEPENDS ON IT or UNTOUCHED - is held to the SAME
+standard, and this is where it collapses.
+
+WRITE IT AS A POSITIVE SENTENCE. Do not open with "No" or "Nothing".
+
+That single rule is what keeps these distinct. A negative can always retreat
+into "nothing is read here", and padding it out to "no database rows are
+read here" changes nothing: it is still a true sentence about the LENS
+rather than about THIS step, so three steps in a row get the same line and
+the reader sees one node written three times. A positive sentence cannot
+retreat, because it has to say something.
+
+  DEPENDS ON IT  name the thing it waits for, and what it gets back
+  UNTOUCHED      say where the work happens INSTEAD, or where the data
+                 actually lives - the fact that makes this perspective idle
+                 at this step
+
+Shape only - the examples are from a parcel-delivery project so that you
+borrow the form and not the words:
+
+  step                  WRONG               RIGHT
+  Print the label       Nothing is read     The address came with the booking
+  Print the label       Nothing is called   The browser draws it without the
+                                            server
+  Print the label       No checks here      Anyone holding the booking may
+                                            print it
+  Book the courier      Wait for write      Wait for the courier to confirm
+  Start the depot API   No checks run here  Checks begin once a route is hit
+
+If you write the same reading twice in one lens, you have written that
+lens's stock phrase rather than this step's. Rewrite BOTH - the repeat is
+evidence that neither was about its own step.
 
 When the facts do not give you a table or a route, say what IS or IS NOT
 touched. "No rows are read here" is specific. "Handles data" is not.
@@ -641,9 +696,15 @@ Could someone who only ever read that lens follow this feature start to
 finish? If a line does not belong in that story, it is wrong - rewrite it as
 a relationship reading, do not delete it.
 
+Then read that lens's readings as a LIST, ignoring the order. If any two
+could swap places without a reader noticing, both are too vague. One
+declaration that carries several steps is where this goes wrong: each of its
+readings must name a different behaviour the facts show, never the same
+behaviour worded three ways.
+
 RULES
 
-- Under 8 words each. No function names, no file names.
+- Three to eight words each. No function names, no file names.
 - Grounded in the SUPPLIED FACTS. Never invent a route, table or check the
   facts do not show.
 - All four keys on every step: ${LENS_IDS.join(", ")}
@@ -754,6 +815,30 @@ what it must keep doing.
 
 
 --------------------------------------------------
+BEFORE YOU ANSWER - CHECK EVERY LINE
+--------------------------------------------------
+
+Take each title and each reading you have written and put six questions to
+it. A line that fails any of them is rewritten, not shipped.
+
+  1. Could a developer who has never opened this file say what this step
+     does, from this line alone?
+  2. Does it describe behaviour, or is it the function name in other words?
+  3. Is it specific enough that no neighbouring line could be swapped for
+     it?
+  4. Does every content word trace back to a supplied fact or to the
+     declaration's own name?
+  5. Read in step order, do the feature's lines tell what the software does
+     from start to finish?
+  6. Is the object named - a survey response, a JWT signature, the users
+     record - rather than "the data", "the send", "the request"?
+  7. Does it begin with a real verb? Scan every line you wrote for a
+     first word of Handle, Process, Manage, Execute, Perform, Run, Do,
+     Support, Implement or Ensure, and replace it with what actually
+     happens to the object.
+
+
+--------------------------------------------------
 THE ORDER OF THE FEATURES THEMSELVES
 --------------------------------------------------
 
@@ -777,10 +862,10 @@ Return this exact top-level shape:
       "identity": "file::name:type",
       "feature": "one of the supplied existing feature names",
       "step": 1,
-      "title": "the step, in the product's words",
+      "title": "verb + object: what the system does here",
       "intent": "one sentence: what must stay true",
-      "lensTags": ["server"],
-      "readings": { "interface": "…", "server": "…", "safety": "…", "data": "…" },
+      "lensTags": ["backend"],
+      "readings": { "frontend": "…", "backend": "…", "database": "…", "security": "…" },
       "rules": [
         {
           "kind": "behaviour",
@@ -802,6 +887,102 @@ Return this exact top-level shape:
 // 2-Rejects malformed batches.
 // 3-Ensures every rule targets its declaration.
 // --------------------------------------------------
+
+// --------------------------------------------------
+// A READING MUST BE ABOUT ITS OWN STEP
+// --------------------------------------------------
+// Two things the prompt asks for and cannot guarantee, enforced here. A
+// reading that fails either is removed, and the node falls back to its own
+// title in that lens - which is what a missing reading already does, and is
+// honest: the perspective had nothing of its own to say at this step.
+//
+// A title cannot fall back to anything, so a title that opens with a
+// placeholder verb is reported rather than removed. It is left for the
+// reader to revise.
+//
+// The prompt asks for readings that no neighbouring step could borrow, and
+// on a good run that is what comes back. On a bad one a lens falls into a
+// stock phrase - "Nothing is read or written" arrived twelve times in one
+// draft - and twelve nodes then look like one node repeated, which is the
+// single thing the plan graph most needs to avoid.
+//
+// A prompt cannot hold a uniqueness constraint across a whole response, so
+// this enforces it. The first node to use a line keeps it; every later node
+// loses it and falls back to its own title in that lens, which is already
+// what a missing reading does. A title is unique per node, so the reader
+// still sees a distinguishable line - it has simply stopped pretending the
+// perspective had something of its own to say.
+// --------------------------------------------------
+
+// Words that stand in for a verb nobody chose. The prompt bans them in
+// three places; roughly one line in twenty still opens with one.
+const PLACEHOLDER_VERBS =
+    /^(handle|process|manage|execute|perform|run|do|support|implement|ensure|deal with|take care of)\b/i;
+
+export function dropRepeatedReadings(
+    nodes,
+    dropped = []
+) {
+    const seen =
+        new Map();
+
+    for (
+        const node of nodes
+    ) {
+        if (
+            !node?.readings
+        ) {
+            continue;
+        }
+
+        if (
+            PLACEHOLDER_VERBS.test(String(node.title || "").trim())
+        ) {
+            dropped.push(
+                `${node.identity || node.id}: title "${node.title}" opens with a placeholder verb - say what happens to the object`
+            );
+        }
+
+        for (
+            const [lensId, reading] of Object.entries(node.readings)
+        ) {
+            if (
+                PLACEHOLDER_VERBS.test(String(reading).trim())
+            ) {
+                delete node.readings[lensId];
+
+                dropped.push(
+                    `${node.identity || node.id}: dropped ${lensId} reading "${reading}" - opens with a placeholder verb`
+                );
+
+                continue;
+            }
+
+            const key =
+                `${lensId}::${String(reading).trim().toLowerCase().replace(/[.\s]+$/, "")}`;
+
+            if (
+                seen.has(key)
+            ) {
+                delete node.readings[lensId];
+
+                dropped.push(
+                    `${node.identity || node.id}: dropped ${lensId} reading "${reading}" - already used by ${seen.get(key)}`
+                );
+
+                continue;
+            }
+
+            seen.set(
+                key,
+                node.identity || node.id
+            );
+        }
+    }
+
+    return nodes;
+}
+
 
 function normalizeBrownfieldNodes(
     parsed,
@@ -1654,28 +1835,19 @@ export async function draftBrownfield(
             plan
         );
 
-    // The Constellation is one node per feature, joined in order, so the
-    // plan's features are the journey's stages rather than its two or three
-    // broad capabilities. The classification has already found them, filed
-    // as the first heading under each capability, so they are promoted here
-    // instead of being asked for a second time.
+    // The plan's features are the outline's capabilities, and nothing else.
     //
-    // An authoritative plan keeps its own features: they were approved.
-    if (
-        !vocabulary.authoritative
-    ) {
-        const stages =
-            getEvolutionStages(
-                evolution
-            );
-
-        if (
-            stages.length > vocabulary.features.length
-        ) {
-            vocabulary.features =
-                stages;
-        }
-    }
+    // This used to promote each capability's first headings into features of
+    // their own, because the Constellation was the only level there was and
+    // two enormous features drew two boxes and explained nothing. The middle
+    // level does that job now, and doing both put the same hierarchy on two
+    // levels at once: a feature's parts appeared as siblings of the feature,
+    // so MPLAD's Constellation grew nodes called "Tables" and "Processors" -
+    // parts of Work Records standing beside it - and the plan's feature list
+    // stopped matching the outline's, which rejected 18 of 30 nodes on the
+    // next draft for naming "an unknown feature".
+    //
+    // A heading is a part of a capability. It belongs at Level 2.
 
     if (
         !Array.isArray(
@@ -2037,6 +2209,46 @@ export async function draftBrownfield(
                 ...nodes
             ]);
 
+        // Across the whole plan, not per batch: each batch is its own call
+        // and two of them reach for the same stock phrase readily. Preserved
+        // nodes go in first, so a line a person already approved is the one
+        // that keeps its place.
+        dropRepeatedReadings(
+            linked,
+            dropped
+        );
+
+        // --------------------------------------------------
+        // THE BEHAVIOURAL AREA
+        // --------------------------------------------------
+        // The outline already worked out which part of a feature each
+        // declaration belongs to. The plan was handed that as context for
+        // choosing a feature and then threw it away, so the Plan Graph had
+        // no middle level to show. It is recorded here under the name the
+        // outline uses, so both views read one hierarchy rather than two
+        // that drift apart.
+        //
+        // Over every node, not just this batch's. A node a person approved
+        // is preserved and never redrafted - which would have left it
+        // without an area for ever. Approving a step is a decision about
+        // what that step must do; it is not a decision to freeze where the
+        // step sits in the feature. PlanMap owns this field, copies it from
+        // the outline, and touches nothing else on a preserved node.
+        // --------------------------------------------------
+        for (
+            const node of linked
+        ) {
+            const headings =
+                groupByIdentity[node.identity]?.headings;
+
+            if (
+                Array.isArray(headings) &&
+                headings.filter(Boolean).length > 0
+            ) {
+                node.path = headings.filter(Boolean);
+            }
+        }
+
         // A feature no node belongs to draws an empty box on the
         // Constellation. Features are derived from the scan and the
         // vocabulary shifts between runs, so leftovers accumulate; a
@@ -2163,6 +2375,11 @@ Greenfield nodes MUST NOT contain:
 - rules
 
 Do NOT invent source files, function names, declarations, or implementation details.
+${BEHAVIOUR_LINE}
+A greenfield plan has no facts to lean on yet, so the evidence rule reads
+one step back: every content word must trace to what the brief actually
+asks for. Everything else in the standard holds unchanged - the named
+object, the banned phrases, the flow that reads start to finish.
 
 Every node must use:
 - status: "intended"

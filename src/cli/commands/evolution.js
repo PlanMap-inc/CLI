@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
+
 import {
     readEvents,
     groupTimeGroups,
@@ -18,7 +19,9 @@ import {
 
 import {
     isLocalLlm,
-    llmAvailable
+    llmAvailable,
+    LLM_ENDPOINT,
+    LLM_MODEL
 } from "../../llm/config.js";
 
 import {
@@ -131,7 +134,10 @@ async function classifyWithSplitting(
             report(
                 rateLimited
                     ? `rate limited; waiting ${waitSeconds}s before trying again.`
-                    : "the model did not answer; waiting 5s and trying again."
+                    // The error names the endpoint it could not reach, and
+                    // that is the whole diagnosis - a local URL here means
+                    // PlanMap never found your configuration. Do not swallow it.
+                    : `${error.message} Waiting 5s and trying again.`
             );
 
             await new Promise(
@@ -946,6 +952,14 @@ export async function runEvolution(
 
         console.log(
             `\nEvolution classification: ${newEvents.length} events in ${labelBatches.length} batch(es).`
+        );
+
+        // Which model is about to be asked. PlanMap falls back to a local
+        // Ollama when no endpoint is configured, and the only way to tell
+        // that had been to read the source - a run against a repo with no
+        // .env beside it looks identical to a configured one until it hangs.
+        console.log(
+            `Model: ${LLM_MODEL} at ${LLM_ENDPOINT}${isLocalLlm() ? " (local)" : ""}`
         );
 
         let totalClassified =

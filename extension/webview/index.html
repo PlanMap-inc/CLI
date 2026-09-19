@@ -11,14 +11,18 @@
 <div class="planmap-root">
 
   <nav class="app-rail" aria-label="PlanMap views">
-    <svg class="rail-mark" viewBox="0 0 2000 2000" width="30" height="30" fill="none" stroke="currentColor"
-         stroke-width="95" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="PlanMap">
-      <path d="M455 925 L665 545 Q710 480 795 480 L1180 480 Q1260 480 1300 545 L1545 925"/>
-      <path d="M455 925 L1290 925"/>
-      <path d="M1175 715 L1290 925"/>
-      <path d="M440 1080 L650 1435 Q700 1510 790 1510 L1180 1510 Q1260 1510 1305 1440 L1530 1080"/>
-      <path d="M670 1080 L1515 1080"/>
-      <path d="M670 1080 L835 1280"/>
+    <!-- The mark from logo.html, drawn heavier for the rail: the same six
+         strokes, nothing added. Weight and spacing move together - at 120 the
+         two halves close up on the original geometry, so the split between
+         them opened from 155 to 200 and the gap reads as it always did. -->
+    <svg class="rail-mark" viewBox="0 0 2000 2000" width="38" height="38" fill="none" stroke="currentColor"
+         stroke-width="120" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="PlanMap">
+      <path d="M455 900 L665 520 Q710 455 795 455 L1180 455 Q1260 455 1300 520 L1545 900"/>
+      <path d="M455 900 L1290 900"/>
+      <path d="M1175 690 L1290 900"/>
+      <path d="M440 1100 L650 1455 Q700 1530 790 1530 L1180 1530 Q1260 1530 1305 1460 L1530 1100"/>
+      <path d="M670 1100 L1515 1100"/>
+      <path d="M670 1100 L835 1300"/>
     </svg>
     <div class="rail-views" role="radiogroup" aria-label="View">
       <button class="nav-icon-btn active" data-nav="planmap" role="radio" aria-checked="true" title="Plan Graph" aria-label="Plan Graph">
@@ -46,27 +50,23 @@
 
       <div class="view" id="viewPlanmap">
         <div class="toolbar">
-          <div class="breadcrumb" id="breadcrumb"><span class="crumb current">Constellation</span></div>
-          <button class="scan-chip" id="scanChip" hidden title="Refresh evolution to fold these in">
-            <span class="scan-dot"></span><span id="scanChipText"></span>
-          </button>
+          <div class="toolbar-left">
+            <div class="breadcrumb" id="breadcrumb"><span class="crumb current">Constellation</span></div>
+            <button class="scan-chip" id="scanChip" hidden title="Refresh evolution to fold these in">
+              <span class="scan-dot"></span><span id="scanChipText"></span>
+            </button>
+          </div>
+          <!-- The perspective you are reading through, centred: it is a
+               property of what you are looking at, not an action. -->
+          <div class="lens-switch plan" id="lensSwitch" role="radiogroup" aria-label="Lens"></div>
+          <!-- What is left in the header are decisions about the plan, and
+               they sit at the right end. One approve button: its label and
+               its command follow where you are - the whole plan on the
+               Constellation, the active lens inside a feature. -->
           <div class="view-controls">
-            <!-- One approve button. Its label and its command follow where you
-                 are: the whole plan on the Constellation, the active lens
-                 inside a feature. main.js derives both from the lens object. -->
             <button class="icon-btn" id="approveBtn">Approve plan</button>
-            <button class="icon-btn" id="addNodeBtn" title="Add a step to this feature">+ Add step</button>
-            <div class="zoom-controls">
-              <button id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
-              <div class="zoom-label" id="zoomLabel">100%</div>
-              <button id="zoomInBtn" title="Zoom in" aria-label="Zoom in">+</button>
-              <button id="zoomResetBtn" class="reset-btn" title="Fit to content" aria-label="Fit to content">⤢</button>
-            </div>
             <button class="icon-btn" id="verifyBtn" title="Check every approved plan node against the code">Verify against code</button>
           </div>
-          <!-- The perspective control sits last in the row and floats right:
-               it is what you reach for most inside a feature. -->
-          <div class="lens-switch plan" id="lensSwitch" role="radiogroup" aria-label="Lens"></div>
         </div>
         <div class="compile-banner" id="compileBanner" role="status"></div>
         <div class="workspace">
@@ -76,12 +76,36 @@
               <div class="canvas-content" id="constellationContent"><svg class="edges" id="constellationEdges"></svg></div>
               <div class="flow-tag" id="constellationFlowTag" hidden><span class="arrow-up">↑</span> <span id="constellationFlowLabel">the order a person meets them</span></div>
             </div>
+            <!-- Level 2. A set, not a journey: behavioural areas are parts of
+                 a capability, not stages of it, so they are laid out to be
+                 surveyed at a glance rather than followed in order. -->
+            <div class="graph-canvas hidden" id="areasCanvas">
+              <div class="grid-layer" id="areasGrid"></div>
+              <div class="canvas-content" id="areasContent"><svg class="edges" id="areasEdges"></svg></div>
+              <div class="flow-tag areas-tag" id="areasTag" hidden><span id="areasTagText"></span></div>
+            </div>
             <div class="graph-canvas hidden" id="featureCanvas">
               <div class="grid-layer" id="featureGrid"></div>
               <div class="canvas-content" id="featureContent"><svg class="edges" id="featureEdges"></svg></div>
               <div class="flow-tag"><span class="arrow-up">↑</span> the order the steps happen</div>
             </div>
             <div class="empty-state" id="emptyState" hidden><div class="empty-card" id="emptyCard"></div></div>
+            <!-- Tools that act on the canvas live on the canvas, at the edge
+                 of the surface they change, rather than in the header with
+                 the decisions about the plan. -->
+            <div class="canvas-tools" id="canvasTools" aria-label="Canvas tools">
+              <button class="ct-btn" id="addNodeBtn" title="Add a step to this feature" aria-label="Add a step">
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+                  <rect x="2.5" y="4.5" width="9" height="6" rx="1.5"/><path d="M15.5 12v5M13 14.5h5"/>
+                </svg>
+              </button>
+              <div class="ct-sep"></div>
+              <button class="ct-btn" id="zoomInBtn" title="Zoom in" aria-label="Zoom in">+</button>
+              <div class="ct-zoom" id="zoomLabel">100%</div>
+              <button class="ct-btn" id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
+              <div class="ct-sep"></div>
+              <button class="ct-btn" id="zoomResetBtn" title="Fit to content" aria-label="Fit to content">⤢</button>
+            </div>
           </div>
           <aside class="impact-panel" id="impactPanel" aria-label="Node detail"><div class="impact-inner" id="impactInner"></div></aside>
         </div>
@@ -100,15 +124,15 @@
       <!-- Derived from code and read-only: an outline, no add, drag, edit or context menu. -->
       <div class="view hidden" id="viewEvolution" data-vscode-context='{"preventDefaultContextMenuItems": true}'>
         <div class="toolbar">
-          <div class="breadcrumb"><span class="crumb current" id="evoTitle">Project Evolution</span><span class="derived-chip">Read-only, derived from code</span></div>
-          <button class="scan-chip" id="evoScanChip" hidden title="Refresh evolution to fold these in">
-            <span class="scan-dot"></span><span id="evoScanChipText"></span>
-          </button>
-          <div class="lens-switch" id="tagSwitch" role="radiogroup" aria-label="Filter by tag" hidden></div>
+          <div class="toolbar-left">
+            <div class="breadcrumb"><span class="crumb current" id="evoTitle">Project Evolution</span><span class="derived-chip">Read-only, derived from code</span></div>
+            <button class="scan-chip" id="evoScanChip" hidden title="Refresh evolution to fold these in">
+              <span class="scan-dot"></span><span id="evoScanChipText"></span>
+            </button>
+          </div>
           <div class="view-controls">
+            <div class="lens-switch" id="tagSwitch" role="radiogroup" aria-label="Filter by tag" hidden></div>
             <button class="icon-btn" id="evoRefreshBtn" title="Scan the code again and rebuild Project Evolution">Refresh evolution</button>
-            <button class="icon-btn" id="evoExpandBtn">Expand all</button>
-            <button class="icon-btn" id="evoCollapseBtn">Collapse all</button>
           </div>
         </div>
         <div class="compile-banner" id="evoNotice" role="status"></div>

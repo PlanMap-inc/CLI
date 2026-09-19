@@ -46,6 +46,38 @@ export const LENS_QUESTIONS = {
     security: "What decides whether this is allowed?"
 };
 
+// --------------------------------------------------
+// WHEEL ZOOM
+// --------------------------------------------------
+// A wheel event says how far the wheel turned; the old code only read which
+// way. Every event applied a flat 10%, and a trackpad fires one every few
+// milliseconds, so a single two-finger flick compounded 1.1^30 - about 17x -
+// and the canvas shot to a corner.
+//
+// The factor now follows the distance actually travelled, and no single
+// event may change the scale by more than MAX_WHEEL_STEP, so a chunky mouse
+// notch and a flung trackpad both stay controllable.
+// --------------------------------------------------
+
+// deltaMode: 0 pixels, 1 lines, 2 pages. A mouse often reports lines.
+const DELTA_UNIT = { 0: 1, 1: 16, 2: 400 };
+
+const WHEEL_SENSITIVITY = 0.0015;
+const MAX_WHEEL_STEP = 1.08;
+
+export function zoomFactorFor({ deltaY = 0, deltaMode = 0, ctrlKey = false, metaKey = false } = {}) {
+    const travelled = deltaY * (DELTA_UNIT[deltaMode] ?? 1);
+
+    // Pinching a trackpad arrives as ctrl+wheel. That is a deliberate zoom,
+    // so it earns more scale per unit than an incidental scroll.
+    const gain = ctrlKey || metaKey ? 3 : 1;
+
+    const factor = Math.exp(-travelled * WHEEL_SENSITIVITY * gain);
+
+    return Math.min(MAX_WHEEL_STEP, Math.max(1 / MAX_WHEEL_STEP, factor));
+}
+
+
 export const STATUSES = [
     "intended", "approved", "implemented", "drifted", "error", "superseded"
 ];
@@ -150,13 +182,28 @@ export function buildConstellation(plan, verifiedStatus) {
         // glance, which "7 steps" alone never could.
         const present = new Set(members.flatMap(node => node.lensTags ?? []));
 
+        const shape = buildAreas(plan, feature.id, verifiedStatus);
+        const areaCount = shape.mode === "areas" ? shape.areas.length : 0;
+
         return {
             id: feature.id,
             step: index + 1,
             title: feature.name,
-            sub: `${count} ${count === 1 ? "step" : "steps"}`,
+            // Where a feature has a level inside it, the Constellation says
+            // so. It is the reader's first signal that this capability is
+            // something to explore rather than read straight through.
+            count,
+            sub: areaCount > 0
+                ? `${areaCount} ${areaCount === 1 ? "part" : "parts"} · ${count} steps`
+                : `${count} ${count === 1 ? "step" : "steps"}`,
             lenses: order.filter(id => present.has(id)),
             status: featureStatus(members, verifiedStatus),
+            // How many, not just that there is one: "2 of 83 drifted" and
+            // "40 of 83 drifted" are different situations and the first must
+            // not look like the second.
+            failing: members
+                .map(node => effectiveStatus(node, verifiedStatus))
+                .filter(status => status === "drifted" || status === "error").length,
             color: colorAt(FEATURE_PALETTE, index),
             x: snap(CX),
             y: snap(CTOP_Y + (features.length - 1 - index) * CSTEP_Y)
@@ -206,8 +253,34 @@ const TOP_Y = 60;
 const STEP_Y = 144;
 const CENTER_X = 300;
 
+// The grounding line under a title: the code the title is a claim about.
+// The title explains the behaviour and has to stand on its own; this says
+// where to go and check it, so it names the symbol AND the file it lives in.
+// "submitSurvey:function" made the reader carry the kind and guess the file;
+// "submitSurvey() · survey.controller.js" answers both.
+//
+// Identity is "path/to/file.js::name:kind". Only the file's basename is
+// shown - the full path is in the detail panel, and a graph node has no room
+// for "Backend/src/database/survey.controller.js".
 export function nodeSub(node) {
-    return node?.identity ? node.identity.split("::").pop() : "greenfield";
+    const identity = node?.identity;
+    if (!identity) return "greenfield";
+
+    const [file, symbol] = identity.split("::");
+    if (!symbol) return identity;
+
+    const parts = symbol.split(":");
+    const kind = parts.length > 1 ? parts[parts.length - 1] : "";
+    const name = parts.slice(0, -1).join(":") || symbol;
+
+    // A function reads as a call; anything else keeps its kind as the label,
+    // because "sections()" would claim a list is something you can invoke.
+    const called = kind === "function" || kind === "method"
+        ? `${name}()`
+        : `${name}${kind ? ` · ${kind}` : ""}`;
+
+    const where = (file || "").split("/").pop();
+    return where ? `${called} · ${where}` : called;
 }
 
 // A lens is a way of reading the journey, not a filter over it. Every step
@@ -215,8 +288,337 @@ export function nodeSub(node) {
 // shape, and switching perspective shows which parts of that one shape the
 // perspective speaks to. Removing the others would leave a different
 // journey each time, and a reader could not tell what was being left out.
-export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null) {
+// The order a set of steps happen in: longest path over their own links,
+// falling back to plan order. Shared, so the preview on a Level 2 card runs
+// the same way as the workflow that card opens - a preview in a different
+// order would be a different story about the same process.
+export function orderSteps(members) {
+    const ids = new Set(members.map(node => node.id));
+
+    const edges = [];
+    for (const node of members) {
+        for (const target of node.edgesOut ?? []) {
+            if (ids.has(target) && target !== node.id) edges.push({ from: node.id, to: target });
+        }
+    }
+
+    const layer = layerByLongestPath(members, edges);
+    return [...members].sort((a, b) => layer.get(a.id) - layer.get(b.id));
+}
+
+// How many steps a Level 2 card shows of the process it stands for. Enough to
+// tell the story, never enough to become the workflow: the whole point of the
+// level is that the detail is one deliberate click away.
+export const PREVIEW_STEPS = 4;
+
+// The story of a process, in four lines. Taken by walking its order from the
+// first step to the last and sampling evenly along the way, so the preview
+// always opens where the process opens and ends where it ends, with the
+// middle sampled rather than truncated. Nothing is invented and nothing is
+// merged - these are real steps, and every one of them is still in the
+// workflow behind the card.
+export function previewOf(members, limit = PREVIEW_STEPS) {
+    const ordered = orderSteps(members);
+    if (ordered.length === 0) return [];
+
+    // The step's OWN title, never the active lens's retelling of it. A lens
+    // tells the whole journey from one perspective, and most of what it says
+    // about a process it does not own is a relationship - "the browser waits
+    // for valid dates". True, and useless as the story of what Process does.
+    // The lens is a dimension here, carried by the dots and the counts; the
+    // preview is the process explaining itself.
+    const reading = node => node.title;
+
+    if (ordered.length <= limit) {
+        return ordered.map(node => ({ id: node.id, title: reading(node) }));
+    }
+
+    // First, last, and evenly spaced between: a beginning, a shape, an end.
+    const picks = [0];
+    for (let i = 1; i < limit - 1; i += 1) {
+        picks.push(Math.round((i * (ordered.length - 1)) / (limit - 1)));
+    }
+    picks.push(ordered.length - 1);
+
+    return [...new Set(picks)].map(index => ({
+        id: ordered[index].id,
+        title: reading(ordered[index])
+    }));
+}
+
+
+// Laying the areas out as a SET. A vertical chain would assert an order the
+// data does not have - Risk Detection does not happen "before" Analytics -
+// and would make Level 2 look like Level 1 and Level 3 with a different node
+// count, which is the thing this redesign most needs to avoid. A reader
+// surveys here; they follow above and below.
+export const AREA_W = 268;
+export const AREA_H = 214;
+const AREA_GAP_X = 34;
+const AREA_GAP_Y = 30;
+
+export function layoutAreas(areas, canvasWidth = 900) {
+    const perRow = Math.max(1, Math.min(3, Math.floor(canvasWidth / (AREA_W + AREA_GAP_X)) || 1));
+
+    return areas.map((area, index) => {
+        const row = Math.floor(index / perRow);
+        const column = index % perRow;
+        const inRow = Math.min(perRow, areas.length - row * perRow);
+
+        // Each row is centred on itself, so a last row holding one card sits
+        // under the middle rather than hanging off to the left.
+        const rowWidth = inRow * AREA_W + (inRow - 1) * AREA_GAP_X;
+
+        return {
+            ...area,
+            x: snap(-rowWidth / 2 + column * (AREA_W + AREA_GAP_X) + AREA_W / 2 + 300),
+            y: snap(60 + row * (AREA_H + AREA_GAP_Y))
+        };
+    });
+}
+
+
+// --------------------------------------------------
+// LEVEL 2: BEHAVIOURAL AREAS
+// --------------------------------------------------
+// A feature with a hundred declarations does not become cluttered when it is
+// drawn flat - at one node per row it becomes 15,552px tall, which fits the
+// canvas at 6% zoom, and a node ten pixels high renders nothing a person can
+// read. The middle level exists to make that feature openable.
+//
+// It invents nothing. Every node carries the headings the outline already
+// worked out for it, under the same name Project Evolution uses, so both
+// views read one hierarchy rather than two that drift apart. What happens
+// here is presentation: which of those headings are worth drawing as a
+// level, and when there is no level worth drawing at all.
+// --------------------------------------------------
+
+// A feature a reader can take in flat. At the row pitch the canvas uses, ten
+// rows fit at 60% zoom and read comfortably; past a dozen the feature starts
+// costing zoom, and past that it costs legibility. The same number bounds an
+// area, because an area you cannot read when you open it has moved the
+// problem rather than solved it.
+export const FLAT_LIMIT = 12;
+
+// The area a step belongs to: the first heading between its feature and
+// itself. Deeper headings are not a second level here - in the measured data
+// they almost always hold exactly one declaration, so drawing them would
+// spend a level of navigation to reach a single node. They stay as ordering
+// inside the area.
+export function areaOf(node) {
+    const head = (node?.path ?? []).find(step => typeof step === "string" && step.trim());
+    return head ? head.trim() : null;
+}
+
+// How a feature should open, and what its parts are.
+//
+// Returns mode "flat" when the feature is small enough to read whole, or
+// when its grouping is not good enough to help - a single heading holding
+// everything is not a level, it is a click. The reason is carried so the
+// interface can say which it was rather than silently flattening.
+export function buildAreas(plan, featureId, verifiedStatus) {
     const members = nodesInFeature(plan, featureId);
+    const lensOrder = (plan?.lenses ?? []).map(lens => lens.id);
+
+    const byName = new Map();
+    const loose = [];
+
+    for (const node of members) {
+        const name = areaOf(node);
+        if (!name) { loose.push(node); continue; }
+        if (!byName.has(name)) byName.set(name, []);
+        byName.get(name).push(node);
+    }
+
+    // An area holding one declaration restates that declaration and costs a
+    // level to reach it, so it stops being a card of its own and joins the
+    // steps the outline never placed.
+    for (const [name, nodes] of [...byName]) {
+        if (nodes.length === 1) {
+            loose.push(nodes[0]);
+            byName.delete(name);
+        }
+    }
+
+    const areas = [...byName].map(([name, nodes], index) => {
+        const statuses = nodes.map(node => effectiveStatus(node, verifiedStatus));
+        const present = new Set(nodes.flatMap(node => node.lensTags ?? []));
+
+        return {
+            id: `area:${name}`,
+            name,
+            count: nodes.length,
+            // Worst-wins, as the Constellation already does for a feature: a
+            // problem must never be hidden by aggregation. The count comes
+            // with it, because one drifted step of twenty-one and fourteen of
+            // twenty-one are different situations.
+            status: featureStatus(nodes, verifiedStatus),
+            failing: statuses.filter(status => status === "drifted" || status === "error").length,
+            lenses: lensOrder.filter(id => present.has(id)),
+            // How much of each perspective's own work lands here. Counts, not
+            // a filter: a lens must never remove an area, or a reader
+            // concludes that part of the feature does not exist from that
+            // perspective.
+            lensCounts: Object.fromEntries(
+                lensOrder.map(id => [id, nodes.filter(node => (node.lensTags ?? []).includes(id)).length])
+            ),
+            // An area past the limit reproduces the problem the level exists
+            // to solve. It is shown at its real size and said to be large,
+            // never split on something arbitrary.
+            oversized: nodes.length > FLAT_LIMIT,
+            // What this process actually does, in four steps. A card that
+            // says only "28 steps" tells a reader the process is large and
+            // nothing about what it is for.
+            preview: previewOf(nodes),
+            index,
+            nodes
+        };
+    });
+
+    // A feature too big to read whole is never opened as a chain, whatever
+    // its grouping looks like. One named part is a thin structure and it
+    // still beats dropping eighty steps on the reader: they descend by
+    // choosing rather than by scrolling.
+    //
+    // The exception is a feature the outline placed nothing in. A single card
+    // holding every step is a click that reveals nothing, so there the
+    // feature opens flat - inventing parts would be worse than a long chain.
+    const large = members.length > FLAT_LIMIT;
+    const mode = large && areas.length > 0 ? "areas" : "flat";
+
+    const reason = mode === "areas"
+        ? null
+        : !large
+            ? "small"
+            : "ungrouped";
+
+    // Steps the outline never placed are a navigation point like any other,
+    // NOT a scattering of declarations beside the cards. Drawing them
+    // individually would answer "how is this feature organised?" and "what
+    // exactly happens here?" on one screen, which is the crowding this level
+    // exists to remove. The card says what it is rather than borrowing a
+    // behavioural name it has not earned.
+    if (mode === "areas" && loose.length > 0) {
+        areas.push({
+            id: "area:",
+            name: "Not yet grouped",
+            ungrouped: true,
+            count: loose.length,
+            status: featureStatus(loose, verifiedStatus),
+            failing: loose
+                .map(node => effectiveStatus(node, verifiedStatus))
+                .filter(status => status === "drifted" || status === "error").length,
+            lenses: lensOrder.filter(id => loose.some(node => (node.lensTags ?? []).includes(id))),
+            lensCounts: Object.fromEntries(
+                lensOrder.map(id => [id, loose.filter(node => (node.lensTags ?? []).includes(id)).length])
+            ),
+            oversized: loose.length > FLAT_LIMIT,
+            preview: previewOf(loose),
+            index: areas.length,
+            nodes: loose
+        });
+    }
+
+    return {
+        mode,
+        reason,
+        total: members.length,
+        areas: areas.sort((a, b) => (a.ungrouped ? 1 : b.ungrouped ? -1 : b.count - a.count)),
+        loose,
+        // Which areas feed which, from the steps' own links. The reader
+        // learns the parts of a feature and how they connect, rather than
+        // getting a menu.
+        edges: areaEdges(members)
+    };
+}
+
+// Links between areas, derived from the steps' own edgesOut - the rule the
+// Constellation already applies between features, one level down. A step
+// whose next step lives in another area is what joins them.
+function areaEdges(members) {
+    const areaById = new Map(members.map(node => [node.id, areaOf(node)]));
+
+    const seen = new Set();
+    const edges = [];
+
+    for (const node of members) {
+        const from = areaOf(node);
+        if (!from) continue;
+
+        for (const target of node.edgesOut ?? []) {
+            const to = areaById.get(target);
+            const key = `${from}->${to}`;
+
+            if (!to || to === from || seen.has(key)) continue;
+
+            seen.add(key);
+            edges.push({ from: `area:${from}`, to: `area:${to}` });
+        }
+    }
+
+    return edges;
+}
+
+// Which card each step of a feature ended up on, by step id. One lookup, so
+// every part of the view agrees about where a step lives.
+export function cardOf(plan, featureId, verifiedStatus) {
+    const byId = new Map();
+
+    for (const area of buildAreas(plan, featureId, verifiedStatus).areas) {
+        for (const node of area.nodes) byId.set(node.id, area.name);
+    }
+
+    return byId;
+}
+
+// Where a step's journey continues when the next step is on another card.
+// Hiding this would be the worst thing the hierarchy could do: following one
+// request the whole way through is what the Plan Graph is for, so a step
+// that leads out of the part says where it leads.
+export function exitsFrom(all, insideIds, cards) {
+    const titleById = new Map(all.map(node => [node.id, node.title]));
+
+    const exits = new Map();
+
+    for (const node of all) {
+        if (!insideIds.has(node.id)) continue;
+
+        for (const target of node.edgesOut ?? []) {
+            if (insideIds.has(target)) continue;
+
+            const to = cards.get(target);
+            if (!to) continue;
+
+            exits.set(node.id, { area: to, nodeId: target, title: titleById.get(target) });
+        }
+    }
+
+    return exits;
+}
+
+
+export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null, areaName = null) {
+    const all = nodesInFeature(plan, featureId);
+
+    // Level 3 is the same view over one area's steps. Nothing about how a
+    // step is drawn changes - it is reached one step later, holding ten
+    // steps instead of a hundred.
+    // Scoped to one card, and to the very steps that card counted. "" is the
+    // holding place; anything else is a named part. Membership comes from
+    // buildAreas rather than being worked out a second time here, because a
+    // heading that held one declaration is folded into the holding place and
+    // asking areaOf() again would disagree with the card the reader clicked.
+    const members = areaName === null
+        ? all
+        : (buildAreas(plan, featureId, verifiedStatus).areas
+            .find(area => (area.ungrouped ? "" : area.name) === areaName)?.nodes ?? []);
+
+    // Where a step's journey leaves this area, worked out from the whole
+    // feature so the link is not lost by scoping the view to part of it.
+    const exits = areaName === null
+        ? new Map()
+        : exitsFrom(all, new Set(members.map(node => node.id)), cardOf(plan, featureId, verifiedStatus));
+
     const ids = new Set(members.map(node => node.id));
 
     const edges = [];
@@ -229,12 +631,9 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
         }
     }
 
-    const layer = layerByLongestPath(members, edges);
-
-    // Stable sort keeps plan order within a layer.
     // ponytail: one column, so an edge that skips a row is drawn behind the
     // node between; route around it if plans with branches make that confusing.
-    const ordered = [...members].sort((a, b) => layer.get(a.id) - layer.get(b.id));
+    const ordered = orderSteps(members);
 
     // A perspective renames the step in its own words. Same step, same
     // place, same rules - only the wording changes, which is the whole
@@ -267,6 +666,9 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
         y: placed(node) ? node.y : snap(TOP_Y + (ordered.length - 1 - row) * STEP_Y),
         // Where the layout would have put it, so "reset position" can.
         moved: placed(node),
+        // Set when this step's next step lives in another area, so the edge
+        // that leaves the view is still shown and can still be followed.
+        exit: exits.get(node.id) ?? null,
         source: node
     }));
 

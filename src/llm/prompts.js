@@ -22,6 +22,11 @@ import {
     lensCatalogue
 } from "./lenses.js";
 
+// One standard for every human-readable line PlanMap generates. An outline
+// label says what HAPPENED rather than what the code does, but the sentence
+// underneath it is built the same way: a real verb and a named object.
+import { BEHAVIOUR_LINE } from "./behaviour.js";
+
 
 export function buildEvolutionPrompt(
     events,
@@ -171,7 +176,27 @@ A heading MUST NOT:
   controller, service
 - be a file or folder name
 - be a bucket anything fits in: Utilities, Helpers, Core, General, Common,
-  Shared, Misc, Operations, Management, Handling, Processing, Logic
+  Shared, Misc, Operations, Management, Handling, Processing, Logic,
+  Setup, Main, Details, Directory, Tables, Processors, Workflow, Records
+- END in a structural word. The last word of an English noun phrase is its
+  head, so "Report API" is an API and "Risk Service" is a service - both name
+  a layer with a topic attached. Reject a heading ending in: API, Service,
+  Controller, Handler, Manager, Module, Component, Layer, Utils, Helpers,
+  Tables, Models, Views, Routes, Endpoints.
+
+  WRONG              RIGHT
+  Report API         Report delivery
+  Records API        Record lookup
+  Setup              Server start-up
+  Main               whatever it actually does
+  Details            Finding detail
+  Directory          Staff lookup
+  Tables             Table rendering
+  Processors         Record processing
+
+  Those eight are real headings this prompt has produced. Each one named
+  where the code lives or admitted nothing was decided. A heading names a
+  RESPONSIBILITY: what part of the feature's work happens here.
 
 Each heading is 1 to 3 words, in the product's language.
 
@@ -267,6 +292,19 @@ they say exactly what differs. Then say what that means for the product.
   was equally true before the change and tells a reader nothing.
 
 Under 8 words, always.
+
+HOW THE LABEL IS BUILT
+
+A label opens with what happened - Added, Removed, or the movement itself -
+and the rest of it is a behaviour line: a real verb and a NAMED object.
+${BEHAVIOUR_LINE}
+Applied to labels, that means the object of "Added" is never a mechanism:
+
+  WRONG                        RIGHT
+  Added request handling       Added the survey submission endpoint
+  Added data processing        Added the nine-question survey order
+  Added response handling      Added the 409 reply for a repeat submission
+  Removed the old logic        Removed the unhashed password check
 
 A declaration of kind "data" is a named list or table. Its label says what
 the list is for and how much is in it - "Added the nine-question survey

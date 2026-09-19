@@ -16,9 +16,10 @@ for (const file of ["evolution-view.js", "evolution.js"]) {
 
 const view = read("evolution-view.js");
 
-// Imports only the pure models.
+// Imports only the pure models and the colour helper - nothing that can
+// reach the host or write a file.
 const imports = [...view.matchAll(/from\s+["']([^"']+)["']/g)].map(m => m[1]).sort();
-assert.deepEqual(imports, ["./evolution.js", "./model.js"]);
+assert.deepEqual(imports, ["./evolution.js", "./model.js", "./paint.js"]);
 
 // No add, drag, context menu or editing of any kind.
 const forbidden = [
@@ -42,7 +43,7 @@ assert.match(section.slice(0, 200), /data-vscode-context='\{"preventDefaultConte
 // and rebuilds - it never edits the outline.
 assert.deepEqual(
     [...section.matchAll(/<button[^>]*id="([^"]+)"/g)].map(m => m[1]),
-    ["evoScanChip", "evoRefreshBtn", "evoExpandBtn", "evoCollapseBtn"]
+    ["evoScanChip", "evoRefreshBtn"]
 );
 
 // Refresh re-derives evolution from the code - the only message the view's toolbar sends.

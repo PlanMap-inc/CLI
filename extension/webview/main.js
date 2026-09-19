@@ -1,4 +1,8 @@
 import {
+    AREA_W,
+    AREA_H,
+    buildAreas,
+    layoutAreas,
     NODE_W,
     NODE_H_EST,
     buildConstellation,
@@ -20,6 +24,7 @@ import {
     railModel,
     statusClass,
     statusDotStyle,
+    zoomFactorFor,
     verifyResultFor
 } from "./model.js";
 import { createEvolutionView } from "./evolution-view.js";
@@ -52,7 +57,55 @@ function scaledAboutCenter(view, factor, w, h) {
 
 
 // ================= GRAPH (the demo's createGraph, fed real data) =================
+// --------------------------------------------------
+// A BEHAVIOURAL AREA, AS A CARD
+// --------------------------------------------------
+// Deliberately not a step. It carries no code identity, because an area is
+// not a code entity and giving it a file name would be a lie about what it
+// is - the identity line is what tells a reader they have reached Level 3.
+// It carries the one thing a reader needs before deciding to open it: how
+// much is inside.
+// --------------------------------------------------
+
+function areaCard(n) {
+    const colors = lensColors(plan());
+
+    // Aggregation loses the count, and the count is the actionable part: one
+    // drifted step of twenty-one and fourteen of twenty-one are different
+    // situations and the first must not look like the second.
+    const state = n.failing > 0
+        ? `${n.failing} of ${n.count} ${n.status}`
+        : n.status;
+
+    // The card's subject is what this process DOES. A name and a number say
+    // the process is large and nothing about what it is for, so the four
+    // steps are the body of the card and the count is a footnote to them.
+    const hidden = n.count - (n.preview?.length ?? 0);
+
+    const flow = (n.preview ?? []).map((step, index) => `
+        ${index > 0 ? '<span class="pv-arrow" aria-hidden="true">↓</span>' : ""}
+        <span class="pv-step">${escapeHtml(step.title)}</span>`).join("");
+
+    return `
+        <div class="area-head">
+            <div class="title">${escapeHtml(n.title)}</div>
+            ${n.oversized ? '<span class="area-large" title="Large enough to be hard to read when opened">large</span>' : ""}
+        </div>
+        <div class="area-flow">${flow}</div>
+        <div class="area-foot">
+            <span class="area-count">${n.count} steps${hidden > 0 ? `<em> · ${hidden} more inside</em>` : ""}</span>
+            ${n.lenses?.length ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>` : ""}
+        </div>
+        <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color)}"></span>${escapeHtml(state)}</div>`;
+}
+
+
 function createGraph(canvasEl, gridEl, contentEl, opts) {
+    // The box this graph's cards occupy. Fitting, edge anchors and fly-to all
+    // measure from it, so a graph drawing a different card must say so.
+    const CARD_W = opts.variant === "area" ? AREA_W : NODE_W;
+    const CARD_H = opts.variant === "area" ? AREA_H : NODE_H_EST;
+
     let nodes = [], edges = [];
     let selectedId = null, onSelect = null, onOpen = null, dotColor = "var(--accent-a)", edgeColor = "var(--edge)";
     let panX = 0, panY = 0, scale = 1, panning = false, panStart = null, panOrigin = null;
@@ -76,19 +129,25 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     function renderNode(n) {
         const el = document.createElement("button");
         el.type = "button";
-        el.className = `gnode ${statusClass(n.status)}` + (n.id === selectedId ? " selected" : "");
+        el.className = `gnode ${statusClass(n.status)}`
+            + (opts.variant === "area" ? " area" : "")
+            + (n.ungrouped ? " ungrouped" : "")
+            + (n.id === selectedId ? " selected" : "");
         el.dataset.id = n.id;
         el.style.left = n.x + "px";
         el.style.top = n.y + "px";
         el.setAttribute("aria-label", `${n.title}, ${n.status}`);
-        el.innerHTML = `
+        el.innerHTML = opts.variant === "area"
+            ? areaCard(n)
+            : `
             <div class="handle top"></div>
             <div class="bar" data-style="background:${n.color || dotColor}"></div>
             ${n.step ? `<div class="step">${n.step}</div>` : ""}
             <div class="title">${escapeHtml(n.title)}</div>
-            ${n.sub ? `<div class="sub">${escapeHtml(n.sub)}</div>` : ""}
+            ${n.sub ? `<div class="sub" title="${escapeHtml(n.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
             ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
-            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.status}</div>
+            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.failing > 0 ? `${n.failing} of ${n.count ?? ""} ${n.status}`.replace("  ", " ") : n.status}</div>
+            ${n.exit ? `<div class="exit" title="Continues in ${escapeHtml(n.exit.area)}: ${escapeHtml(n.exit.title ?? "")}">↗ ${escapeHtml(n.exit.area)}</div>` : ""}
             <div class="handle bottom"></div>`;
         paint(el);
         // Dragging moves the step; a click that never moved opens it. The
@@ -136,7 +195,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         if (!n) return;
         const tb = document.createElement("div");
         tb.className = "node-toolbar";
-        tb.style.left = (n.x + NODE_W - 70) + "px";
+        tb.style.left = (n.x + CARD_W - 70) + "px";
         tb.style.top = (n.y - 34) + "px";
         tb.innerHTML = '<button data-act="rename" title="Rename this step">✎</button>'
             + '<button data-act="detail" title="Show intent, rules and history">ⓘ</button>'
@@ -154,6 +213,10 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
     function elbowPath(x1, y1, x2, y2) { const midY = (y1 + y2) / 2; return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`; }
     function elbowPathH(x1, y1, x2, y2) { const midX = (x1 + x2) / 2; return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`; }
+    // Areas are a set, not a column: a link between two of them says only
+    // "this part feeds that one", so it runs straight between their centres
+    // and sits behind the cards rather than routing around them.
+    function straightPath(x1, y1, x2, y2) { return `M ${x1} ${y1} L ${x2} ${y2}`; }
 
     function drawEdges() {
         const svgEl = contentEl.querySelector("svg.edges");
@@ -161,9 +224,11 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         edges.forEach(e => {
             const a = nodes.find(n => n.id === e.from), b = nodes.find(n => n.id === e.to);
             if (!a || !b) return;
-            const d = opts.horizontal
-                ? elbowPathH(a.x + NODE_W, a.y + NODE_H_EST / 2, b.x, b.y + NODE_H_EST / 2)
-                : elbowPath(a.x + NODE_W / 2, a.y, b.x + NODE_W / 2, b.y + NODE_H_EST);
+            const d = opts.variant === "area"
+                ? straightPath(a.x + CARD_W / 2, a.y + CARD_H / 2, b.x + CARD_W / 2, b.y + CARD_H / 2)
+                : opts.horizontal
+                    ? elbowPathH(a.x + CARD_W, a.y + CARD_H / 2, b.x, b.y + CARD_H / 2)
+                    : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + CARD_H);
             markup += `<path class="edge-path" d="${d}" data-style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
         });
         svgEl.innerHTML = markup;
@@ -179,7 +244,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     canvasEl.addEventListener("wheel", e => {
         e.preventDefault();
         const rect = canvasEl.getBoundingClientRect();
-        zoomAround(e.clientX - rect.left, e.clientY - rect.top, e.deltaY < 0 ? 1.1 : 0.9);
+        zoomAround(e.clientX - rect.left, e.clientY - rect.top, zoomFactorFor(e));
     }, { passive: false });
     document.addEventListener("mousemove", e => {
         if (panning) { panX = panOrigin.x + (e.clientX - panStart.x); panY = panOrigin.y + (e.clientY - panStart.y); applyTransform(); }
@@ -232,8 +297,8 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         const rect = canvasEl.getBoundingClientRect();
         if (!nodes.length) return { panX: rect.width / 2, panY: rect.height / 2, scale: 1 };
         const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
-        const minX = Math.min(...xs), maxX = Math.max(...xs) + NODE_W;
-        const minY = Math.min(...ys), maxY = Math.max(...ys) + NODE_H_EST;
+        const minX = Math.min(...xs), maxX = Math.max(...xs) + CARD_W;
+        const minY = Math.min(...ys), maxY = Math.max(...ys) + CARD_H;
         const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
         const pad = 48;
         // Never fit so small that the titles stop being readable. A long
@@ -263,7 +328,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         const rect = canvasEl.getBoundingClientRect();
         if (!n) return { panX, panY, scale };
         const s = scale * factor;
-        const cx = n.x + NODE_W / 2, cy = n.y + NODE_H_EST / 2;
+        const cx = n.x + CARD_W / 2, cy = n.y + CARD_H / 2;
         return { panX: rect.width / 2 - cx * s, panY: rect.height / 2 - cy * s, scale: s };
     }
 
@@ -292,7 +357,12 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
 // ================= STATE =================
 let state = null;
-let inFeature = false;
+// Where the reader is. The journey is System -> Feature -> Behaviour ->
+// Code, and the middle level appears only where a feature is large enough
+// to need it - a feature a reader can take in at once must not cost an
+// extra click to open.
+let level = "constellation";   // "constellation" | "areas" | "steps"
+let currentAreaName = null;
 let currentFeatureId = null;
 let currentLensId = null;
 let flying = false;
@@ -300,6 +370,9 @@ let constellationHome = null;
 
 const constellationCanvas = document.getElementById("constellationCanvas");
 const featureCanvas = document.getElementById("featureCanvas");
+const areasCanvas = document.getElementById("areasCanvas");
+const areasTag = document.getElementById("areasTag");
+const areasTagText = document.getElementById("areasTagText");
 const breadcrumb = document.getElementById("breadcrumb");
 const lensSwitch = document.getElementById("lensSwitch");
 const statusHint = document.getElementById("statusHint");
@@ -311,6 +384,12 @@ const emptyCard = document.getElementById("emptyCard");
 const constellationFlowTag = document.getElementById("constellationFlowTag");
 const constellationFlowLabel = document.getElementById("constellationFlowLabel");
 
+// Level 2. Read-only and no handles: an area is not something you drag,
+// rename or delete - it is a view onto steps that are. Authoring stays where
+// the declarations are.
+const areasGraph = createGraph(areasCanvas, document.getElementById("areasGrid"), document.getElementById("areasContent"), {
+    id: "areas", showToolbar: false, hideHandles: true, variant: "area"
+});
 const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), { id: "const", showToolbar: false, hideHandles: true });
 // Authoring lives in Feature Space, where the steps are. Each callback is
 // one CLI command: the canvas never writes plan.json itself, so a step moved
@@ -360,7 +439,13 @@ function renameStep(node) {
     el.addEventListener("blur", () => finish(true), { once: true });
 }
 
-function activeGraph() { return inFeature ? featureGraph : constellationGraph; }
+const inFeature = () => level !== "constellation";
+
+function activeGraph() {
+    if (level === "steps") return featureGraph;
+    if (level === "areas") return areasGraph;
+    return constellationGraph;
+}
 function syncZoomLabel() { zoomLabel.textContent = Math.round(activeGraph().scale * 100) + "%"; }
 
 function plan() { return state?.plan; }
@@ -379,9 +464,41 @@ function mountConstellation() {
     constellationGraph.setData({ nodes, edges, edgeColor: "var(--text-low)", onOpen: n => enterFeature(n.id) });
 }
 
+function remountLevel() {
+    if (level === "areas") mountAreas();
+    else if (level === "steps") mountFeature();
+}
+
+function mountAreas() {
+    const p = plan();
+    const shape = buildAreas(p, currentFeatureId, state.verifiedStatus);
+    const colors = lensColors(p);
+    const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
+    const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
+
+    // Every card here is a way in, never a declaration. This screen answers
+    // one question - how is this feature organised - and a step drawn beside
+    // the cards would start answering the next one too.
+    const placed = layoutAreas(
+        shape.areas.map(area => ({ ...area, title: area.name })),
+        areasCanvas.clientWidth || 900
+    );
+
+    areasTag.hidden = placed.length === 0;
+    areasTagText.textContent = `${shape.total} steps in ${placed.length} ${placed.length === 1 ? "part" : "parts"}`;
+
+    areasGraph.setData({
+        nodes: placed.map(n => ({ ...n, color })),
+        edges: shape.edges,
+        dotColor: color,
+        edgeColor: currentLensId ? color : "var(--edge)",
+        onOpen: n => enterArea(n.id)
+    });
+}
+
 function mountFeature() {
     const p = plan();
-    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus, currentLensId);
+    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus, currentLensId, currentAreaName);
     const colors = lensColors(p);
     const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
     const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
@@ -395,102 +512,233 @@ function mountFeature() {
     });
 }
 
+// The perspectives this feature actually has work of its own in. A lens with
+// nothing here is not a choice worth offering - it is an empty room with a
+// door on the switch - so it is left off entirely rather than shown at zero.
+function coveredLenses() {
+    return lensCoverage(plan(), currentFeatureId).filter(lens => !lens.empty);
+}
+
 function renderLensSwitch() {
-    const lenses = lensCoverage(plan(), currentFeatureId);
+    const lenses = coveredLenses();
     const colors = lensColors(plan());
 
-    // An empty lens stays on the switch, dimmed and counted: "nothing here
-    // from this perspective" is a fact about the code worth reading.
     lensSwitch.innerHTML = lenses.map(lens => `
-        <button class="lens-btn${lens.id === currentLensId ? " active" : ""}${lens.empty ? " empty" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" data-style="--swatch:${colors[lens.id]}" title="${lens.empty ? "Nothing in this feature is tagged " + escapeHtml(lens.id) : escapeHtml(String(lens.count)) + " of this feature's steps"}">
+        <button class="lens-btn${lens.id === currentLensId ? " active" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" data-style="--swatch:${colors[lens.id]}" title="${escapeHtml(String(lens.count))} of this feature's steps">
             <span class="swatch"></span>${escapeHtml(lens.label)}<span class="lens-count">${lens.count}</span>
         </button>`).join("");
     paint(lensSwitch);
-    lensSwitch.classList.toggle("show", inFeature && lenses.length > 0);
+    lensSwitch.classList.toggle("show", inFeature() && lenses.length > 0);
     renderApprove();
     lensSwitch.querySelectorAll(".lens-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             currentLensId = btn.dataset.lens;
             renderLensSwitch();
-            mountFeature();
-            featureGraph.fitToContent();
+            // Remount whichever level the reader is on. A lens is a way of
+            // reading what is in front of you, so it must not quietly
+            // rebuild a level they are not looking at.
+            remountLevel();
+            activeGraph().fitToContent();
             updateHint();
         });
     });
 }
 
+// Where the reader is, and every way back. The number of segments IS the
+// depth, so the trail states the level without the interface having to
+// label it.
 function renderBreadcrumb() {
-    if (!inFeature) {
+    if (!inFeature()) {
         breadcrumb.innerHTML = '<span class="crumb current">Constellation</span>';
         return;
     }
-    breadcrumb.innerHTML = `<button class="crumb" id="crumbConstellation">Constellation</button><span class="crumb-sep">›</span><span class="crumb current">${escapeHtml(featureById(currentFeatureId)?.name)}</span>`;
-    document.getElementById("crumbConstellation").addEventListener("click", exitFeature);
+
+    const feature = escapeHtml(featureById(currentFeatureId)?.name ?? "");
+    const sep = '<span class="crumb-sep">›</span>';
+
+    // The feature segment is a link only when there is an areas level to go
+    // back to; in a small feature the steps ARE the feature.
+    const hasAreas = level === "steps" && currentAreaName;
+
+    breadcrumb.innerHTML = [
+        '<button class="crumb" data-up="top">Constellation</button>',
+        sep,
+        hasAreas
+            ? `<button class="crumb" data-up="areas">${feature}</button>`
+            : `<span class="crumb current">${feature}</span>`,
+        ...(hasAreas ? [sep, `<span class="crumb current">${escapeHtml(currentAreaName)}</span>`] : [])
+    ].join("");
+
+    breadcrumb.querySelectorAll("[data-up]").forEach(crumb => {
+        crumb.addEventListener("click", () => crumb.dataset.up === "top" ? exitFeature() : goUp());
+    });
 }
 
 function updateHint() {
     if (!state || state.setup !== "ready") { statusHint.textContent = ""; return; }
-    if (inFeature) {
+
+    // Each level answers a different question, and the hint names the one
+    // the reader is on: what exists, how this feature is organised, what
+    // implements this part.
+    if (level === "areas") {
+        const shape = buildAreas(plan(), currentFeatureId, state.verifiedStatus);
+        const lens = lensById(currentLensId);
+        const owned = lens
+            ? shape.areas.reduce((total, area) => total + (area.lensCounts?.[lens.id] ?? 0), 0)
+            : 0;
+
+        const parts = `${shape.areas.length} ${shape.areas.length === 1 ? "part" : "parts"}, ${shape.total} steps`;
+
+        statusHint.textContent = lens
+            ? `${featureById(currentFeatureId)?.name} · ${parts} · ${owned} of them ${lens.label.toLowerCase()} work`
+            : `${featureById(currentFeatureId)?.name} · ${parts} · pick one to see what implements it`;
+        return;
+    }
+
+    if (inFeature()) {
         const lens = lensById(currentLensId);
         const steps = featureGraph.nodes.length;
 
         const owned = featureGraph.nodes.filter(node => node.owns).length;
+        const where = currentAreaName ?? "Feature Space";
 
         statusHint.textContent = lens
             ? `${lens.label} · ${LENS_QUESTIONS[lens.id] ?? ""} · all ${steps} steps, ${owned} of them ${lens.label.toLowerCase()} work`
-            : `Feature Space · ${steps} ${steps === 1 ? "step" : "steps"} · scroll to zoom, drag empty space to pan`;
-    } else {
+            : `${where} · ${steps} ${steps === 1 ? "step" : "steps"} · scroll to zoom, drag empty space to pan`;
+        return;
+    }
+
+    {
         const count = plan().features.length;
         statusHint.textContent = `Constellation · ${count} ${count === 1 ? "feature" : "features"} · scroll to zoom, drag empty space to pan`;
     }
 }
 
 // ================= ZOOM LEVELS =================
+// System -> Feature -> Behaviour -> Code. Each descent is the same move: the
+// level you are leaving zooms toward the thing you picked and fades, the
+// level you are entering arrives slightly small and settles. That is what
+// makes the hierarchy feel like zooming into a map rather than like turning
+// pages, and it is why the third level uses the same motion as the second.
+
+const canvasOf = name =>
+    name === "steps" ? featureCanvas : name === "areas" ? areasCanvas : constellationCanvas;
+
+const graphOf = name =>
+    name === "steps" ? featureGraph : name === "areas" ? areasGraph : constellationGraph;
+
+// The view each level was left at, so coming back up lands where the reader
+// was rather than resetting to the top.
+const home = {};
+
+function afterMove() {
+    renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode();
+}
+
+async function descend(to, focusId) {
+    const from = level;
+    const leaving = graphOf(from);
+
+    home[from] = leaving.view;
+
+    canvasOf(from).classList.add("hidden");
+    await leaving.flyTo(leaving.zoomedOnto(focusId, 2.4));
+
+    level = to;
+    const entering = graphOf(to);
+    const canvas = canvasOf(to);
+
+    canvas.classList.remove("hidden");
+    if (to === "areas") mountAreas(); else mountFeature();
+
+    const target = entering.fitView();
+    entering.setView(scaledAboutCenter(target, 0.6, canvas.clientWidth, canvas.clientHeight));
+    afterMove();
+    await entering.flyTo(target);
+
+    leaving.setView(home[from]);
+}
+
+async function ascend(to, focusId) {
+    const from = level;
+    const leaving = graphOf(from);
+    const canvas = canvasOf(from);
+
+    canvas.classList.add("hidden");
+    await leaving.flyTo(scaledAboutCenter(leaving.view, 0.6, canvas.clientWidth, canvas.clientHeight));
+
+    level = to;
+    leaving.clearSelection();
+
+    const entering = graphOf(to);
+    if (to === "areas") mountAreas();
+
+    const back = home[to] ?? entering.fitView();
+    entering.setView(entering.zoomedOnto(focusId, 2.4));
+    canvasOf(to).classList.remove("hidden");
+    afterMove();
+    await entering.flyTo(back);
+}
+
 async function enterFeature(featureId) {
     if (flying || !featureById(featureId)) return;
     flying = true;
     closeDetail();
 
-    constellationHome = constellationGraph.view;
     currentFeatureId = featureId;
-    currentLensId = plan().lenses[0]?.id ?? null;
+    currentAreaName = null;
+    currentLensId = coveredLenses()[0]?.id ?? null;
 
-    // Fly into the feature node while the constellation fades.
-    constellationCanvas.classList.add("hidden");
-    await constellationGraph.flyTo(constellationGraph.zoomedOnto(featureId, 2.4));
-
-    inFeature = true;
-    featureCanvas.classList.remove("hidden");
-    mountFeature();
-    const target = featureGraph.fitView();
-    featureGraph.setView(scaledAboutCenter(target, 0.6, featureCanvas.clientWidth, featureCanvas.clientHeight));
-    renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode();
-    await featureGraph.flyTo(target);
-
-    constellationGraph.setView(constellationHome);
+    // Two levels: the Constellation, and a feature's steps. A middle level
+    // of "areas" was tried here and read as a third thing to understand
+    // before you could read the first - so a feature opens on its steps.
+    await descend("steps", featureId);
     flying = false;
 }
 
-async function exitFeature() {
-    if (flying || !inFeature) return;
+async function enterArea(areaId) {
+    if (flying || level !== "areas") return;
     flying = true;
     closeDetail();
 
-    const origin = currentFeatureId;
-    const outward = featureGraph.view;
+    // "area:" with nothing after it is the ungrouped card; its steps are the
+    // ones the outline never placed, and "" is how they are selected.
+    currentAreaName = areaId.slice("area:".length);
+    await descend("steps", areaId);
+    flying = false;
+}
 
-    featureCanvas.classList.add("hidden");
-    await featureGraph.flyTo(scaledAboutCenter(outward, 0.6, featureCanvas.clientWidth, featureCanvas.clientHeight));
+// One step back up, wherever the reader is. Leaving the steps of an area
+// returns to the areas; leaving a feature that had no areas returns to the
+// Constellation.
+async function goUp() {
+    if (flying || !inFeature()) return;
+    flying = true;
+    closeDetail();
 
-    inFeature = false;
-    featureGraph.clearSelection();
-    const home = constellationHome ?? constellationGraph.fitView();
-    constellationGraph.setView(constellationGraph.zoomedOnto(origin, 2.4));
-    constellationCanvas.classList.remove("hidden");
-    renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode();
-    await constellationGraph.flyTo(home);
+    if (level === "steps" && currentAreaName) {
+        const area = `area:${currentAreaName}`;
+        currentAreaName = null;
+        await ascend("areas", area);
+    } else {
+        const origin = currentFeatureId;
+        currentAreaName = null;
+        await ascend("constellation", origin);
+    }
 
     flying = false;
+}
+
+// All the way out, from wherever: the Constellation crumb is always a way
+// back to the top, not only a way back one level.
+async function exitFeature() {
+    if (flying || !inFeature()) return;
+
+    if (level === "steps" && currentAreaName) {
+        await goUp();
+    }
+
+    await goUp();
 }
 
 
@@ -741,7 +989,7 @@ function approveTarget() {
     if (state?.setup !== "ready") return null;
 
     const nodes = plan()?.nodes ?? [];
-    const lens = inFeature ? lensById(currentLensId) : null;
+    const lens = inFeature() ? lensById(currentLensId) : null;
 
     if (lens) {
         const pending = nodes.filter(node =>
@@ -1078,7 +1326,7 @@ addNodeBtn.addEventListener("click", () => {
 });
 
 function renderAddNode() {
-    const can = inFeature && state?.setup === "ready";
+    const can = inFeature() && state?.setup === "ready";
     addNodeBtn.classList.toggle("inert", !can);
     addNodeBtn.title = can
         ? `Add a step to ${featureById(currentFeatureId)?.name ?? "this feature"}`
@@ -1100,9 +1348,7 @@ const evolutionView = createEvolutionView({
     emptyCard: document.getElementById("evoEmptyCard"),
     detailPanel: document.getElementById("evoDetailPanel"),
     detailInner: document.getElementById("evoDetailInner"),
-    hint: document.getElementById("evoHint"),
-    expandBtn: document.getElementById("evoExpandBtn"),
-    collapseBtn: document.getElementById("evoCollapseBtn")
+    hint: document.getElementById("evoHint")
 });
 
 
@@ -1147,25 +1393,50 @@ function applyState(next) {
     renderPendingScan();
     if (state.setup !== "ready") { updateHint(); return; }
 
-    if (inFeature && !featureById(currentFeatureId)) {
-        inFeature = false;
+    // A redraft can take the feature the reader is standing in, or the area
+    // - the outline regroups as the code moves. Either way they are put back
+    // at the deepest level that still exists rather than left looking at a
+    // view of nothing.
+    if (inFeature() && !featureById(currentFeatureId)) {
+        level = "constellation";
+        currentAreaName = null;
         featureCanvas.classList.add("hidden");
+        areasCanvas.classList.add("hidden");
         constellationCanvas.classList.remove("hidden");
         closeDetail();
     }
+
+    if (level === "steps" && currentAreaName) {
+        const shape = buildAreas(plan(), currentFeatureId, state.verifiedStatus);
+        const stillThere = shape.mode === "areas"
+            && shape.areas.some(area => area.name === currentAreaName);
+
+        if (!stillThere) {
+            currentAreaName = null;
+            if (shape.mode === "areas") {
+                level = "areas";
+                featureCanvas.classList.add("hidden");
+                areasCanvas.classList.remove("hidden");
+                closeDetail();
+            }
+        }
+    }
     if (currentLensId && !lensById(currentLensId)) currentLensId = plan().lenses[0]?.id ?? null;
+    if (inFeature() && currentLensId && !coveredLenses().some(lens => lens.id === currentLensId)) {
+        currentLensId = coveredLenses()[0]?.id ?? null;
+    }
 
     const firstMount = constellationGraph.nodes.length === 0;
     mountConstellation();
     if (firstMount) {
         if (activeView === "planmap") constellationGraph.fitToContent(); else pendingFit = true;
     }
-    if (inFeature) mountFeature();
+    remountLevel();
 
     // An approve, revise or reject re-reads the plan: follow the node (a revise
     // gives it a new id that supersedes the old one), or close if it is gone.
     if (detailNodeId && impactPanel.classList.contains("open")) {
-        const same = inFeature && featureGraph.nodes.find(n => n.id === detailNodeId || n.source.supersedes === detailNodeId);
+        const same = inFeature() && featureGraph.nodes.find(n => n.id === detailNodeId || n.source.supersedes === detailNodeId);
         if (same) openDetail(same); else closeDetail();
     }
 
@@ -1179,7 +1450,7 @@ verifyBtn.addEventListener("click", runVerify);
 document.addEventListener("keydown", e => {
     if (e.key !== "Escape") return;
     if (activeView === "evolution") { evolutionView.closeDetail(); return; }
-    if (impactPanel.classList.contains("open")) closeDetail(); else if (inFeature) exitFeature();
+    if (impactPanel.classList.contains("open")) closeDetail(); else if (inFeature()) goUp();
 });
 
 window.addEventListener("message", event => {

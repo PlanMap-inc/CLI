@@ -152,13 +152,22 @@ export function createEvolutionView(el) {
             row.setAttribute("aria-label", `${item.title}, ${status || "no status"}`);
             const isNew = arrivals.has(item.id);
             if (isNew) row.classList.add("is-new");
+            // The dot carries the lens, so a reader scanning the outline sees
+            // which perspective each line belongs to without reading across
+            // to the tag. Drift and error keep their red: a problem outranks
+            // a category, and must never be recoloured into the background.
+            const alarm = status === "drifted" || status === "error";
+            const lensColor = colors[item.tags[0]];
+            const dotStyle = !alarm && lensColor ? ` data-style="color:${lensColor}"` : "";
+
             row.innerHTML = `${toggleMark}
-                <span class="evo-status-icon status-${escapeHtml(status || "none")}" title="${escapeHtml(status)}" aria-hidden="true">${evolutionIcon(status)}</span>
+                <span class="evo-status-icon status-${escapeHtml(status || "none")}"${dotStyle} title="${escapeHtml(status)}" aria-hidden="true">${evolutionIcon(status)}</span>
                 <span class="evo-title">${escapeHtml(item.title)}</span>
                 ${isNew ? '<span class="evo-new" title="Found by the last refresh">New</span>' : ""}
                 <span class="evo-tags">${item.tags.map(tag => `<span class="evo-tag"><span class="evo-tag-dot" data-style="background:${colors[tag]}"></span>${escapeHtml(tag)}</span>`).join("")}</span>`;
         }
 
+        paint(row);
         wrap.appendChild(row);
 
         let childrenEl = null;
@@ -222,7 +231,6 @@ export function createEvolutionView(el) {
                 ? `<div class="drift-callout"><div class="h">Error</div>Verify hit an error checking this declaration against ${against}.</div>`
                 : "";
 
-        PAINT_DETAIL_MARK
         el.detailInner.innerHTML = `
             <div class="impact-head"><h3>${escapeHtml(item.title)}</h3><button class="impact-close" id="evoDetailClose" aria-label="Close detail">✕</button></div>
             <div class="impact-sub">${escapeHtml(item.identity ?? "no identity recorded")}</div>
@@ -231,6 +239,7 @@ export function createEvolutionView(el) {
             <div class="impact-section"><div class="h">Delta</div>${delta.length ? `<div class="rule-block">${delta.map(entry => `<div class="clause">${escapeHtml(entry.key)}: ${escapeHtml(entry.value)}</div>`).join("")}</div>` : "<p>No change recorded.</p>"}</div>
             <div class="impact-section"><div class="h">Last verified</div><p>${node.lastVerified ? escapeHtml(formatTime(node.lastVerified)) : "Never"}</p></div>`;
 
+        paint(el.detailInner);
         el.detailPanel.classList.add("open");
         document.getElementById("evoDetailClose").addEventListener("click", closeDetail);
     }
@@ -241,16 +250,5 @@ export function createEvolutionView(el) {
         el.tree.querySelectorAll(".evo-row.selected").forEach(row => row.classList.remove("selected"));
     }
 
-    el.expandBtn.addEventListener("click", () => {
-        forEachItem(buildEvolutionTree(evolution), item => { if (item.children.length) toggled.set(item.id, false); });
-        render();
-    });
-
-    // Back to the default: branches deeper than level 2 collapsed.
-    el.collapseBtn.addEventListener("click", () => {
-        toggled.clear();
-        render();
-    });
-
-    return { setData, closeDetail };
+return { setData, closeDetail };
 }

@@ -32,6 +32,10 @@ export function runCli(
         PLANMAP_LLM_MODEL:
             "test-model",
         ...env,
+        // Both names, always: PlanMap prefers PLANMAP_LLM_API_KEY, and an
+        // empty string is what says "no key" - leaving the other name unset
+        // would let a .env beside PlanMap supply a real one.
+        PLANMAP_LLM_API_KEY: apiKey,
         OPENROUTER_API_KEY: apiKey
     };
 

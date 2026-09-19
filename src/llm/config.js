@@ -1,5 +1,40 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+
+// --------------------------------------------------
+// WHERE .env IS LOOKED FOR
+// --------------------------------------------------
+// The directory you are standing in, and then PlanMap's own. Only the first
+// was checked once, and running PlanMap against a repo somewhere else meant
+// no .env was found at all - so the endpoint, the model and the key all fell
+// back, and the fallback is a local Ollama. Every batch then failed against
+// a server that was never running, while the configuration sat in PlanMap's
+// own directory the whole time.
+//
+// The key follows the tool, because that is where it was set up. cwd still
+// wins, so a project can override it, and the environment wins over both.
+// --------------------------------------------------
+
+const PLANMAP_ROOT =
+    path.resolve(
+        path.dirname(
+            fileURLToPath(import.meta.url)
+        ),
+        "..",
+        ".."
+    );
+
+
+function envPaths() {
+    const paths = [
+        path.resolve(process.cwd(), ".env"),
+        path.join(PLANMAP_ROOT, ".env")
+    ];
+
+    return [...new Set(paths)];
+}
 
 
 // --------------------------------------------------
@@ -36,15 +71,36 @@ const KEY_NAMES = [
 function readEnvFile(
     name
 ) {
+    for (
+        const envPath of envPaths()
+    ) {
+        const value =
+            readFromEnvFile(
+                envPath,
+                name
+            );
+
+        if (
+            value
+        ) {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+
+function readFromEnvFile(
+    envPath,
+    name
+) {
     let text;
 
     try {
         text =
             fs.readFileSync(
-                path.resolve(
-                    process.cwd(),
-                    ".env"
-                ),
+                envPath,
                 "utf8"
             );
     } catch {
@@ -88,11 +144,39 @@ function readEnvFile(
 }
 
 
+// An environment variable that is SET wins, even when it is empty. Setting
+// it empty is how you say "none" out loud - "OPENROUTER_API_KEY= planmap
+// draft ." forces the no-key path - and without it there is no way to
+// override a .env downwards, only upwards.
+function fromEnvironment(
+    name
+) {
+    if (
+        !Object.hasOwn(process.env, name)
+    ) {
+        return undefined;
+    }
+
+    return (
+        process.env[name]?.trim() ||
+        null
+    );
+}
+
+
 function setting(
     name
 ) {
+    const fromEnv =
+        fromEnvironment(name);
+
+    if (
+        fromEnv !== undefined
+    ) {
+        return fromEnv;
+    }
+
     return (
-        process.env[name]?.trim() ||
         readEnvFile(name) ||
         null
     );
@@ -100,83 +184,37 @@ function setting(
 
 export function loadLlmApiKey() {
 
+    // The environment wins, in the order KEY_NAMES lists. A name set to an
+    // empty string is an answer - "no key" - and stops the search, so a
+    // .env cannot put one back.
     for (
         const name of KEY_NAMES
     ) {
+        const fromEnv =
+            fromEnvironment(name);
+
         if (
-            process.env[name]
+            fromEnv !== undefined
         ) {
-            return process.env[name].trim();
+            return fromEnv;
         }
     }
 
 
-    const envPath =
-        path.resolve(
-            process.cwd(),
-            ".env"
-        );
-
-
-    if (
-        !fs.existsSync(
-            envPath
-        )
-    ) {
-        return null;
-    }
-
-
-    const envText =
-        fs.readFileSync(
-            envPath,
-            "utf8"
-        );
-
-
-    const lines =
-        envText.split(/\r?\n/);
-
-
+    // Then the .env files, which readEnvFile searches in the same order as
+    // every other setting: where you are standing, then PlanMap's own
+    // directory. This used to parse .env a second time, and only ever
+    // looked in the current directory.
     for (
-        const line
-        of lines
+        const name of KEY_NAMES
     ) {
-
-        const trimmed =
-            line.trim();
-
-
-        const name =
-            KEY_NAMES.find(
-                candidate =>
-                    trimmed.startsWith(
-                        `${candidate}=`
-                    )
-            );
-
+        const value =
+            readEnvFile(name);
 
         if (
-            name
+            value
         ) {
-
-            const value =
-                trimmed
-                    .slice(
-                        name.length + 1
-                    )
-                    .trim()
-                    .replace(
-                        /^["']|["']$/g,
-                        ""
-                    );
-
-
-            if (
-                value
-            ) {
-                return value;
-            }
+            return value;
         }
     }
 
