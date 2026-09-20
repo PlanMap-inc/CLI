@@ -1942,105 +1942,65 @@ export function linkFeatureSteps(
     nodes,
     callGraph = null
 ) {
-    const byFeature =
+    // Which node owns which declaration, across the WHOLE plan rather than
+    // one feature at a time. A call is real regardless of which feature its
+    // target ended up in, and scoping this to one feature at a time was the
+    // only reason a genuine cross-feature relationship could never be
+    // drawn: the identity of a step in another feature was simply not in
+    // the map yet. A merged node owns all of the declarations it stands
+    // for.
+    const nodeByIdentity =
         new Map();
 
-    nodes.forEach(
-        (node, index) => {
-            if (
-                !byFeature.has(node.feature)
-            ) {
-                byFeature.set(
-                    node.feature,
-                    []
-                );
-            }
-
-            byFeature
-                .get(node.feature)
-                .push({
-                    node,
-                    index
-                });
+    for (
+        const node of nodes
+    ) {
+        for (
+            const identity of nodeIdentities(node)
+        ) {
+            nodeByIdentity.set(
+                identity,
+                node.id
+            );
         }
-    );
+    }
 
     for (
-        const [, members] of byFeature
+        const node of nodes
     ) {
-        members.sort(
-            (left, right) => {
-                const leftStep =
-                    Number.isFinite(left.node.step)
-                        ? left.node.step
-                        : Number.MAX_SAFE_INTEGER;
-
-                const rightStep =
-                    Number.isFinite(right.node.step)
-                        ? right.node.step
-                        : Number.MAX_SAFE_INTEGER;
-
-                return (
-                    leftStep - rightStep ||
-                    left.index - right.index
-                );
-            }
-        );
-
-        // Which node owns which declaration, so a call between two
-        // declarations can be read as a link between two steps. A merged
-        // node owns all of the declarations it stands for.
-        const nodeByIdentity =
-            new Map();
+        const targets =
+            new Set();
 
         for (
-            const member of members
+            const identity of nodeIdentities(node)
         ) {
-            for (
-                const identity of nodeIdentities(member.node)
-            ) {
-                nodeByIdentity.set(
-                    identity,
-                    member.node.id
+            const calls =
+                callGraph?.callees?.get(
+                    identity
                 );
-            }
-        }
-
-        for (
-            const member of members
-        ) {
-            const targets =
-                new Set();
 
             for (
-                const identity of nodeIdentities(member.node)
+                const called of calls || []
             ) {
-                const calls =
-                    callGraph?.callees?.get(
-                        identity
-                    );
+                const target =
+                    nodeByIdentity.get(called);
 
-                for (
-                    const called of calls || []
+                // Not the node itself: a merged node calling its own other
+                // declaration is one step, not a step leading to itself.
+                // Same feature or a different one, it is drawn either way -
+                // that is what makes this the one place a genuine
+                // cross-feature relationship can surface at all.
+                if (
+                    target &&
+                    target !== node.id
                 ) {
-                    const target =
-                        nodeByIdentity.get(called);
-
-                    // Inside this feature, and not the node itself: a
-                    // merged node calling its own other declaration is one
-                    // step, not a step leading to itself.
-                    if (
-                        target &&
-                        target !== member.node.id
-                    ) {
-                        targets.add(target);
-                    }
+                    targets.add(target);
                 }
             }
-
-            member.node.edgesOut =
-                [...targets];
         }
+
+        node.edgesOut =
+            [...targets];
     }
 
     return nodes;
@@ -2062,95 +2022,6 @@ function nodeIdentities(
     return typeof node?.identity === "string"
         ? [node.identity]
         : [];
-}
-
-
-// --------------------------------------------------
-// LINK THE STAGES TO EACH OTHER
-// --------------------------------------------------
-// The Constellation draws an edge between features when a node in one leads
-// to a node in another. Until now nothing ever did, so it always fell back
-// to "the order plan.json happens to list them" - an arrow that looked like
-// a journey and asserted nothing.
-//
-// The order is the model's featureOrder, already applied to plan.features.
-// Joining each stage's last step to the next stage's first makes the arrow
-// mean what it appears to mean: this is where the person goes next.
-// --------------------------------------------------
-
-function linkStages(
-    plan
-) {
-    const order =
-        plan.features
-            .map(
-                feature => feature.id
-            );
-
-    const inFeature =
-        id =>
-            plan.nodes.filter(
-                node =>
-                    node.feature === id
-            );
-
-    for (
-        let index = 0;
-        index < order.length - 1;
-        index++
-    ) {
-        const here =
-            inFeature(order[index]);
-
-        const next =
-            inFeature(order[index + 1]);
-
-        if (
-            here.length === 0 ||
-            next.length === 0
-        ) {
-            continue;
-        }
-
-        // By step, which is the order a person meets these. It used to be
-        // "the node nothing else points at", which worked only while every
-        // feature was one unbroken chain - now that an edge needs evidence,
-        // most nodes have nothing pointing at them and that test picks an
-        // arbitrary one.
-        const inStepOrder =
-            members =>
-                [...members].sort(
-                    (left, right) =>
-                        (Number.isFinite(left.step)
-                            ? left.step
-                            : Number.MAX_SAFE_INTEGER) -
-                        (Number.isFinite(right.step)
-                            ? right.step
-                            : Number.MAX_SAFE_INTEGER)
-                );
-
-        const hereOrdered =
-            inStepOrder(here);
-
-        const nextOrdered =
-            inStepOrder(next);
-
-        const last =
-            hereOrdered[hereOrdered.length - 1];
-
-        const first =
-            nextOrdered[0];
-
-        if (
-            last &&
-            first &&
-            !last.edgesOut.includes(first.id)
-        ) {
-            last.edgesOut.push(first.id);
-        }
-    }
-
-    return plan;
 }
 
 
@@ -2926,10 +2797,6 @@ export async function draftBrownfield(
                     .join("\n")}`
             );
         }
-
-        linkStages(
-            nextPlan
-        );
 
         writePlan(
             projectRoot,

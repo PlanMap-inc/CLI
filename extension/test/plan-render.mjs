@@ -337,4 +337,48 @@ assert.equal(
 assert.equal(lopsided.bottomRowX, wide.minX, "the bottom row is the wide one");
 assert.equal(lopsided.topRowX, narrow.minX, "the top row is the narrow one");
 
+// --------------------------------------------------
+// NO FABRICATED CROSS-FEATURE EDGE
+// --------------------------------------------------
+// Shaped on the real AI_Coding_Survey project after the draft.js fix: Login
+// and Survey each have real edges *inside* themselves (from real calls) but
+// nothing links across the two features, because nothing in the real code
+// does. constellationEdges() must fall back to the honestly-labelled
+// "order" source rather than pretending one of them is a real relationship.
+// --------------------------------------------------
+
+const noCrossFeaturePlan = {
+    version: 1,
+    lenses: [],
+    features: [{ id: "login", name: "Login" }, { id: "survey", name: "Survey" }],
+    nodes: [
+        { id: "n1", feature: "login", edgesOut: ["n2"] },
+        { id: "n2", feature: "login", edgesOut: [] },
+        { id: "n3", feature: "survey", edgesOut: ["n4"] },
+        { id: "n4", feature: "survey", edgesOut: [] }
+    ]
+};
+
+const fallbackEdges = constellationEdges(noCrossFeaturePlan);
+assert.equal(fallbackEdges.length, 1);
+assert.equal(fallbackEdges[0].source, "order", "no node's edgesOut crosses a feature boundary, so this must be the honest order fallback, not something dressed up as a real relationship");
+
+// --------------------------------------------------
+// A GENUINE CROSS-FEATURE EDGE IS REPORTED AS ONE
+// --------------------------------------------------
+
+const realCrossFeaturePlan = {
+    ...noCrossFeaturePlan,
+    nodes: [
+        { id: "n1", feature: "login", edgesOut: ["n3"] }, // n1 really does lead into Survey
+        { id: "n2", feature: "login", edgesOut: [] },
+        { id: "n3", feature: "survey", edgesOut: [] },
+        { id: "n4", feature: "survey", edgesOut: [] }
+    ]
+};
+
+const realEdges = constellationEdges(realCrossFeaturePlan);
+assert.equal(realEdges.length, 1);
+assert.equal(realEdges[0].source, "nodes", "a genuine call-derived edge into another feature must be reported as a real relationship");
+
 console.log("PASS: plan-render");
