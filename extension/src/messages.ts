@@ -76,13 +76,19 @@ export interface VerifiedStatus {
 // holds them. Mirrors VALID_FACT_FIELDS in src/plan/model.js - kept loose
 // (every field optional) because a declaration only carries the fields its
 // own kind produces: a function has calls/throws/awaits, a data
-// declaration has entryCount/entries instead.
+// declaration has entryCount/entries instead. "callbacks" is the one field
+// with no VALID_FACT_FIELDS counterpart: it is read for evidence and for
+// the call graph, not (yet) something a verification rule can assert on.
 export interface DeclarationFacts {
     throws?: number;
     throwTypes?: string[];
     returns?: number;
     returnsNullish?: number;
     calls?: string[];
+    // A bare function reference handed to something else as a value - an
+    // object-literal property, most often - rather than invoked. Real
+    // evidence of a relationship, never a call.
+    callbacks?: string[];
     numbers?: number[];
     awaits?: number;
     catches?: number;

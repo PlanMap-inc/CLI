@@ -70,4 +70,21 @@ assert.deepEqual(evidenceLines({ numbers: [404], calls: ["res.sendStatus"] }), [
 
 assert.deepEqual(evidenceLines({ throws: 1, catches: 1, awaits: 1, params: 1 }), ["throws an error", "catches an error", "awaits one call"]);
 
+// --------------------------------------------------
+// A CALLBACK REGISTRATION READS AS "registers", NEVER "calls"
+// --------------------------------------------------
+// window.onload handing handleCredentialResponse to
+// google.accounts.id.initialize({ callback: handleCredentialResponse })
+// never invokes it - the card must say so honestly, not claim a call that
+// doesn't happen.
+// --------------------------------------------------
+
+assert.deepEqual(evidenceLines({ callbacks: ["handleCredentialResponse"] }), ["registers handleCredentialResponse as a callback"]);
+assert.deepEqual(evidenceLines({}), [], "no callbacks fact means no line, never invented");
+assert.deepEqual(
+    evidenceLines({ calls: ["jwt.verify"], callbacks: ["onSuccess", "onFailure"] }),
+    ["calls jwt.verify", "registers onSuccess as a callback", "registers onFailure as a callback"],
+    "calls and callbacks are reported separately, and every callback beyond the first still appears"
+);
+
 console.log("PASS: evidence-lines");

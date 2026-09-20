@@ -219,14 +219,30 @@ export function buildCallGraph(
         const calls =
             declaration.properties?.calls;
 
+        const callbacks =
+            declaration.properties?.callbacks;
+
+        // A callback registration is not an invocation, but it is just as
+        // real a "this leads to that" relationship for the graph's purposes -
+        // handing a function reference to something else is how the caller
+        // arranges for it to run later. Folded into the same edges a direct
+        // call produces; kept as its own fact (properties.callbacks, never
+        // merged into properties.calls) so a reading built from the facts
+        // never claims an invocation that isn't there.
+        const targets =
+            [
+                ...(Array.isArray(calls) ? calls : []),
+                ...(Array.isArray(callbacks) ? callbacks : [])
+            ];
+
         if (
-            !Array.isArray(calls)
+            targets.length === 0
         ) {
             continue;
         }
 
         for (
-            const call of calls
+            const call of targets
         ) {
             const target =
                 resolve(

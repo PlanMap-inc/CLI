@@ -392,6 +392,14 @@ export function extractProperties(
 
         calls: [],
 
+        // A bare identifier handed off as an object-literal property value -
+        // { callback: handleCredentialResponse } - rather than invoked. Not
+        // a call: nothing here says the declaration runs it, only that it
+        // hands the reference to something else, which may run it later, or
+        // never. Kept apart from "calls" so a reading built from it never
+        // claims an invocation that isn't there.
+        callbacks: [],
+
         numbers: [],
 
         awaits: 0,
@@ -510,6 +518,38 @@ export function extractProperties(
 
 
         // --------------------------------------------
+        // CALLBACK REFERENCE
+        // --------------------------------------------
+        // An object-literal pair whose value is a bare identifier:
+        // { callback: handleCredentialResponse }. The declaration named by
+        // that identifier is not called here - it is handed off, to be run
+        // by whatever the object is passed to. A pair whose value is a
+        // function itself (arrow_function / function_expression) is a
+        // nested declaration boundary already handled above, not this case.
+        // --------------------------------------------
+
+        if (
+            node.type === "pair"
+        ) {
+
+            const value =
+                node.childForFieldName(
+                    "value"
+                );
+
+
+            if (
+                value?.type === "identifier"
+            ) {
+
+                properties.callbacks.push(
+                    value.text
+                );
+            }
+        }
+
+
+        // --------------------------------------------
         // NUMBER
         // --------------------------------------------
 
@@ -602,6 +642,14 @@ export function extractProperties(
         [
             ...new Set(
                 properties.calls
+            )
+        ].sort();
+
+
+    properties.callbacks =
+        [
+            ...new Set(
+                properties.callbacks
             )
         ].sort();
 

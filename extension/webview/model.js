@@ -882,6 +882,14 @@ export function evidenceLines(facts) {
     const calls = Array.isArray(facts.calls) ? facts.calls.filter(Boolean) : [];
     if (calls.length > 0) lines.push(`calls ${calls[0]}`);
 
+    // A bare function reference handed to something else, not invoked here -
+    // { callback: handleCredentialResponse }. Kept distinct from "calls":
+    // the object literal's own line says what actually happens (a reference
+    // is handed off), never "calls X", which would claim an invocation the
+    // code doesn't make.
+    const callbacks = Array.isArray(facts.callbacks) ? facts.callbacks.filter(Boolean) : [];
+    if (callbacks.length > 0) lines.push(`registers ${callbacks[0]} as a callback`);
+
     // A number in [100,599] is only a status code if the step also calls
     // something that sends one. Without that corroboration a setTimeout(fn,
     // 300), a 500ms debounce or a CSS width of 200 all read as "answers N" -
@@ -913,10 +921,12 @@ export function evidenceLines(facts) {
         lines.push(`takes ${facts.params === 1 ? "one parameter" : `${facts.params} parameters`}`);
     }
 
-    // Every remaining call, in order, after the one already shown above.
-    // The card only ever shows the first couple of lines; the detail panel
-    // shows this whole list.
+    // Every remaining call, and every remaining callback reference, in
+    // order, after the one of each already shown above. The card only ever
+    // shows the first couple of lines; the detail panel shows this whole
+    // list.
     for (const call of calls.slice(1)) lines.push(`calls ${call}`);
+    for (const callback of callbacks.slice(1)) lines.push(`registers ${callback} as a callback`);
 
     return lines;
 }
