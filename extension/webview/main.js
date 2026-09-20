@@ -1099,7 +1099,7 @@ function openDetail(viewNode) {
     const readings = Object.entries(node.readings ?? {});
 
     const lenses = readings.length
-        ? section("The same step, read four ways", readings.map(([id, text]) => `
+        ? section("Read from other perspectives", readings.map(([id, text]) => `
             <div class="lens-read">
                 <div class="badge" data-style="color:${colors[id] ?? "var(--text-mid)"}"><span class="dot" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>${escapeHtml(lensName(id))}</div>
                 <p class="lens-says">${escapeHtml(text)}</p>

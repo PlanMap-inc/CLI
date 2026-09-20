@@ -756,59 +756,40 @@ ${lensCatalogue()}
   ["frontend", "backend"]; a query that writes a row is ["data"].
 
 --------------------------------------------------
-READINGS - the same step, told in four voices
+READINGS - only where a perspective has something of its own to say
 --------------------------------------------------
 
-Each perspective tells the WHOLE feature, in its own language. Not a subset,
-not a highlight: the complete journey as a frontend engineer would narrate
-it, then as a backend engineer would, then a DBA, then a security reviewer.
-Four tellings of one thing.
+"readings" is an object keyed by lens id. Unlike "lensTags", it does NOT
+need every key, and it is normal for it to need none at all. Most steps
+carry one or two.
 
-EVERY step gets a reading in EVERY lens. No omissions.
+A reading exists for exactly one reason: that lens's own question -
+${lensCatalogue()}
+-
+has an answer at THIS step that the title does not already give a reader
+asking it. If the honest answer is "nothing new from here", leave the key
+out. An omitted key is not a gap for you to fill. It is the correct, final
+answer for a step that lens has nothing to add to.
 
-That is the rule that makes this work, and it is easy to get wrong. A
-perspective is never silent about a step it shares a journey with - it just
-speaks about it differently. There are three things a reading can say, and
-all three are useful:
+DO NOT write a reading for every lens on every step to be thorough. That
+produces the same sentence spoken four ways, which teaches a reader nothing
+past the title - and reads as though the step changed identity four times
+rather than being explained from four angles.
 
-  DOES THE WORK    this step is that perspective's own
-  DEPENDS ON IT    the perspective needs this step to have happened
-  UNTOUCHED        the perspective genuinely passes through
+DO NOT manufacture a reading out of a lens's silence. A line matching any of
+these shapes is worse than no reading, because it looks like an answer while
+saying nothing about THIS step - it would be equally true of most steps in
+most features:
 
-Take one step from a parcel-delivery project - "open the depot API" - read
-four ways. These are shapes, not phrases to reuse; your words come from the
-declarations you were given:
+  Nothing happens here, Nothing is read, Nothing is written, No checks occur
+  here, No checks happen here, No access checks apply, No server call
+  happens here, No rows are read, The server waits, Not visible to the
+  user, Nothing changes, Anyone may see it
 
-  "frontend": "The tracking page waits for this"      <- depends on it
-  "backend":  "Listen on the configured port"         <- does the work
-  "database": "Open the connection pool"              <- does the work
-  "security": "Checks begin once a route is hit"      <- untouched
+If a lens genuinely has nothing of its own to say, that fact is expressed by
+the key being ABSENT. Never by a sentence that says so.
 
-And a pure layout helper from the same project, "collapse the parcel list":
-
-  "frontend": "Fold the list down to one row"
-  "backend":  "The browser folds it without the server"
-  "database":  "The rows are already on the page"
-  "security": "Anyone viewing the list may fold it"
-
-Notice that the last two do not begin with "No" or "Nothing", and could not
-be pasted onto a different step. That is the bar.
-
-A relationship reading is honest and it keeps the story whole. Silence is
-not: a step left without a reading falls back to its default name, and the
-reader cannot tell it apart from one the perspective really owns. That is
-what made earlier outlines incoherent - five of seven steps in the frontend
-lens were backend steps wearing frontend clothes.
-
-EVERY READING IS A BEHAVIOUR LINE
-
-A reading is held to the same standard as a title - the whole standard,
-including the banned phrases. This is where vague lines have come from
-before, because a reading feels like a gloss and gets written like one.
-It is not a gloss. It is that perspective's own explanation of what the
-system does at this step, and it must stand on its own.
-
-EACH VOICE IS SPECIFIC IN ITS OWN WAY
+WHEN A LENS DOES HAVE SOMETHING - EACH VOICE IS SPECIFIC IN ITS OWN WAY
 
   frontend  names what the person sees or does
             "Press the book-a-collection button", not "handle the response"
@@ -823,64 +804,37 @@ EACH VOICE IS SPECIFIC IN ITS OWN WAY
 Those are shapes from another project. Take the form; take your nouns from
 the declarations you were given.
 
-A relationship reading - DEPENDS ON IT or UNTOUCHED - is held to the SAME
-standard, and this is where it collapses.
+A reading is held to the same standard as a title - the whole standard,
+including the banned phrases in behaviour.js. This is where vague lines have
+come from before, because a reading feels like a gloss and gets written
+like one. It is not a gloss: it is that perspective's own explanation of
+what the system does at this step, grounded in the supplied facts, and it
+must stand on its own.
 
-WRITE IT AS A POSITIVE SENTENCE. Do not open with "No" or "Nothing".
-
-That single rule is what keeps these distinct. A negative can always retreat
-into "nothing is read here", and padding it out to "no database rows are
-read here" changes nothing: it is still a true sentence about the LENS
-rather than about THIS step, so three steps in a row get the same line and
-the reader sees one node written three times. A positive sentence cannot
-retreat, because it has to say something.
-
-  DEPENDS ON IT  name the thing it waits for, and what it gets back
-  UNTOUCHED      say where the work happens INSTEAD, or where the data
-                 actually lives - the fact that makes this perspective idle
-                 at this step
-
-Shape only - the examples are from a parcel-delivery project so that you
-borrow the form and not the words:
-
-  step                  WRONG               RIGHT
-  Print the label       Nothing is read     The address came with the booking
-  Print the label       Nothing is called   The browser draws it without the
-                                            server
-  Print the label       No checks here      Anyone holding the booking may
-                                            print it
-  Book the courier      Wait for write      Wait for the courier to confirm
-  Start the depot API   No checks run here  Checks begin once a route is hit
-
-If you write the same reading twice in one lens, you have written that
-lens's stock phrase rather than this step's. Rewrite BOTH - the repeat is
-evidence that neither was about its own step.
-
-When the facts do not give you a table or a route, say what IS or IS NOT
-touched. "No rows are read here" is specific. "Handles data" is not.
+A step's OWN lensTags almost always earn a reading of their own - that
+perspective is doing the work, so it has the most to say. A lens the step
+merely touches, without doing that lens's kind of work, earns a reading only
+when something concrete and specific is true from that angle; most such
+steps earn none, and that is expected, not a shortfall.
 
 READ IT BACK BEFORE YOU ANSWER
 
-Take each lens's readings in step order and read them as one paragraph.
-Could someone who only ever read that lens follow this feature start to
-finish? If a line does not belong in that story, it is wrong - rewrite it as
-a relationship reading, do not delete it.
-
-Then read that lens's readings as a LIST, ignoring the order. If any two
-could swap places without a reader noticing, both are too vague. One
-declaration that carries several steps is where this goes wrong: each of its
-readings must name a different behaviour the facts show, never the same
-behaviour worded three ways.
+Take one lens's readings, in step order, skipping the steps where it is
+silent. Could someone who only ever read that lens follow the parts of this
+feature it actually speaks to? If any two of its readings could swap places
+without a reader noticing, both are too vague - rewrite both, or drop the
+weaker one rather than keep a line that says nothing distinct.
 
 RULES
 
 - Three to eight words each. No function names, no file names.
 - Grounded in the SUPPLIED FACTS. Never invent a route, table or check the
   facts do not show.
-- All four keys on every step: ${LENS_IDS.join(", ")}
-- Never repeat the title verbatim in any lens.
-- "lensTags" stays what it is: the perspectives that DO THE WORK. A
-  relationship reading does not earn a tag.
+- Never repeat the title verbatim, or say the same thing in other words.
+- Only these keys are ever valid: ${LENS_IDS.join(", ")}. Include a key only
+  when that lens has something of its own to say about THIS step.
+- "lensTags" stays what it is: the perspectives that DO THE WORK. A reading
+  from a lens the step merely touches does not earn it a tag.
 
 Every rule MUST have:
 - kind: "behaviour"
@@ -1057,7 +1011,8 @@ Return this exact top-level shape:
       "title": "verb + object: what the system does here",
       "intent": "one sentence: what must stay true",
       "lensTags": ["backend"],
-      "readings": { "frontend": "…", "backend": "…", "database": "…", "security": "…" },
+      "readings": { "security": "…" },
+      "_comment2": "only the lenses that genuinely have something new to say - one here, none is just as normal, four is rare",
       "rules": [
         {
           "kind": "behaviour",
@@ -1077,7 +1032,7 @@ Return this exact top-level shape:
       "title": "one behaviour, read across all three",
       "intent": "one sentence true of all three",
       "lensTags": ["backend"],
-      "readings": { "frontend": "…", "backend": "…", "database": "…", "security": "…" },
+      "readings": {},
       "rules": [
         {
           "kind": "behaviour",
@@ -1288,6 +1243,14 @@ function mergeGroups(
 const PLACEHOLDER_VERBS =
     /^(handle|process|manage|execute|perform|run|do|support|implement|ensure|deal with|take care of)\b/i;
 
+// A reading that opens by saying what is NOT true. Always grammatically
+// valid, always sounds like an answer, and is true of most steps in most
+// features - which is exactly why it teaches a reader nothing. The correct
+// way to say "this lens has nothing of its own to add" is to leave the key
+// out, not to write a sentence that says so.
+const NEGATIVE_FILLER =
+    /^(no|not|none|nothing|nobody|anyone|anybody)\b/i;
+
 export function dropRepeatedReadings(
     nodes,
     dropped = []
@@ -1322,6 +1285,18 @@ export function dropRepeatedReadings(
 
                 dropped.push(
                     `${node.identity || node.id}: dropped ${lensId} reading "${reading}" - opens with a placeholder verb`
+                );
+
+                continue;
+            }
+
+            if (
+                NEGATIVE_FILLER.test(String(reading).trim())
+            ) {
+                delete node.readings[lensId];
+
+                dropped.push(
+                    `${node.identity || node.id}: dropped ${lensId} reading "${reading}" - negative filler, not a reading; omit the key instead`
                 );
 
                 continue;
