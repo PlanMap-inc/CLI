@@ -48,4 +48,31 @@ assert.deepEqual(
 assert.equal(dropped.length, 3);
 assert.ok(dropped.every(line => /negative filler/.test(line)), "each drop is reported with a reason, the same way a placeholder-verb drop already is");
 
+// --------------------------------------------------
+// LEGITIMATE READINGS WITH "ANYONE" ARE NOT FALSE-POSITIVES
+// --------------------------------------------------
+// A grounded permission statement like "Anyone holding X may Y" is exactly
+// the kind of specific security reading that should survive. It is not filler.
+// --------------------------------------------------
+
+const legitimate = [
+    {
+        id: "plan_0003", identity: "c.js::c:function", title: "Print the booking",
+        readings: {
+            security: "Anyone holding the booking may print it",
+            database: "The address came with the booking"
+        }
+    }
+];
+
+const dropped2 = [];
+dropRepeatedReadings(legitimate, dropped2);
+
+assert.deepEqual(
+    Object.keys(legitimate[0].readings),
+    ["security", "database"],
+    "grounded permission statements like 'Anyone holding...' survive unchanged"
+);
+assert.equal(dropped2.length, 0, "legitimate readings are never dropped, even if they contain 'Anyone'");
+
 console.log("PASS: lens-readings");

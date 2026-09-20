@@ -1247,9 +1247,11 @@ const PLACEHOLDER_VERBS =
 // valid, always sounds like an answer, and is true of most steps in most
 // features - which is exactly why it teaches a reader nothing. The correct
 // way to say "this lens has nothing of its own to add" is to leave the key
-// out, not to write a sentence that says so.
+// out, not to write a sentence that says so. Matches only "No", "Not", "None",
+// "Nothing" — not "Anyone"/"Nobody" which can be parts of grounded readings
+// like "Anyone holding the booking may print it".
 const NEGATIVE_FILLER =
-    /^(no|not|none|nothing|nobody|anyone|anybody)\b/i;
+    /^(no|not|none|nothing)\b/i;
 
 export function dropRepeatedReadings(
     nodes,
