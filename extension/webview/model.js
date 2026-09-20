@@ -831,6 +831,69 @@ export function featureRegisters(plan, featureId) {
     };
 }
 
+// --------------------------------------------------
+// INLINE EVIDENCE
+// --------------------------------------------------
+// What a step's title says WHAT happens; this says what the code CONCRETELY
+// does, in the reader's own words for the facts PlanMap already extracted -
+// never an LLM guess, never an interpretation. Every line is a direct
+// transcription of one fact: a call name, a status-shaped number, a count.
+// That is what lets this run on every render with no cost and no risk of
+// saying something the code does not actually do.
+//
+// ponytail: calls are surfaced in extraction order, not ranked by apparent
+// importance - "calls authHeader.split" can show up before "calls
+// jwt.verify" on the same step. Guessing which call name matters more is an
+// open-ended problem; showing the real order is not. Add a relevance
+// ranking if the first calls in a function turn out to be routinely
+// uninformative plumbing.
+// --------------------------------------------------
+
+export function evidenceLines(facts) {
+    if (!facts || typeof facts !== "object") return [];
+
+    const lines = [];
+
+    const calls = Array.isArray(facts.calls) ? facts.calls.filter(Boolean) : [];
+    if (calls.length > 0) lines.push(`calls ${calls[0]}`);
+
+    const numbers = Array.isArray(facts.numbers) ? facts.numbers : [];
+    const statusLike = numbers.filter(value => Number.isInteger(value) && value >= 100 && value <= 599);
+    if (statusLike.length > 0) lines.push(`answers ${statusLike.join(" or ")}`);
+
+    if (facts.throws > 0) {
+        lines.push(
+            Array.isArray(facts.throwTypes) && facts.throwTypes.length > 0
+                ? `throws ${facts.throwTypes.join(", ")}`
+                : `throws ${facts.throws === 1 ? "an error" : `${facts.throws} errors`}`
+        );
+    }
+
+    if (facts.catches > 0) lines.push(`catches ${facts.catches === 1 ? "an error" : `${facts.catches} errors`}`);
+
+    if (facts.awaits > 0) lines.push(`awaits ${facts.awaits === 1 ? "one call" : `${facts.awaits} calls`}`);
+
+    if (Number.isInteger(facts.entryCount) && facts.entryCount > 0) lines.push(`holds ${facts.entryCount} entries`);
+
+    // The least informative fact alone - a shape, not a behaviour - so it
+    // only appears when nothing more concrete was available.
+    if (lines.length === 0 && Number.isInteger(facts.params) && facts.params > 0) {
+        lines.push(`takes ${facts.params === 1 ? "one parameter" : `${facts.params} parameters`}`);
+    }
+
+    // Every remaining call, in order, after the one already shown above.
+    // The card only ever shows the first couple of lines; the detail panel
+    // shows this whole list.
+    for (const call of calls.slice(1)) lines.push(`calls ${call}`);
+
+    return lines;
+}
+
+// How many of evidenceLines()'s lines a Feature Flow card shows. The detail
+// panel always shows the whole list - this is only how much fits beside a
+// title without turning the card into the inspector the task explicitly
+// says not to build.
+export const CARD_EVIDENCE_LINES = 2;
 
 // --------------------------------------------------
 // BANDS
