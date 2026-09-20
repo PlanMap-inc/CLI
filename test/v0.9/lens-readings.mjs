@@ -48,6 +48,24 @@ assert.deepEqual(
 assert.equal(dropped.length, 3);
 assert.ok(dropped.every(line => /negative filler/.test(line)), "each drop is reported with a reason, the same way a placeholder-verb drop already is");
 
+// "Nothing is read or written" in particular: the stock database non-answer,
+// and until this assertion existed it was only covered by accident, as the
+// repeated-reading fixture of test/v0.7/behaviour-line-regression.mjs - where
+// it was silently voiding the dedup coverage that file is named for.
+const stock = [
+    {
+        id: "plan_0004", identity: "d.js::d:function", title: "Fold the panel away",
+        readings: { database: "Nothing is read or written", frontend: "Fold the panel out of view" }
+    }
+];
+
+const dropped3 = [];
+dropRepeatedReadings(stock, dropped3);
+
+assert.deepEqual(Object.keys(stock[0].readings), ["frontend"], "\"Nothing is read or written\" is the stock database non-answer and must be dropped as filler");
+assert.equal(dropped3.length, 1);
+assert.ok(/negative filler/.test(dropped3[0]));
+
 // --------------------------------------------------
 // LEGITIMATE READINGS WITH "ANYONE" ARE NOT FALSE-POSITIVES
 // --------------------------------------------------

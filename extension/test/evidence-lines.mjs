@@ -52,6 +52,19 @@ assert.deepEqual(evidenceLines({ params: 2 }), ["takes 2 parameters"], "the leas
 assert.deepEqual(evidenceLines({ params: 2, calls: ["helper"] }), ["calls helper"], "params never crowds out a more concrete fact");
 
 // --------------------------------------------------
+// A NUMBER IN THE STATUS RANGE IS NOT A STATUS CODE ON ITS OWN
+// --------------------------------------------------
+// setTimeout(fn, 300), a 500ms debounce, a CSS width of 200: all in [100,599]
+// and none of them an HTTP response. "answers N" needs a call that actually
+// sends one, which is what makes verifyJWT's "answers 401" above honest -
+// its calls include res.status.
+// --------------------------------------------------
+
+assert.deepEqual(evidenceLines({ numbers: [300] }), [], "a number in range with no calls at all says nothing about an HTTP response");
+assert.deepEqual(evidenceLines({ numbers: [300], calls: ["setTimeout"] }), ["calls setTimeout"], "a 300ms timeout must not render as \"answers 300\"");
+assert.deepEqual(evidenceLines({ numbers: [404], calls: ["res.sendStatus"] }), ["calls res.sendStatus", "answers 404"], "a status-sending call is the corroboration the line needs");
+
+// --------------------------------------------------
 // SINGULAR PHRASING
 // --------------------------------------------------
 

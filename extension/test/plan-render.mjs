@@ -46,8 +46,13 @@ assert.ok(featureY[0] > featureY[1] && featureY[1] > featureY[2], "the first fea
 assert.equal(new Set(constellation.map(n => n.x)).size, 1);
 for (let i = 1; i < featureY.length; i++) assert.ok(featureY[i - 1] - featureY[i] >= NODE_H_EST, "feature rows overlap");
 
-// Connected by the plan's own links: a4 (auth) points at o1 (orders).
-assert.deepEqual(constellationEdges(plan), [{ from: "auth", to: "orders", source: "nodes" }]);
+// Connected by the plan's own links: a4 (auth) points at o1 (orders). Nothing
+// links orders to Ratings, so that pair falls back to reading order - the real
+// auth->orders edge does not get to strand every feature after it.
+assert.deepEqual(constellationEdges(plan), [
+    { from: "auth", to: "orders", source: "nodes" },
+    { from: "orders", to: "empty", source: "order" }
+]);
 
 // With no links across features, the plan's order connects them.
 const unlinked = { features: [{ id: "a" }, { id: "b" }, { id: "c" }], nodes: [{ id: "n", feature: "a", edgesOut: [] }] };
@@ -136,6 +141,15 @@ assert.deepEqual(verifyStep.evidence, ["calls authHeader.split", "answers 401"])
 
 const noFacts = buildFeatureGraph(plan, "auth", {}, null, null, {});
 assert.ok(noFacts.nodes.every(n => Array.isArray(n.evidence) && n.evidence.length === 0), "no facts supplied means every step's evidence is an empty array, never invented");
+
+// The row is measured with those lines in it. It was not, once: the card
+// rendered two lines taller than the layout believed, so the gap below it
+// closed up and the edge into it stopped partway inside the card above.
+assert.ok(
+    verifyStep.h > noFacts.nodes.find(n => n.id === "a4").h,
+    "a step carrying evidence lines must be laid out taller than the same step without them"
+);
+assertNoOverlap(withEvidence.nodes, "feature space with evidence");
 
 // Existing callers that pass no factsByIdentity at all still work.
 const noArgAtAll = buildFeatureGraph(plan, "auth", {});
@@ -236,7 +250,10 @@ assert.equal(
 
 assert.ok(cardHeight({}) < cardHeight({ preview: [1, 2, 3] }), "a preview makes a card taller");
 assert.ok(cardHeight({}) < cardHeight({ backing: 3 }), "so does standing for several declarations");
+assert.ok(cardHeight({}) < cardHeight({ evidence: ["calls jwt.verify"] }), "so do the evidence lines a step carries");
+assert.ok(cardHeight({ evidence: ["one"] }) < cardHeight({ evidence: ["one", "two"] }), "two evidence lines are taller than one");
 assert.equal(cardHeight({ preview: [] }), cardHeight({}), "an empty preview costs nothing");
+assert.equal(cardHeight({ evidence: [] }), cardHeight({}), "neither does an empty evidence list - a Constellation card never has the field at all");
 
 function assertNoOverlap(cards, what) {
     const stacked = [...cards].sort((a, b) => a.y - b.y);
@@ -407,5 +424,30 @@ const realCrossFeaturePlan = {
 const realEdges = constellationEdges(realCrossFeaturePlan);
 assert.equal(realEdges.length, 1);
 assert.equal(realEdges[0].source, "nodes", "a genuine call-derived edge into another feature must be reported as a real relationship");
+
+// --------------------------------------------------
+// ONE REAL EDGE MUST NOT STRAND THE REST
+// --------------------------------------------------
+// The fallback is per adjacent pair, not per plan. While it was all-or-
+// nothing, a single real link anywhere suppressed the order fallback for
+// every other pair, and a plan with one earned arrow rendered as that arrow
+// plus a row of disconnected islands.
+// --------------------------------------------------
+
+const mixedPlan = {
+    version: 1,
+    lenses: [],
+    features: [{ id: "a", name: "A" }, { id: "b", name: "B" }, { id: "c", name: "C" }],
+    nodes: [
+        { id: "n1", feature: "a", edgesOut: ["n2"] }, // a really does lead into b
+        { id: "n2", feature: "b", edgesOut: [] },
+        { id: "n3", feature: "c", edgesOut: [] }
+    ]
+};
+
+assert.deepEqual(constellationEdges(mixedPlan), [
+    { from: "a", to: "b", source: "nodes" },
+    { from: "b", to: "c", source: "order" }
+], "a->b is real and is not duplicated by an order edge; c is still reached by reading order rather than left an island");
 
 console.log("PASS: plan-render");

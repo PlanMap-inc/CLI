@@ -65,14 +65,17 @@ assert.ok(
 
 const dedupe = nodes => dropRepeatedReadings(nodes, []);
 
+// The repeated line is a real, positive reading: a negative one ("Nothing is
+// read or written") is dropped as filler before the dedup ever sees it, which
+// would leave these assertions passing on an empty input.
 const deduped = dedupe([
-    { id: "a", readings: { database: "Nothing is read or written", backend: "Answer 200 on a booking" } },
-    { id: "b", readings: { database: "Nothing is read or written.", backend: "Insert one row per parcel" } },
-    { id: "c", readings: { database: "nothing is read or written", backend: "Answer 200 on a booking" } },
+    { id: "a", readings: { database: "Read the parcel by its tracking code", backend: "Answer 200 on a booking" } },
+    { id: "b", readings: { database: "Read the parcel by its tracking code.", backend: "Insert one row per parcel" } },
+    { id: "c", readings: { database: "read the parcel by its tracking code", backend: "Answer 200 on a booking" } },
     { id: "d", title: "Handle the booking", readings: { backend: "Process the dispatch", security: "Reject a booking with no address" } }
 ]);
 
-assert.deepEqual(deduped[0].readings, { database: "Nothing is read or written", backend: "Answer 200 on a booking" });
+assert.deepEqual(deduped[0].readings, { database: "Read the parcel by its tracking code", backend: "Answer 200 on a booking" });
 assert.deepEqual(deduped[1].readings, { backend: "Insert one row per parcel" }, "a repeat differing only by a full stop must still go");
 assert.deepEqual(deduped[2].readings, {}, "a repeat differing only by case must still go");
 

@@ -297,16 +297,25 @@ const PREVIEW_LINE_H = 19;
 const PREVIEW_BLOCK_PAD = 7;
 const BACKING_LINE_H = 20;
 
+// .evidence-line is 9.5px at line-height 1.4 (13.3px) with a 2px gap between
+// lines, and .node-evidence has a 6px margin above the block. Rounded up, the
+// same way the preview values are: over-counting by a pixel is absorbed by the
+// gap, under-counting is the bug this whole function exists to stop.
+const EVIDENCE_LINE_H = 15;
+const EVIDENCE_BLOCK_PAD = 6;
+
 // Between one card and the next. Big enough that the connector between them
 // is visibly a connector rather than a seam.
 export const CARD_GAP = 44;
 
 export function cardHeight(card) {
     const preview = card?.preview?.length ?? 0;
+    const evidence = card?.evidence?.length ?? 0;
     const backing = (card?.backing ?? 1) > 1 ? BACKING_LINE_H : 0;
 
     return CARD_BASE_H
         + (preview > 0 ? PREVIEW_BLOCK_PAD + preview * PREVIEW_LINE_H : 0)
+        + (evidence > 0 ? EVIDENCE_BLOCK_PAD + evidence * EVIDENCE_LINE_H : 0)
         + backing;
 }
 
@@ -382,7 +391,13 @@ export function buildConstellation(plan, verifiedStatus) {
 }
 
 // What connects two features: a node in one with an edgesOut into another.
-// A plan with no links across features falls back to the order it lists them in.
+// A pair of adjacent features with no real link between them falls back to the
+// order the plan lists them in.
+//
+// The fallback is per pair, not per plan. It used to be all-or-nothing, which
+// was safe only while every adjacent pair was guaranteed an edge; now that
+// genuine partial links are possible, one real edge anywhere would have left
+// every other feature a disconnected island. A mixed list is the normal shape.
 export function constellationEdges(plan) {
     const featureOf = new Map(
         (plan?.nodes ?? []).map(node => [node.id, node.feature])
@@ -403,11 +418,17 @@ export function constellationEdges(plan) {
         }
     }
 
-    if (edges.length > 0) return edges;
-
     const ids = (plan?.features ?? []).map(feature => feature.id);
 
-    return ids.slice(0, -1).map((id, index) => ({ from: id, to: ids[index + 1], source: "order" }));
+    for (let index = 0; index < ids.length - 1; index += 1) {
+        const key = `${ids[index]}->${ids[index + 1]}`;
+
+        if (!seen.has(key)) {
+            edges.push({ from: ids[index], to: ids[index + 1], source: "order" });
+        }
+    }
+
+    return edges;
 }
 
 
@@ -849,6 +870,10 @@ export function featureRegisters(plan, featureId) {
 // uninformative plumbing.
 // --------------------------------------------------
 
+// A call name that sends an HTTP status: res.status(401), ctx.status = 401,
+// res.sendStatus(401), response.statusCode = 401.
+const SENDS_STATUS = /\.status(\(|$)|sendstatus|statuscode/i;
+
 export function evidenceLines(facts) {
     if (!facts || typeof facts !== "object") return [];
 
@@ -857,9 +882,16 @@ export function evidenceLines(facts) {
     const calls = Array.isArray(facts.calls) ? facts.calls.filter(Boolean) : [];
     if (calls.length > 0) lines.push(`calls ${calls[0]}`);
 
+    // A number in [100,599] is only a status code if the step also calls
+    // something that sends one. Without that corroboration a setTimeout(fn,
+    // 300), a 500ms debounce or a CSS width of 200 all read as "answers N" -
+    // an HTTP response the code never sends, which is the one thing this
+    // function promises never to invent.
     const numbers = Array.isArray(facts.numbers) ? facts.numbers : [];
     const statusLike = numbers.filter(value => Number.isInteger(value) && value >= 100 && value <= 599);
-    if (statusLike.length > 0) lines.push(`answers ${statusLike.join(" or ")}`);
+    if (statusLike.length > 0 && calls.some(call => SENDS_STATUS.test(String(call)))) {
+        lines.push(`answers ${statusLike.join(" or ")}`);
+    }
 
     if (facts.throws > 0) {
         lines.push(
@@ -996,6 +1028,17 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
     const bands = bandsOf(members);
     const groups = bands.length > 0 ? bands : [{ name: "", nodes: members }];
 
+    // The concrete facts behind each title - "calls jwt.verify", "answers
+    // 401" - capped to what a card can show without becoming the inspector.
+    // Empty, never invented, when nothing was extracted for this identity.
+    //
+    // Worked out here rather than where the node is built, because a card
+    // carrying evidence lines is taller and the rows below have to clear it.
+    const evidenceOf = new Map(members.map(node => [
+        node.id,
+        evidenceLines(factsByIdentity[node.identity]).slice(0, CARD_EVIDENCE_LINES)
+    ]));
+
     const rows = [];
     const bandRuns = [];
 
@@ -1030,11 +1073,13 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
     const placed = node => Number.isFinite(node.x) && Number.isFinite(node.y);
 
     // A row is as tall as its tallest card, and the next row clears it. A
-    // merged step carries an extra line for the nouns it reads across, so
-    // rows are no longer interchangeable in height.
+    // merged step carries an extra line for the nouns it reads across, and a
+    // step with evidence carries a line per fact, so rows are no longer
+    // interchangeable in height.
     const rowHeights = rows.map(row =>
         Math.max(...row.map(node => cardHeight({
-            backing: Array.isArray(node.identities) ? node.identities.length : 1
+            backing: Array.isArray(node.identities) ? node.identities.length : 1,
+            evidence: evidenceOf.get(node.id)
         }))));
 
     const totalHeight = rowHeights.reduce((sum, h) => sum + h + CARD_GAP, -CARD_GAP);
@@ -1086,11 +1131,8 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
                 // declaration. The view says so rather than showing the
                 // first and quietly holding the rest.
                 backing: Array.isArray(node.identities) ? node.identities.length : 1,
-                // The concrete facts behind the title - "calls jwt.verify",
-                // "answers 401" - capped to what a card can show without
-                // becoming the inspector. Empty, never invented, when
-                // nothing was extracted for this identity.
-                evidence: evidenceLines(factsByIdentity[node.identity]).slice(0, CARD_EVIDENCE_LINES),
+                // The same lines the row was measured against, above.
+                evidence: evidenceOf.get(node.id) ?? [],
                 h: rowHeights[rowIndex],
                 dimensions: Array.isArray(node.dimensions) ? node.dimensions : [],
                 renamed: Boolean(lensId && node.readings?.[lensId]),
