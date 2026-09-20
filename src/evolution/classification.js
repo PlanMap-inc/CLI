@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { isLayerName } from "../llm/lenses.js";
+
 
 // --------------------------------------------------
 // GET EVOLUTION FACTS
@@ -921,8 +923,15 @@ export function applyEvolutionClassification(
                 classification.feature;
 
 
+            // A layer name - "Server", "Backend", "Infrastructure" - is not
+            // a capability a user would name, whatever the model returned
+            // it as. Refusing it here leaves the node's existing feature in
+            // place rather than overwriting a real classification (or no
+            // classification yet) with a bucket. isLayerName already knows
+            // this vocabulary; it just was not asked before now.
             if (
-                category
+                category &&
+                !isLayerName(category)
             ) {
 
                 node.category =
@@ -1032,7 +1041,8 @@ export function applyEvolutionClassification(
         ) {
 
             if (
-                fallback.category
+                fallback.category &&
+                !isLayerName(fallback.category)
             ) {
 
                 node.category =

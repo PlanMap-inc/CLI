@@ -122,7 +122,7 @@ journey, and never split where the code shows no separate step.
 
 Never use as a feature name:
   Controller, Service, Middleware, Backend, Frontend, Module, File, API,
-  Database, React, Express
+  Database, React, Express, Server
 
 Never use a bucket that everything fits into and that tells a reader
 nothing:
@@ -135,6 +135,14 @@ Ask what stops working if it fails. A server that serves the survey API
 belongs to the survey capability; a health check reporting on it belongs
 there too. Neither belongs to a "System" feature, and neither belongs to
 whichever capability happens to be listed first.
+
+When a piece of machinery serves every capability equally and no single one
+owns it more than the rest - a server that starts once and then serves every
+route alike - attach it to the FIRST capability in the journey, the one a
+person reaches before any other. That is a real fact about the journey, not
+a guess, and it beats inventing a capability whose only members are
+plumbing: a "Server" feature holding nothing but start-up and a health
+check is exactly this mistake, seen in a real project's own output.
 
 Before naming a new feature, check it against the existing features below
 and ask: is this the same capability under another name? Authentication and
