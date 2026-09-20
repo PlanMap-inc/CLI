@@ -1,7 +1,7 @@
 import * as path from "path";
 import { readFile, stat } from "fs/promises";
 
-import type { ViewState } from "./messages";
+import type { DeclarationFacts, ViewState } from "./messages";
 
 
 // --------------------------------------------------
@@ -185,6 +185,21 @@ export function declarationCount(baseline: unknown): number | null {
     return Array.isArray(declarations) ? declarations.length : null;
 }
 
+export function factsByIdentity(baseline: unknown): Record<string, DeclarationFacts> {
+    const declarations = (baseline as { declarations?: unknown } | null)?.declarations;
+    if (!Array.isArray(declarations)) return {};
+
+    const result: Record<string, DeclarationFacts> = {};
+
+    for (const raw of declarations) {
+        const declaration = raw as { identity?: unknown; properties?: unknown } | null;
+        if (typeof declaration?.identity !== "string") continue;
+        result[declaration.identity] = (declaration.properties ?? {}) as DeclarationFacts;
+    }
+
+    return result;
+}
+
 
 // --------------------------------------------------
 // WHAT A REFRESH BROUGHT IN
@@ -215,7 +230,7 @@ export async function readViewState(projectRoot: string): Promise<ViewState> {
     const projectName = path.basename(projectRoot);
     const planmapDir = path.join(projectRoot, ".planmap");
     // aiKey is filled in by the host, which alone can see secret storage.
-    const base = { projectName, plan: null, verifiedStatus: {}, problem: null, evolution: null, declarationCount: null, aiKey: null };
+    const base = { projectName, plan: null, verifiedStatus: {}, problem: null, evolution: null, declarationCount: null, facts: {}, aiKey: null };
 
     if (!(await isDirectory(planmapDir))) {
         return { ...base, setup: "missing" };
@@ -233,7 +248,8 @@ export async function readViewState(projectRoot: string): Promise<ViewState> {
         ...base,
         evolution: evolution.ok && Array.isArray(evolutionNodes) ? evolution.value : null,
         verifiedStatus: evolution.ok ? latestVerifiedStatus(evolution.value) : {},
-        declarationCount: baseline.ok ? declarationCount(baseline.value) : null
+        declarationCount: baseline.ok ? declarationCount(baseline.value) : null,
+        facts: baseline.ok ? factsByIdentity(baseline.value) : {}
     };
 
     const plan = await readJson(path.join(planmapDir, "plan.json"));

@@ -72,6 +72,26 @@ export interface VerifiedStatus {
     ts: string;
 }
 
+// One declaration's static facts, exactly as baseline.json's "properties"
+// holds them. Mirrors VALID_FACT_FIELDS in src/plan/model.js - kept loose
+// (every field optional) because a declaration only carries the fields its
+// own kind produces: a function has calls/throws/awaits, a data
+// declaration has entryCount/entries instead.
+export interface DeclarationFacts {
+    throws?: number;
+    throwTypes?: string[];
+    returns?: number;
+    returnsNullish?: number;
+    calls?: string[];
+    numbers?: number[];
+    awaits?: number;
+    catches?: number;
+    emptyCatches?: number;
+    params?: number;
+    entryCount?: number;
+    entries?: string[];
+}
+
 export interface ViewState {
     projectName: string;
     setup: SetupState;
@@ -82,6 +102,11 @@ export interface ViewState {
     evolution: unknown;
     // baseline.json declarations.length, or null before the first scan.
     declarationCount: number | null;
+    // Every declaration's static facts, keyed by identity - the same
+    // identity a Plan node's "identity" and "rules[].target" already use.
+    // Empty before the first scan. Read-only evidence for the Plan Graph;
+    // nothing here is ever written back to plan.json.
+    facts: Record<string, DeclarationFacts>;
     aiKey: ApiKeySource;
     // Evolution node ids the last refresh added. Empty on a plain re-read,
     // so a node is marked as new only by a run that actually brought it in.

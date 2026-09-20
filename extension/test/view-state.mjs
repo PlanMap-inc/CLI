@@ -42,6 +42,19 @@ fs.writeFileSync(path.join(planmap, "evolution.json"), JSON.stringify({
     ]
 }));
 
+fs.writeFileSync(path.join(planmap, "baseline.json"), JSON.stringify({
+    version: 1,
+    declarations: [
+        {
+            identity: "auth.js::verifyJWT:function",
+            file: "auth.js",
+            kind: "function",
+            properties: { throws: 0, calls: ["authHeader.split", "jwt.verify", "next", "res.status"], numbers: [1, 401], awaits: 0, catches: 1, params: 3 }
+        },
+        { identity: "no-properties.js::odd:function", file: "no-properties.js", kind: "function" }
+    ]
+}));
+
 const ready = await readViewState(root);
 assert.equal(ready.setup, "ready");
 assert.deepEqual(ready.plan, plan);
@@ -50,11 +63,16 @@ assert.deepEqual(Object.keys(ready.verifiedStatus).sort(), ["a.js::a:function", 
 assert.equal(ready.verifiedStatus["a.js::a:function"].status, "drifted");
 assert.equal(ready.verifiedStatus["c.js::c:function"].status, "implemented", "the latest verify result wins");
 
-// A malformed evolution.json does not hide the plan.
+assert.deepEqual(ready.facts["auth.js::verifyJWT:function"], { throws: 0, calls: ["authHeader.split", "jwt.verify", "next", "res.status"], numbers: [1, 401], awaits: 0, catches: 1, params: 3 });
+assert.deepEqual(ready.facts["no-properties.js::odd:function"], {}, "a declaration with no properties block still gets an entry, empty rather than missing");
+assert.equal(ready.facts["nothing.js::nothing:function"], undefined);
+
+// A malformed evolution.json does not hide the plan, and does not affect facts.
 fs.writeFileSync(path.join(planmap, "evolution.json"), "{ broken");
 const noEvolution = await readViewState(root);
 assert.equal(noEvolution.setup, "ready");
 assert.deepEqual(noEvolution.verifiedStatus, {});
+assert.deepEqual(noEvolution.facts["auth.js::verifyJWT:function"], { throws: 0, calls: ["authHeader.split", "jwt.verify", "next", "res.status"], numbers: [1, 401], awaits: 0, catches: 1, params: 3 });
 
 assert.deepEqual(latestVerifiedStatus(null), {});
 
