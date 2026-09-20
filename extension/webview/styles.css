@@ -496,3 +496,7 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 
 .node-backing{margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
   color:var(--text-low);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+.node-evidence{margin-top:6px;display:flex;flex-direction:column;gap:2px;}
+.evidence-line{font-family:'JetBrains Mono',monospace;font-size:9.5px;line-height:1.4;
+  color:var(--text-low);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

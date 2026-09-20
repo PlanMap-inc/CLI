@@ -948,7 +948,7 @@ export function bandsOf(steps) {
 }
 
 
-export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null, areaName = null) {
+export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null, areaName = null, factsByIdentity = {}) {
     const registers = featureRegisters(plan, featureId);
 
     // Only what the system DOES is a step. The terms, the preconditions and
@@ -1086,6 +1086,11 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
                 // declaration. The view says so rather than showing the
                 // first and quietly holding the rest.
                 backing: Array.isArray(node.identities) ? node.identities.length : 1,
+                // The concrete facts behind the title - "calls jwt.verify",
+                // "answers 401" - capped to what a card can show without
+                // becoming the inspector. Empty, never invented, when
+                // nothing was extracted for this identity.
+                evidence: evidenceLines(factsByIdentity[node.identity]).slice(0, CARD_EVIDENCE_LINES),
                 h: rowHeights[rowIndex],
                 dimensions: Array.isArray(node.dimensions) ? node.dimensions : [],
                 renamed: Boolean(lensId && node.readings?.[lensId]),

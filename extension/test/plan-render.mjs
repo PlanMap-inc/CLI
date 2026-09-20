@@ -25,7 +25,7 @@ const plan = {
         { id: "a1", title: "Enter email", intent: "x", feature: "auth", edgesOut: ["a2"] },
         { id: "a2", title: "Enter password", intent: "x", feature: "auth", edgesOut: ["a3"] },
         { id: "a3", title: "Hash check", intent: "x", feature: "auth", edgesOut: ["a4", "missing_node"] },
-        { id: "a4", title: "JWT issued", intent: "x", feature: "auth", edgesOut: ["o1"] },
+        { id: "a4", title: "JWT issued", intent: "x", feature: "auth", edgesOut: ["o1"], identity: "auth/middleware.js::verifyJWT:function" },
         { id: "o1", title: "Create order", intent: "x", feature: "orders", edgesOut: ["o2", "o3"] },
         { id: "o2", title: "Validate cart", intent: "x", feature: "orders", edgesOut: [] },
         { id: "o3", title: "Charge", intent: "x", feature: "orders", edgesOut: ["o1"] }
@@ -113,6 +113,33 @@ assert.deepEqual(unchained.nodes.map(n => n.id), ["n1", "n2", "n3"], "in the ord
 assert.equal(new Set(unchained.nodes.map(n => n.x)).size, 3, "spread across it");
 
 assert.equal(buildFeatureGraph({ features: [{ id: "f" }], nodes: [{ id: "only", feature: "f" }] }, "f", {}).edges.length, 0, "one node has nothing to connect to");
+
+// --------------------------------------------------
+// EVIDENCE RIDES ALONG WITH EACH STEP, CAPPED FOR THE CARD
+// --------------------------------------------------
+
+const factsByIdentity = {
+    "auth/middleware.js::verifyJWT:function": {
+        calls: ["authHeader.split", "jwt.verify", "next", "res.status"],
+        numbers: [1, 401],
+        catches: 1
+    }
+};
+
+// Reuses this file's existing `plan` fixture - a4 ("JWT issued") is the auth
+// feature's node carrying this identity, added above alongside the fixture.
+const withEvidence = buildFeatureGraph(plan, "auth", {}, null, null, factsByIdentity);
+const verifyStep = withEvidence.nodes.find(n => n.source.identity === "auth/middleware.js::verifyJWT:function");
+
+assert.ok(verifyStep, "the fixture's a4 node carries this identity");
+assert.deepEqual(verifyStep.evidence, ["calls authHeader.split", "answers 401"]);
+
+const noFacts = buildFeatureGraph(plan, "auth", {}, null, null, {});
+assert.ok(noFacts.nodes.every(n => Array.isArray(n.evidence) && n.evidence.length === 0), "no facts supplied means every step's evidence is an empty array, never invented");
+
+// Existing callers that pass no factsByIdentity at all still work.
+const noArgAtAll = buildFeatureGraph(plan, "auth", {});
+assert.ok(noArgAtAll.nodes.every(n => Array.isArray(n.evidence)));
 
 // --------------------------------------------------
 // ROLES: ONLY A BEHAVIOUR IS A STEP

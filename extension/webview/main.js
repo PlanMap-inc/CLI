@@ -16,6 +16,7 @@ import {
     describeRules,
     describeViolation,
     escapeHtml,
+    evidenceLines,
     lensColors,
     lensCoverage,
     LENS_QUESTIONS,
@@ -175,9 +176,10 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             <div class="bar" data-style="background:${n.color || dotColor}"></div>
             ${n.step ? `<div class="step">${n.step}</div>` : ""}
             <div class="title">${escapeHtml(n.title)}</div>
-            ${n.sub ? `<div class="sub" title="${escapeHtml(n.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
+            ${n.sub ? `<div class="sub" title="${escapeHtml(n.source?.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
             ${n.preview?.length ? `<div class="node-preview">${n.preview.map(step => `<div class="preview-step">${escapeHtml(step.title)}</div>`).join("")}</div>` : ""}
             ${n.backing > 1 ? `<div class="node-backing" title="${escapeHtml(n.dimensions.join(", "))}">${n.dimensions.length ? escapeHtml(n.dimensions.join(" · ")) : `${n.backing} declarations`}</div>` : ""}
+            ${n.evidence?.length ? `<div class="node-evidence">${n.evidence.map(line => `<div class="evidence-line">${escapeHtml(line)}</div>`).join("")}</div>` : ""}
             ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
             <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.failing > 0 ? `${n.failing} of ${n.count ?? ""} ${n.status}`.replace("  ", " ") : n.status}</div>
             ${n.exit ? `<div class="exit" title="Continues in ${escapeHtml(n.exit.area)}: ${escapeHtml(n.exit.title ?? "")}">↗ ${escapeHtml(n.exit.area)}</div>` : ""}
@@ -675,7 +677,7 @@ function mountAreas() {
 
 function mountFeature() {
     const p = plan();
-    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus, currentLensId, currentAreaName);
+    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus, currentLensId, currentAreaName, state.facts);
     const colors = lensColors(p);
     const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
     const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
@@ -1127,6 +1129,21 @@ function openDetail(viewNode) {
         )
         : "";
 
+    // The full evidence list, not just the card's first couple of lines -
+    // one identity when the node is ordinary, every identity it stands for
+    // when it is merged. What the title says WHAT; this says what the code
+    // concretely does.
+    const evidenceIdentities = backing.length > 1 ? backing : node.identity ? [node.identity] : [];
+
+    const evidenceBlock = evidenceIdentities.length
+        ? (() => {
+            const allLines = evidenceIdentities.flatMap(identity => evidenceLines(state?.facts?.[identity]));
+            return allLines.length
+                ? section("Evidence", allLines.map(line => `<div class="clause">${escapeHtml(line)}</div>`).join(""))
+                : "";
+        })()
+        : "";
+
     // A node that is not a step says so, because it is reached from beside
     // the spine and a reader who clicked a term should not be told it is
     // one of the feature's steps.
@@ -1152,6 +1169,7 @@ function openDetail(viewNode) {
         ${roleBlock}
         ${section("Intent", `<p>${escapeHtml(node.intent)}</p>`)}
         ${backingBlock}
+        ${evidenceBlock}
         ${section("Rules", rulesBody)}
         ${approval}
         ${lenses}
