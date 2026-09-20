@@ -2,6 +2,7 @@ import fs from "node:fs";
 
 import {
     addPlanNode,
+    renamePlanFeature,
     renamePlanNode,
     movePlanNode,
     reorderPlanNode
@@ -339,6 +340,18 @@ export function runPlanAuthoring(
                 );
 
             console.log(`Renamed: ${node.id} "${node.title}"`);
+            return 0;
+        }
+
+        if (action === "rename-feature") {
+            const feature =
+                renamePlanFeature(
+                    projectRoot,
+                    args[1],
+                    flag("--name")
+                );
+
+            console.log(`Renamed feature: ${feature.id} "${feature.name}"`);
             return 0;
         }
 

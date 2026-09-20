@@ -168,6 +168,10 @@ if (
     );
 
     console.error(
+        "  node src/cli/cli.js plan rename-feature <project-folder> <feature-id> --name \"...\""
+    );
+
+    console.error(
         "  node src/cli/cli.js plan move <project-folder> <id> --x N --y N | --reset"
     );
 
@@ -559,7 +563,7 @@ else if (
     }
 
     else if (
-        ["add", "rename", "move", "order"].includes(
+        ["add", "rename", "rename-feature", "move", "order"].includes(
             args[1]
         )
     ) {

@@ -28,6 +28,15 @@ const VALID_NODE_STATUSES = [
     "superseded"
 ];
 
+// What a node is FOR, and so how the graph draws it. Kept in step with
+// src/llm/roles.js, which is where the vocabulary is defined and explained.
+const VALID_NODE_ROLES = [
+    "behaviour",
+    "vocabulary",
+    "machinery",
+    "tool"
+];
+
 const VALID_RULE_KINDS = [
     "behaviour",
     "structure"
@@ -405,6 +414,71 @@ function validateNode(
         );
     }
 
+    // Every declaration this node stands for, when it stands for more than
+    // one. Absent on an ordinary node, whose single declaration is
+    // "identity" - which stays present on a merged node too, as the first
+    // of these, so nothing that reads one declaration per node breaks.
+    if (
+        node.identities !== undefined
+    ) {
+        if (
+            !isStringArray(
+                node.identities
+            )
+        ) {
+            errors.push(
+                `${prefix}.identities must be an array of strings`
+            );
+        } else if (
+            node.identities.length > 0 &&
+            node.identity !== undefined &&
+            node.identities[0] !== node.identity
+        ) {
+            errors.push(
+                `${prefix}.identities[0] must be the node's own identity`
+            );
+        }
+    }
+
+    // What varies across a merged node's declarations, in the product's own
+    // words - "agency, MP, district, state" rather than the function names.
+    if (
+        node.dimensions !== undefined &&
+        !isStringArray(
+            node.dimensions
+        )
+    ) {
+        errors.push(
+            `${prefix}.dimensions must be an array of strings`
+        );
+    }
+
+    if (
+        node.role !== undefined &&
+        !VALID_NODE_ROLES.includes(
+            node.role
+        )
+    ) {
+        errors.push(
+            `${prefix}.role is invalid`
+        );
+    }
+
+    // The order a person meets this step inside its feature. A reading
+    // order, not a claim about cause - that is what edgesOut is for.
+    if (
+        node.step !== undefined &&
+        (
+            typeof node.step !== "number" ||
+            !Number.isInteger(node.step) ||
+            node.step < 1
+        )
+    ) {
+        errors.push(
+            `${prefix}.step must be a positive integer`
+        );
+    }
+
     // The behavioural area this step belongs to, as headings between its
     // feature and itself - the same shape and the same name Project
     // Evolution uses, because it is the same hierarchy.
@@ -730,6 +804,11 @@ export const PLAN_ORIGIN_VALUES =
 export const PLAN_LENS_SOURCE_VALUES =
     Object.freeze([
         ...VALID_LENS_SOURCES
+    ]);
+
+export const PLAN_NODE_ROLES =
+    Object.freeze([
+        ...VALID_NODE_ROLES
     ]);
 
 export const PLAN_RULE_KINDS =

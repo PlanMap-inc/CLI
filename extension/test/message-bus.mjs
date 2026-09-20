@@ -22,6 +22,9 @@ const expected = {
     // there is identical to one added or moved from a terminal.
     addNode: [{ type: "addNode", feature: "feat_0001", title: "A step" }, ["plan", "add", root, "--feature", "feat_0001", "--title", "A step"]],
     renameNode: [{ type: "renameNode", target: "plan_0001", title: "A better name" }, ["plan", "rename", root, "plan_0001", "--title", "A better name"]],
+    // A feature's name on the Constellation is a model's reading of the code,
+    // so a person can correct it - through the CLI like everything else.
+    renameFeature: [{ type: "renameFeature", target: "feat_0001", name: "Sign in" }, ["plan", "rename-feature", root, "feat_0001", "--name", "Sign in"]],
     moveNode: [{ type: "moveNode", target: "plan_0001", x: 240, y: 96 }, ["plan", "move", root, "plan_0001", "--x", "240", "--y", "96"]],
     reorderNode: [{ type: "reorderNode", target: "plan_0001", after: "plan_0002" }, ["plan", "order", root, "plan_0001", "--after", "plan_0002"]],
     evolution: [{ type: "evolution" }, ["evolution", root]],
@@ -106,6 +109,11 @@ for (const [type, [message, args]] of Object.entries(expected)) {
 assert.equal(isWebviewMessage({ type: "renameNode", target: "plan_0001", title: "--all" }), true);
 assert.equal(isWebviewMessage({ type: "renameNode", target: "plan_0001", title: "   " }), false, "a blank title is not a name");
 assert.equal(isWebviewMessage({ type: "addNode", feature: "f", title: "x".repeat(201) }), false, "a title has a ceiling");
+
+// A feature name is held to the same standard as a step title.
+assert.equal(isWebviewMessage({ type: "renameFeature", target: "feat_0001", name: "--lens" }), true);
+assert.equal(isWebviewMessage({ type: "renameFeature", target: "feat_0001", name: " " }), false, "a blank name is not a name");
+assert.equal(isWebviewMessage({ type: "renameFeature", target: "feat_0001" }), false, "a rename needs a name");
 
 // A position is two finite numbers and nothing else.
 assert.equal(isWebviewMessage({ type: "moveNode", target: "p", x: 1, y: 2 }), true);

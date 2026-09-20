@@ -87,7 +87,7 @@
             <div class="graph-canvas hidden" id="featureCanvas">
               <div class="grid-layer" id="featureGrid"></div>
               <div class="canvas-content" id="featureContent"><svg class="edges" id="featureEdges"></svg></div>
-              <div class="flow-tag"><span class="arrow-up">↑</span> the order the steps happen</div>
+              <div class="flow-tag"><span class="arrow-up">↑</span> <span id="featureFlowLabel">the order the steps happen</span></div>
             </div>
             <div class="empty-state" id="emptyState" hidden><div class="empty-card" id="emptyCard"></div></div>
             <!-- Tools that act on the canvas live on the canvas, at the edge
@@ -104,7 +104,11 @@
               <div class="ct-zoom" id="zoomLabel">100%</div>
               <button class="ct-btn" id="zoomOutBtn" title="Zoom out" aria-label="Zoom out">−</button>
               <div class="ct-sep"></div>
-              <button class="ct-btn" id="zoomResetBtn" title="Fit to content" aria-label="Fit to content">⤢</button>
+              <button class="ct-btn" id="zoomResetBtn" title="Fit to content" aria-label="Fit to content">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                </svg>
+              </button>
             </div>
           </div>
           <aside class="impact-panel" id="impactPanel" aria-label="Node detail"><div class="impact-inner" id="impactInner"></div></aside>

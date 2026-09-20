@@ -5,8 +5,10 @@ import {
     layoutAreas,
     NODE_W,
     NODE_H_EST,
+    bandsOf,
     buildConstellation,
     buildFeatureGraph,
+    featureRegisters,
     colorAt,
     constellationEdges,
     describeHistory,
@@ -20,6 +22,12 @@ import {
     FEATURE_PALETTE,
     nodeActions,
     onboardingState,
+    panAxis,
+    panDirection,
+    panVelocity,
+    PAN_DIRECTIONS,
+    PAN_FAST,
+    PAN_SPEED,
     parseScanProgress,
     railModel,
     statusClass,
@@ -35,8 +43,14 @@ import { paint } from "./paint.js";
 const vscode = acquireVsCodeApi();
 
 const MIN_SCALE = 0.3;
-// Fitting stops here even when the content is taller than the canvas.
-const FIT_MIN_SCALE = 0.65;
+// Fitting stops here even when the content is taller than the canvas. A map
+// is opened to be read, and a whole journey shrunk to fit is a picture of a
+// journey rather than something you can read - so the map opens at full size
+// and runs off the bottom of the screen, which is what panning is for.
+const FIT_MIN_SCALE = 1;
+// How far above the bottom the first step sits when the map is taller than
+// the canvas. The journey climbs, so opening at the bottom opens at step one.
+const FIT_BOTTOM_PAD = 72;
 const MAX_SCALE = 2.2;
 const FLY_MS = 450;
 // Add, rename, delete, connect and compile need CLI commands that don't exist yet.
@@ -88,7 +102,7 @@ function areaCard(n) {
 
     return `
         <div class="area-head">
-            <div class="title">${escapeHtml(n.title)}</div>
+            <div class="title"${opts.onRename ? ' title="Double-click to rename"' : ""}>${escapeHtml(n.title)}</div>
             ${n.oversized ? '<span class="area-large" title="Large enough to be hard to read when opened">large</span>' : ""}
         </div>
         <div class="area-flow">${flow}</div>
@@ -106,7 +120,24 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     const CARD_W = opts.variant === "area" ? AREA_W : NODE_W;
     const CARD_H = opts.variant === "area" ? AREA_H : NODE_H_EST;
 
+    // Cards no longer share a height: a Constellation card carries a preview
+    // of what it opens onto, a merged step carries the nouns it reads
+    // across. The layout measures each one, so everything that reasons about
+    // where a card ENDS has to ask the card rather than the constant.
+    const heightOf = node => node?.h ?? CARD_H;
+
     let nodes = [], edges = [];
+    // What the view draws to the left of the steps - lane labels, the
+    // feature's own terms - so centring centres the picture rather than just
+    // the column of cards.
+    let insetLeft = 0;
+    // The terms above the spine and the preconditions below it. Unlike the
+    // lane labels, these are content on this axis, not margin: they have to
+    // be centred with the steps and reachable by panning. They were neither
+    // - vertical panning locks when the steps fit, so a terms band sitting
+    // above the top row was simply cut off with no way to reach it.
+    let insetTop = 0;
+    let insetBottom = 0;
     let selectedId = null, onSelect = null, onOpen = null, dotColor = "var(--accent-a)", edgeColor = "var(--edge)";
     let panX = 0, panY = 0, scale = 1, panning = false, panStart = null, panOrigin = null;
     let dragging = null, suppressClick = false;
@@ -145,6 +176,8 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             ${n.step ? `<div class="step">${n.step}</div>` : ""}
             <div class="title">${escapeHtml(n.title)}</div>
             ${n.sub ? `<div class="sub" title="${escapeHtml(n.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
+            ${n.preview?.length ? `<div class="node-preview">${n.preview.map(step => `<div class="preview-step">${escapeHtml(step.title)}</div>`).join("")}</div>` : ""}
+            ${n.backing > 1 ? `<div class="node-backing" title="${escapeHtml(n.dimensions.join(", "))}">${n.dimensions.length ? escapeHtml(n.dimensions.join(" · ")) : `${n.backing} declarations`}</div>` : ""}
             ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
             <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.failing > 0 ? `${n.failing} of ${n.count ?? ""} ${n.status}`.replace("  ", " ") : n.status}</div>
             ${n.exit ? `<div class="exit" title="Continues in ${escapeHtml(n.exit.area)}: ${escapeHtml(n.exit.title ?? "")}">↗ ${escapeHtml(n.exit.area)}</div>` : ""}
@@ -225,10 +258,10 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             const a = nodes.find(n => n.id === e.from), b = nodes.find(n => n.id === e.to);
             if (!a || !b) return;
             const d = opts.variant === "area"
-                ? straightPath(a.x + CARD_W / 2, a.y + CARD_H / 2, b.x + CARD_W / 2, b.y + CARD_H / 2)
+                ? straightPath(a.x + CARD_W / 2, a.y + heightOf(a) / 2, b.x + CARD_W / 2, b.y + heightOf(b) / 2)
                 : opts.horizontal
-                    ? elbowPathH(a.x + CARD_W, a.y + CARD_H / 2, b.x, b.y + CARD_H / 2)
-                    : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + CARD_H);
+                    ? elbowPathH(a.x + CARD_W, a.y + heightOf(a) / 2, b.x, b.y + heightOf(b) / 2)
+                    : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + heightOf(b));
             markup += `<path class="edge-path" d="${d}" data-style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
         });
         svgEl.innerHTML = markup;
@@ -247,7 +280,12 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         zoomAround(e.clientX - rect.left, e.clientY - rect.top, zoomFactorFor(e));
     }, { passive: false });
     document.addEventListener("mousemove", e => {
-        if (panning) { panX = panOrigin.x + (e.clientX - panStart.x); panY = panOrigin.y + (e.clientY - panStart.y); applyTransform(); }
+        if (panning) {
+            panX = panOrigin.x + (e.clientX - panStart.x);
+            panY = panOrigin.y + (e.clientY - panStart.y);
+            clampPan();
+            applyTransform();
+        }
 
         if (dragging) {
             const dx = (e.clientX - dragging.fromX) / scale;
@@ -290,22 +328,102 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         const newScale = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
         const lx = (mx - panX) / scale, ly = (my - panY) / scale;
         panX = mx - lx * newScale; panY = my - ly * newScale; scale = newScale;
+        clampPan();
         applyTransform(); syncZoomLabel();
+    }
+
+    // --------------------------------------------------
+    // THE MAP STAYS WHERE IT CAN BE READ
+    // --------------------------------------------------
+    // The journey runs bottom to top, so up and down is travel and sideways
+    // is not. Horizontally the content is centred and held there while it
+    // fits; only a row too wide for the canvas can be moved sideways, and
+    // only as far as its own edges. Vertically you may travel, but not past
+    // the ends - panning used to be unbounded in both directions, so the
+    // map could be pushed off-screen entirely with nothing to say where it
+    // had gone.
+    // --------------------------------------------------
+
+    // The steps themselves. Lane labels and the terms beside them are NOT in
+    // here: they are margin furniture, and centring the box that contains
+    // them centres a mostly-empty left half - which pushed the steps a long
+    // way right of the middle on a feature whose labels were far from them.
+    // The furniture is carried as insetLeft, and only decides whether the
+    // picture fits and how far it may be panned.
+    function contentBox() {
+        if (!nodes.length) return null;
+
+        const xs = nodes.map(n => n.x);
+
+        return {
+            minX: Math.min(...xs),
+            maxX: Math.max(...xs) + CARD_W,
+            minY: Math.min(...nodes.map(n => n.y)) - insetTop,
+            maxY: Math.max(...nodes.map(n => n.y + heightOf(n))) + insetBottom
+        };
+    }
+
+    // How close the content may come to the edge before panning stops. Less
+    // than the fit leaves at the bottom, so the opening view is inside it.
+    const PAN_EDGE = 40;
+
+    function clampPan() {
+        const box = contentBox();
+        if (!box) return;
+
+        const rect = canvasEl.getBoundingClientRect();
+
+        // Horizontally the steps are what gets centred, but what has to FIT
+        // is the steps plus whatever is drawn beside them - otherwise a
+        // label could be centred off the edge with no way to pan to it.
+        panX = panAxis({
+            from: box.minX,
+            to: box.maxX,
+            pan: panX,
+            extent: rect.width,
+            scale,
+            edge: PAN_EDGE,
+            padStart: insetLeft
+        });
+
+        panY = panAxis({ from: box.minY, to: box.maxY, pan: panY, extent: rect.height, scale, edge: PAN_EDGE });
     }
 
     function fitView() {
         const rect = canvasEl.getBoundingClientRect();
-        if (!nodes.length) return { panX: rect.width / 2, panY: rect.height / 2, scale: 1 };
-        const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
-        const minX = Math.min(...xs), maxX = Math.max(...xs) + CARD_W;
-        const minY = Math.min(...ys), maxY = Math.max(...ys) + CARD_H;
-        const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+        const box = contentBox();
+        if (!box) return { panX: rect.width / 2, panY: rect.height / 2, scale: 1 };
+
+        // The same box the clamp measures, lane labels and all. They used to
+        // measure differently - the fit centred the column of cards, the
+        // clamp centred the whole picture - so the first time anything
+        // recomputed the pan, the map stepped sideways by half the width of
+        // the furniture beside it.
+        const { minX, maxX, minY, maxY } = box;
+        // Scale so the whole picture fits - the steps and the lane labels
+        // beside them - then centre on the steps alone.
+        const w = Math.max(1, maxX - minX + insetLeft), h = Math.max(1, maxY - minY);
         const pad = 48;
         // Never fit so small that the titles stop being readable. A long
         // journey scrolls instead - a graph you cannot read explains nothing,
         // and fitting used to land at 45%.
         const s = clamp(Math.min((rect.width - pad * 2) / w, (rect.height - pad * 2) / h, 1.15), FIT_MIN_SCALE, MAX_SCALE);
-        return { panX: rect.width / 2 - (minX + w / 2) * s, panY: rect.height / 2 - (minY + h / 2) * s, scale: s };
+
+        const panX = rect.width / 2 - (minX + (maxX - minX) / 2) * s;
+
+        // Taller than the canvas, which is now the normal case: open at the
+        // bottom, where the journey starts. Centring a map that does not fit
+        // opens it in the middle of itself, with the beginning off-screen
+        // above and no sign that it is there.
+        const overflows = h * s > rect.height - pad * 2;
+
+        return {
+            panX,
+            panY: overflows
+                ? rect.height - FIT_BOTTOM_PAD - maxY * s
+                : rect.height / 2 - (minY + h / 2) * s,
+            scale: s
+        };
     }
 
     function setView(view) { panX = view.panX; panY = view.panY; scale = view.scale; applyTransform(); syncZoomLabel(); }
@@ -328,15 +446,48 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         const rect = canvasEl.getBoundingClientRect();
         if (!n) return { panX, panY, scale };
         const s = scale * factor;
-        const cx = n.x + CARD_W / 2, cy = n.y + CARD_H / 2;
+        const cx = n.x + CARD_W / 2, cy = n.y + heightOf(n) / 2;
         return { panX: rect.width / 2 - cx * s, panY: rect.height / 2 - cy * s, scale: s };
     }
+
+    // --------------------------------------------------
+    // THE MAP FOLLOWS THE CANVAS
+    // --------------------------------------------------
+    // The detail panel is a flex sibling of the canvas, so opening it makes
+    // the canvas narrower over the 280ms its width animates. The map used to
+    // ignore that: it stayed where it was while the panel slid over it, and
+    // then jumped sideways the next time anything touched the pan - because
+    // that was the first moment the centring was recomputed.
+    //
+    // A resize observer fires throughout the panel's animation, so
+    // re-centring on each one walks the map across in step with it. No
+    // transition of its own: one would restart on every notification and
+    // lag behind the thing it is supposed to be following.
+    // --------------------------------------------------
+
+    const canvasResize = new ResizeObserver(() => {
+        // A flight owns the transform while it runs, and sets its own
+        // destination from the size the canvas will have settled at.
+        if (contentEl.classList.contains("flying") || !nodes.length) return;
+
+        const wasX = panX;
+        const wasY = panY;
+
+        clampPan();
+
+        if (panX !== wasX || panY !== wasY) applyTransform();
+    });
+
+    canvasResize.observe(canvasEl);
 
     applyTransform();
 
     return {
         setData(next) {
             nodes = next.nodes; edges = next.edges;
+            insetLeft = next.insetLeft ?? 0;
+            insetTop = next.insetTop ?? 0;
+            insetBottom = next.insetBottom ?? 0;
             dotColor = next.dotColor ?? dotColor;
             edgeColor = next.edgeColor ?? edgeColor;
             onOpen = next.onOpen ?? onOpen;
@@ -344,6 +495,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             render();
         },
         clearSelection: deselect,
+        panBy(dx, dy) { panX += dx; panY += dy; clampPan(); applyTransform(); },
         zoomIn: () => { const r = canvasEl.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 1.25); },
         zoomOut: () => { const r = canvasEl.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 0.8); },
         fitToContent: () => setView(fitView()),
@@ -383,6 +535,7 @@ const emptyState = document.getElementById("emptyState");
 const emptyCard = document.getElementById("emptyCard");
 const constellationFlowTag = document.getElementById("constellationFlowTag");
 const constellationFlowLabel = document.getElementById("constellationFlowLabel");
+const featureFlowLabel = document.getElementById("featureFlowLabel");
 
 // Level 2. Read-only and no handles: an area is not something you drag,
 // rename or delete - it is a view onto steps that are. Authoring stays where
@@ -390,7 +543,15 @@ const constellationFlowLabel = document.getElementById("constellationFlowLabel")
 const areasGraph = createGraph(areasCanvas, document.getElementById("areasGrid"), document.getElementById("areasContent"), {
     id: "areas", showToolbar: false, hideHandles: true, variant: "area"
 });
-const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), { id: "const", showToolbar: false, hideHandles: true });
+const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), {
+    id: "const",
+    showToolbar: false,
+    hideHandles: true,
+    // Double-click to rename, the same gesture as a step inside a feature.
+    // Nothing else here is authorable: a feature is not added or deleted on
+    // the map, it appears because declarations belong to it.
+    onRename: node => renameFeature(node)
+});
 // Authoring lives in Feature Space, where the steps are. Each callback is
 // one CLI command: the canvas never writes plan.json itself, so a step moved
 // here and a step moved from a terminal end up byte-identical.
@@ -405,11 +566,15 @@ const featureGraph = createGraph(featureCanvas, document.getElementById("feature
     }
 });
 
-// Renaming happens in the node, not in a dialog: you are looking at the step
+// Renaming happens in the node, not in a dialog: you are looking at the thing
 // while you retitle it. Escape abandons, Enter and blur commit, and an empty
-// title is a cancel rather than a step with no name.
-function renameStep(node) {
-    const el = featureCanvas.querySelector(`.gnode[data-id="${node.id}"] .title`);
+// name is a cancel rather than a thing with no name.
+//
+// One function for both canvases. A feature's name on the Constellation and a
+// step's title inside it are the same gesture on the same kind of card, and
+// having two of these drifted the moment one of them gained a guard.
+function renameInPlace(canvas, node, commitWith) {
+    const el = canvas.querySelector(`.gnode[data-id="${node.id}"] .title`);
     if (!el || el.isContentEditable) return;
 
     const before = el.textContent;
@@ -429,7 +594,7 @@ function renameStep(node) {
         el.classList.remove("editing");
 
         if (!commit || !title || title === before) { el.textContent = before; return; }
-        request("action", { type: "renameNode", target: node.id, title });
+        commitWith(title);
     };
 
     el.addEventListener("keydown", event => {
@@ -438,6 +603,18 @@ function renameStep(node) {
     });
     el.addEventListener("blur", () => finish(true), { once: true });
 }
+
+const renameStep = node =>
+    renameInPlace(featureCanvas, node, title =>
+        request("action", { type: "renameNode", target: node.id, title }));
+
+// The Constellation's names come from a model reading the code. Where it has
+// called a capability something the team does not, this is where that gets
+// corrected - and like every other change on the canvas, it is a CLI command,
+// so the same rename from a terminal lands byte-identical.
+const renameFeature = node =>
+    renameInPlace(constellationCanvas, node, name =>
+        request("action", { type: "renameFeature", target: node.id, name }));
 
 const inFeature = () => level !== "constellation";
 
@@ -503,13 +680,140 @@ function mountFeature() {
     const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
     const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
 
+    const registers = featureRegisters(p, currentFeatureId);
+
     featureGraph.setData({
         nodes: graph.nodes.map(n => ({ ...n, color })),
         edges: graph.edges,
         dotColor: color,
         edgeColor: currentLensId ? color : "var(--edge)",
+        insetLeft: asideInset(graph),
+        insetTop: registers.vocabulary.length ? ASIDE_REACH : 0,
+        insetBottom: (registers.machinery.length || registers.tools.length)
+            ? ASIDE_REACH + (registers.machinery.length && registers.tools.length ? ASIDE_STACK : 0)
+            : 0,
         onOpen: n => openDetail(n)
     });
+
+    // Grouping a spine by heading costs the plan's step order - the
+    // headings recur rather than running in sequence - so a banded feature
+    // must not go on claiming the steps are in the order they happen.
+    featureFlowLabel.textContent = graph.bands.length > 0
+        ? "grouped by what each part does"
+        : "the order the steps happen";
+
+    renderFeatureAsides(graph, registers, color);
+}
+
+
+// A lane label is 150px wide and sits just left of the steps it labels. It
+// used to be pinned to a fixed left edge of the canvas, which on a narrow
+// feature left it stranded hundreds of pixels away from the column it was
+// describing - and made the gap between them count as content to be centred.
+const BAND_GUTTER = 170;
+
+// How far a band of chips reaches beyond the steps: the offset it is drawn
+// at, plus its own height. One more ASIDE_STACK when preconditions and
+// helpers are both below the spine, because the second sits under the first.
+const ASIDE_REACH = 104;
+const ASIDE_STACK = 84;
+
+// How far the picture reaches left of the steps. A constant, because the
+// furniture now hugs the column rather than sitting wherever the canvas
+// happens to start.
+function asideInset(graph) {
+    return graph.bands.length > 0 ? BAND_GUTTER : 0;
+}
+
+
+// --------------------------------------------------
+// WHAT SITS BESIDE THE SPINE
+// --------------------------------------------------
+// The lane labels, the feature's own terms, and what has to be running
+// before any of its steps do. These are in the canvas content rather than
+// around it, so they pan and zoom with the steps - they are part of the
+// feature's space, not chrome describing it from outside.
+//
+// Everything here is drawn from nodes that are in the plan already. Nothing
+// is invented, and every node the feature holds is in exactly one of the
+// spine, the terms, or the preconditions.
+// --------------------------------------------------
+
+function renderFeatureAsides(graph, registers, color) {
+    const content = document.getElementById("featureContent");
+
+    content.querySelectorAll(".feature-aside, .band-label").forEach(el => el.remove());
+
+    // Each label against ITS OWN cards. Taking the leftmost card in the
+    // whole feature put every label at the mercy of the widest row: a
+    // measured feature had one lane 20px from its steps and two others 236px
+    // away, because a single row of three siblings reached further left.
+    for (const band of graph.bands) {
+        const label = document.createElement("div");
+        label.className = "band-label";
+        label.setAttribute("aria-hidden", "true");
+        label.dataset.style = `left:${band.minX - BAND_GUTTER}px;top:${band.top - 12}px;height:${band.height + 24}px;--band:${color}`;
+        label.innerHTML = `<span class="band-name">${escapeHtml(band.name || "Other")}</span><span class="band-count">${band.count}</span>`;
+        paint(label);
+        content.appendChild(label);
+    }
+
+    const topY = graph.nodes.length ? Math.min(...graph.nodes.map(n => n.y)) : 60;
+    const bottomY = graph.nodes.length
+        ? Math.max(...graph.nodes.map(n => n.y + (n.h ?? NODE_H_EST)))
+        : 60;
+
+    const aside = (title, nodes, y, x, hint) => {
+        if (nodes.length === 0) return;
+
+        const el = document.createElement("div");
+        el.className = "feature-aside";
+        el.dataset.style = `left:${x}px;top:${y}px`;
+        el.innerHTML = `<div class="aside-head" title="${escapeHtml(hint)}">${escapeHtml(title)}</div>`
+            + `<div class="aside-chips">${nodes.map(node =>
+                `<button type="button" class="aside-chip" data-node="${escapeHtml(node.id)}" title="${escapeHtml(node.intent ?? node.title)}">${escapeHtml(node.title)}</button>`
+            ).join("")}</div>`;
+        paint(el);
+
+        el.querySelectorAll(".aside-chip").forEach(chip => {
+            chip.addEventListener("click", event => {
+                event.stopPropagation();
+                const node = nodes.find(n => n.id === chip.dataset.node);
+                if (node) openDetail({ id: node.id, title: node.title, source: node, status: node.status ?? "intended", color });
+            });
+        });
+
+        content.appendChild(el);
+    };
+
+    // Above the spine: the nouns the steps are written in. Aligned with the
+    // top row, which is the row it sits next to.
+    aside(
+        "This feature is about",
+        registers.vocabulary,
+        topY - 92,
+        graph.topRowX,
+        "Named lists, tables and constants this feature's steps are written in"
+    );
+
+    // Below it: what has to be true before any step runs, then the helpers
+    // the steps lean on. Both are preconditions in the reader's mind, which
+    // is why they sit under the thing they hold up.
+    aside(
+        "Runs on",
+        registers.machinery,
+        bottomY + 44,
+        graph.bottomRowX,
+        "Start-up, configuration and connections these steps need in place"
+    );
+
+    aside(
+        "Helpers",
+        registers.tools,
+        bottomY + 44 + (registers.machinery.length ? 84 : 0),
+        graph.bottomRowX,
+        "Small shared utilities the steps call"
+    );
 }
 
 // The perspectives this feature actually has work of its own in. A lens with
@@ -602,9 +906,21 @@ function updateHint() {
         const owned = featureGraph.nodes.filter(node => node.owns).length;
         const where = currentAreaName ?? "Feature Space";
 
+        // What the feature holds beside its steps, named rather than
+        // counted into them: a reader who sees "14 steps" and finds nine
+        // has been told the wrong number, and one who sees nothing about
+        // the terms does not know they are there to click.
+        const registers = featureRegisters(plan(), currentFeatureId);
+
+        const beside = [
+            registers.vocabulary.length && `${registers.vocabulary.length} terms`,
+            registers.machinery.length && `${registers.machinery.length} preconditions`,
+            registers.tools.length && `${registers.tools.length} helpers`
+        ].filter(Boolean).join(", ");
+
         statusHint.textContent = lens
             ? `${lens.label} · ${LENS_QUESTIONS[lens.id] ?? ""} · all ${steps} steps, ${owned} of them ${lens.label.toLowerCase()} work`
-            : `${where} · ${steps} ${steps === 1 ? "step" : "steps"} · scroll to zoom, drag empty space to pan`;
+            : `${where} · ${steps} ${steps === 1 ? "step" : "steps"}${beside ? ` · ${beside}` : ""} · scroll to zoom, drag empty space to pan`;
         return;
     }
 
@@ -636,6 +952,11 @@ function afterMove() {
 }
 
 async function descend(to, focusId) {
+    // A key still held while the view changes would go on moving whichever
+    // graph is in front when the flight lands.
+    stopPanning();
+    heldPanKeys.clear();
+
     const from = level;
     const leaving = graphOf(from);
 
@@ -660,6 +981,9 @@ async function descend(to, focusId) {
 }
 
 async function ascend(to, focusId) {
+    stopPanning();
+    heldPanKeys.clear();
+
     const from = level;
     const leaving = graphOf(from);
     const canvas = canvasOf(from);
@@ -789,6 +1113,33 @@ function openDetail(viewNode) {
             </div>`).join(""))
         : "";
 
+    // Where a step stands for several declarations, the panel lists every
+    // one of them. The merge is only allowed because one assert holds for
+    // all of them, so all of them are what the claim is about - showing the
+    // first and holding the rest is how an abstraction starts lying.
+    const backing = Array.isArray(node.identities) ? node.identities : [];
+
+    const backingBlock = backing.length > 1
+        ? section(
+            `What implements this · ${backing.length} declarations`,
+            `${node.dimensions?.length ? `<p class="aside-dims">One behaviour, across ${escapeHtml(node.dimensions.join(", "))}.</p>` : ""}`
+            + backing.map(identity => `<div class="clause">${escapeHtml(identity)}</div>`).join("")
+        )
+        : "";
+
+    // A node that is not a step says so, because it is reached from beside
+    // the spine and a reader who clicked a term should not be told it is
+    // one of the feature's steps.
+    const ROLE_SAYS = {
+        vocabulary: "A term this feature's steps are written in, not a step itself.",
+        machinery: "A precondition: this has to be running before the steps do.",
+        tool: "A shared helper the steps call."
+    };
+
+    const roleBlock = ROLE_SAYS[node.role]
+        ? section("What this is", `<p>${escapeHtml(ROLE_SAYS[node.role])}</p>`)
+        : "";
+
     const historyBlock = history.length
         ? section("History", history.map(h => `<div class="history-row"><span class="version">${escapeHtml(h.version)}</span><span class="intent">“${escapeHtml(h.intent)}”</span>${h.status ? `<span class="meta">${escapeHtml(h.status)}</span>` : ""}</div>`).join(""))
         : "";
@@ -798,7 +1149,9 @@ function openDetail(viewNode) {
         <div class="impact-sub">${escapeHtml(node.identity ?? "greenfield · no code yet")}</div>
         ${section("Status", statusBody)}
         ${verifyBlock(node, viewNode.status)}
+        ${roleBlock}
         ${section("Intent", `<p>${escapeHtml(node.intent)}</p>`)}
+        ${backingBlock}
         ${section("Rules", rulesBody)}
         ${approval}
         ${lenses}
@@ -1451,6 +1804,118 @@ document.addEventListener("keydown", e => {
     if (e.key !== "Escape") return;
     if (activeView === "evolution") { evolutionView.closeDetail(); return; }
     if (impactPanel.classList.contains("open")) closeDetail(); else if (inFeature()) goUp();
+});
+
+
+// --------------------------------------------------
+// WALKING THE MAP WITH THE ARROW KEYS
+// --------------------------------------------------
+// The map opens at full size and is usually taller than the canvas, so
+// reaching the rest of it had to mean finding empty space and dragging.
+// Arrow keys move the map itself; shift moves it a screenful at a time.
+//
+// Anything already handling the key keeps it - a row being retitled, a rail
+// radio, the evolution tree - so this only ever fires on the canvas.
+// --------------------------------------------------
+
+// Below this the glide has effectively stopped, and continuing to schedule
+// frames for it would keep a repaint alive for motion nobody can see.
+const PAN_REST = 2;
+
+// One discrete nudge, for a reader who has asked for reduced motion. They
+// still get to walk the map; they just get there without the easing.
+const PAN_STEP = 140;
+
+const heldPanKeys = new Set();
+let panVX = 0;
+let panVY = 0;
+let panFrameId = null;
+let panLastTime = 0;
+let panFast = false;
+
+// The frame loop. The easing itself is panVelocity, in model.js; this runs
+// it against real elapsed time and stops once the glide has settled.
+function panFrame(now) {
+    const dt = panLastTime ? Math.min(0.05, (now - panLastTime) / 1000) : 1 / 60;
+    panLastTime = now;
+
+    const direction = panDirection(heldPanKeys);
+    const speed = PAN_SPEED * (panFast ? PAN_FAST : 1);
+
+    panVX = panVelocity(panVX, direction.x * speed, dt);
+    panVY = panVelocity(panVY, direction.y * speed, dt);
+
+    if (heldPanKeys.size === 0 && Math.hypot(panVX, panVY) < PAN_REST) {
+        stopPanning();
+        return;
+    }
+
+    activeGraph().panBy(panVX * dt, panVY * dt);
+    panFrameId = requestAnimationFrame(panFrame);
+}
+
+function startPanning() {
+    if (panFrameId !== null) return;
+    panLastTime = 0;
+    panFrameId = requestAnimationFrame(panFrame);
+}
+
+function stopPanning() {
+    if (panFrameId !== null) cancelAnimationFrame(panFrameId);
+    panFrameId = null;
+    panVX = 0;
+    panVY = 0;
+    panLastTime = 0;
+}
+
+function panKeyAllowed(event) {
+    if (!PAN_DIRECTIONS[event.key] || event.defaultPrevented) return false;
+    if (event.metaKey || event.ctrlKey || event.altKey) return false;
+    if (activeView !== "planmap") return false;
+
+    // A fly-in is animating the same transform. Two things moving one
+    // property is a fight, and the flight is the one the reader asked for.
+    if (flying) return false;
+
+    // Typing beats panning: a step being renamed owns its arrow keys, and so
+    // does any field the interface grows later.
+    const target = event.target;
+    return !(target?.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target?.tagName ?? ""));
+}
+
+document.addEventListener("keydown", event => {
+    if (!panKeyAllowed(event)) return;
+
+    event.preventDefault();
+
+    if (reducedMotion.matches) {
+        const [x, y] = PAN_DIRECTIONS[event.key];
+        const distance = PAN_STEP * (event.shiftKey ? 3 : 1);
+        activeGraph().panBy(x * distance, y * distance);
+        return;
+    }
+
+    panFast = event.shiftKey;
+
+    // The operating system's own key repeat is ignored: holding a key is one
+    // continuous press here, and the frame loop supplies the movement.
+    if (event.repeat) return;
+
+    heldPanKeys.add(event.key);
+    startPanning();
+});
+
+document.addEventListener("keyup", event => {
+    if (!PAN_DIRECTIONS[event.key]) return;
+    heldPanKeys.delete(event.key);
+    if (heldPanKeys.size === 0) panFast = false;
+});
+
+// A key held while the webview loses focus never sends its keyup, and the map
+// would drift on forever.
+window.addEventListener("blur", () => {
+    heldPanKeys.clear();
+    panFast = false;
 });
 
 window.addEventListener("message", event => {

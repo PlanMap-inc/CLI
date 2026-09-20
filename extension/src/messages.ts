@@ -24,6 +24,9 @@ export type WebviewMessage =
     // moved here is identical to one added or moved from a terminal.
     | { type: "addNode"; feature: string; title: string }
     | { type: "renameNode"; target: string; title: string }
+    // The Constellation's own names are a model's reading of the code, so a
+    // person can say what a capability is really called.
+    | { type: "renameFeature"; target: string; name: string }
     | { type: "moveNode"; target: string; x: number; y: number }
     | { type: "reorderNode"; target: string; after: string | null }
     | { type: "evolution" }
@@ -43,6 +46,7 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "revise",
     "addNode",
     "renameNode",
+    "renameFeature",
     "moveNode",
     "reorderNode",
     "evolution",
@@ -172,6 +176,8 @@ export function buildCliArgs(
             return ["plan", "add", projectRoot, "--feature", message.feature, "--title", message.title];
         case "renameNode":
             return ["plan", "rename", projectRoot, message.target, "--title", message.title];
+        case "renameFeature":
+            return ["plan", "rename-feature", projectRoot, message.target, "--name", message.name];
         case "moveNode":
             return ["plan", "move", projectRoot, message.target, "--x", String(message.x), "--y", String(message.y)];
         case "reorderNode":
@@ -233,6 +239,7 @@ const ARGUMENT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
     revise: ["identity"],
     addNode: ["feature"],
     renameNode: ["target"],
+    renameFeature: ["target"],
     moveNode: ["target"],
     reorderNode: ["target"]
 };
@@ -242,7 +249,8 @@ const ARGUMENT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
 // never be read as a flag; it only has to be a non-empty string.
 const TEXT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
     addNode: ["title"],
-    renameNode: ["title"]
+    renameNode: ["title"],
+    renameFeature: ["name"]
 };
 
 

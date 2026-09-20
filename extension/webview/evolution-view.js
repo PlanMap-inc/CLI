@@ -149,22 +149,50 @@ export function createEvolutionView(el) {
         } else {
             const status = item.status ?? "";
             row.className = `evo-row status-${escapeHtml(status || "none")}${item.id === selectedId ? " selected" : ""}`;
-            row.setAttribute("aria-label", `${item.title}, ${status || "no status"}`);
+            row.setAttribute(
+                "aria-label",
+                `${item.title}, ${status || "no status"}${item.tags.length ? `, ${item.tags.join(" and ")}` : ""}`
+            );
             const isNew = arrivals.has(item.id);
             if (isNew) row.classList.add("is-new");
-            // The dot carries the lens, so a reader scanning the outline sees
-            // which perspective each line belongs to without reading across
-            // to the tag. Drift and error keep their red: a problem outranks
-            // a category, and must never be recoloured into the background.
+
+            // --------------------------------------------------
+            // ONE MARKER PER LENS
+            // --------------------------------------------------
+            // The shape says what happened to the declaration; the colour
+            // says which perspective it is seen through. A declaration read
+            // through two lenses gets two markers, so "backend and database"
+            // is visible at the start of the line rather than spelled out at
+            // the end of it - which is where it used to be, far from the
+            // title it belonged to and pushing the eye across the row.
+            //
+            // Drift and error keep a single red marker. A problem outranks a
+            // category, must never be recoloured into the background, and
+            // must not be repeated once per lens either.
+            // --------------------------------------------------
+
             const alarm = status === "drifted" || status === "error";
-            const lensColor = colors[item.tags[0]];
-            const dotStyle = !alarm && lensColor ? ` data-style="color:${lensColor}"` : "";
+            const statusClass = `status-${escapeHtml(status || "none")}`;
+            const icon = evolutionIcon(status);
+
+            const mark = style =>
+                `<span class="evo-status-icon ${statusClass}"${style} aria-hidden="true">${icon}</span>`;
+
+            const marks = alarm || item.tags.length === 0
+                ? mark("")
+                : item.tags
+                    .map(tag => mark(colors[tag] ? ` data-style="color:${colors[tag]}"` : ""))
+                    .join("");
+
+            // The lens names left the row with the tags, so they are said
+            // here instead: the colours are learnable from the filter above,
+            // and this is what you get for hovering.
+            const reads = [status, ...item.tags].filter(Boolean).join(" · ");
 
             row.innerHTML = `${toggleMark}
-                <span class="evo-status-icon status-${escapeHtml(status || "none")}"${dotStyle} title="${escapeHtml(status)}" aria-hidden="true">${evolutionIcon(status)}</span>
+                <span class="evo-marks" title="${escapeHtml(reads)}">${marks}</span>
                 <span class="evo-title">${escapeHtml(item.title)}</span>
-                ${isNew ? '<span class="evo-new" title="Found by the last refresh">New</span>' : ""}
-                <span class="evo-tags">${item.tags.map(tag => `<span class="evo-tag"><span class="evo-tag-dot" data-style="background:${colors[tag]}"></span>${escapeHtml(tag)}</span>`).join("")}</span>`;
+                ${isNew ? '<span class="evo-new" title="Found by the last refresh">New</span>' : ""}`;
         }
 
         paint(row);

@@ -12,6 +12,7 @@ import {
 
 import {
     clauseProblem,
+    evaluateClause,
     NUMERIC_FACT_FIELDS
 } from "./evaluate.js";
 
@@ -59,6 +60,22 @@ import {
 import {
     BEHAVIOUR_LINE
 } from "../llm/behaviour.js";
+
+import {
+    DEFAULT_ROLE,
+    ROLE_IDS,
+    canonicalRole,
+    proposeRole,
+    roleCatalogue
+} from "../llm/roles.js";
+
+import {
+    buildCallGraph
+} from "../baseline/callgraph.js";
+
+import {
+    siblingFamilies
+} from "../baseline/families.js";
 
 
 // --------------------------------------------------
@@ -449,11 +466,46 @@ function collectBrownfieldCandidates(
 // 4-Forbids unsupported facts.
 // --------------------------------------------------
 
+// A declaration's family, keeping only the siblings that are in this batch.
+// Offering one that is not would invite a node about a declaration the model
+// was never given, which normalize rejects.
+function familyIn(
+    family,
+    candidates
+) {
+    if (
+        !family
+    ) {
+        return {};
+    }
+
+    const here =
+        new Set(
+            candidates.map(
+                candidate =>
+                    candidate.identity
+            )
+        );
+
+    const siblings =
+        family.siblings.filter(
+            identity =>
+                here.has(identity)
+        );
+
+    return siblings.length > 0
+        ? { siblings, varies: family.varies }
+        : {};
+}
+
+
 function buildBrownfieldPrompt(
     candidates,
     factsByIdentity,
     vocabulary,
-    groupByIdentity = {}
+    groupByIdentity = {},
+    roleByIdentity = {},
+    familyByIdentity = {}
 ) {
     const declarations =
         candidates.map(
@@ -472,6 +524,25 @@ function buildBrownfieldPrompt(
                         candidate.identity
                     ] || null,
 
+                // What the facts suggest this declaration is FOR. A
+                // starting point, not a verdict: the model sees it beside
+                // the facts and may overrule it.
+                roleProposal:
+                    roleByIdentity[
+                        candidate.identity
+                    ] || DEFAULT_ROLE,
+
+                // Declarations whose names differ from this one by a single
+                // word - a family PlanMap spotted. Narrowed to this batch,
+                // because a node can only be written about declarations it
+                // was given. A candidate for merging, nothing more.
+                ...familyIn(
+                    familyByIdentity[
+                        candidate.identity
+                    ],
+                    candidates
+                ),
+
                 facts:
                     factsByIdentity[
                         candidate.identity
@@ -487,7 +558,8 @@ Return ONLY valid JSON.
 The project already exists. Draft intent for the significant declarations supplied below.
 
 Every returned node MUST contain:
-- identity
+- identities
+- role
 - feature
 - step
 - title
@@ -496,6 +568,104 @@ Every returned node MUST contain:
 - readings
 - rules
 
+
+--------------------------------------------------
+ROLE - WHAT THIS DECLARATION IS FOR
+--------------------------------------------------
+
+Decide this FIRST. It decides how the declaration is drawn, and everything
+else you write about it follows from it.
+
+A feature used to be drawn as one step per declaration, and it read like
+this:
+
+  Verify user credentials          a behaviour
+  Define database configuration    a set of terms
+  Connect the database pool        a precondition
+  Convert values to string         a helper
+
+Four true sentences that explain nothing together, because the reader has to
+sort them into four piles before the list means anything. You do the sorting.
+
+${roleCatalogue()}
+
+Each declaration carries "roleProposal": what its facts suggest. It is a
+starting point. Overrule it whenever the facts read otherwise - the proposal
+knows the shape of the code, and you know what it is for.
+
+THE TEST FOR A BEHAVIOUR: can you name a trigger and an outcome? Something
+that sets it off, and something observably different afterwards. "A sign-in
+form is submitted -> a session token comes back" is a behaviour. A list of
+column names has neither, however important it is.
+
+Most declarations are behaviours. Do not reach for the other three to tidy a
+long feature - a step moved out of the spine to shorten it is a step the
+reader can no longer find.
+
+--------------------------------------------------
+IDENTITIES - WHEN SEVERAL DECLARATIONS ARE ONE STEP
+--------------------------------------------------
+
+"identities" is a LIST. Usually it holds one declaration:
+
+  "identities": ["api/main.py::submit_survey:function"]
+
+But a project often writes one behaviour several times over, once per thing
+it applies to:
+
+  get_agencies      get_mps      get_districts      get_states
+
+Four declarations, one behaviour, four nouns. Drawn as four steps they cost
+the reader four rows to learn one thing, and the difference between them -
+which was never the point - is the only thing four rows can show.
+
+PlanMap has already looked for these. A declaration whose name differs from
+others by a single word carries "siblings" - the others - and "varies", the
+words that tell them apart. WHEN YOU SEE "siblings", STOP AND DECIDE: is
+this one behaviour over several things, or several behaviours?
+
+  ONE behaviour    the same work, over a different noun each time
+                   get_agencies / get_mps / get_districts
+                   -> merge them
+
+  SEVERAL          the verb differs, so the work differs
+                   get_report / delete_report
+                   post_report / remove_report
+                   -> leave them apart, whatever their names look like
+
+The test is the verb, and then the assert. Two declarations that READ and
+two that WRITE are two behaviours even when PlanMap grouped them.
+
+Where they are one behaviour, write ONE node listing all of them:
+
+  "identities": ["api/main.py::get_agencies:function",
+                 "api/main.py::get_mps:function",
+                 "api/main.py::get_districts:function",
+                 "api/main.py::get_states:function"],
+  "title": "Look up the risk score for any scope",
+  "dimensions": ["agency", "MP", "district", "state"]
+
+THE TEST, AND IT IS STRICT. Merge only when ONE rule assert is true of EVERY
+declaration you are merging. If you cannot write a single assert that holds
+for all of them, they are different behaviours and MUST stay separate.
+
+That is the whole gate. Not "they look similar", not "they are in the same
+file", not "the feature is long". One assert, true of all of them.
+
+  RIGHT - one assert covers all four:
+    four lookups that each call the same store method with a different name
+
+  WRONG - no single assert covers these:
+    "Verify the token" and "Connect the pool"
+    "Create a channel" and "Delete a channel"      different behaviours
+    everything in a long feature, merged to shorten it
+
+"dimensions" is what varies across the merged declarations, in the product's
+own words - the nouns, not the function names. Omit it for a single-identity
+node.
+
+Every declaration you were given must appear in exactly one node's
+"identities". None twice, none left out.
 
 --------------------------------------------------
 TITLE AND INTENT QUALITY
@@ -806,12 +976,20 @@ ${JSON.stringify(
 COVERAGE
 --------------------------------------------------
 
-Return exactly one node for every supplied declaration, with the same
-identity, in the same number. Never merge two declarations into one node.
-Never leave one out because it seems minor. Never invent one.
+Every supplied declaration must appear in exactly one node's "identities".
+Never leave one out because it seems minor. Never invent one that was not
+supplied.
 
-A declaration you would rather not describe still gets a node: say plainly
-what it must keep doing.
+Usually that means one node per declaration. It means fewer only where the
+merge test above is met: ONE assert true of every declaration merged. A
+declaration you would rather not describe still gets a node of its own: say
+plainly what it must keep doing.
+
+Count before you answer. The identities across all your nodes, added up,
+must equal the number of declarations you were given, with no repeats.
+
+That count is why merging costs you nothing: four declarations in one node
+still count as four. Fewer NODES, never fewer declarations.
 
 
 --------------------------------------------------
@@ -836,6 +1014,11 @@ it. A line that fails any of them is rewritten, not shipped.
      first word of Handle, Process, Manage, Execute, Perform, Run, Do,
      Support, Implement or Ensure, and replace it with what actually
      happens to the object.
+  8. Is every node whose role is "behaviour" something with a trigger and
+     an outcome? A node that only says what exists is vocabulary, and one
+     that only says what is running is machinery. Move it.
+  9. Do the nodes you merged share ONE assert that is true of all of them?
+     If not, split them back apart.
 
 
 --------------------------------------------------
@@ -853,15 +1036,24 @@ step. Order by the journey, never alphabetically and never by how much code
 each one holds.
 
 
+BEFORE YOU WRITE THE JSON: go back through the declarations you were given
+and find every one carrying "siblings". For each family, say to yourself
+whether it is one behaviour over several nouns or several behaviours. Every
+family that is one behaviour becomes ONE node with all of their identities.
+A draft that merges nothing on a project full of families has not done this
+step - it has defaulted.
+
 Return this exact top-level shape:
 
 {
   "featureOrder": ["the first feature a person meets", "then the next"],
   "nodes": [
     {
-      "identity": "file::name:type",
+      "identities": ["file::name:type"],
+      "role": "behaviour",
       "feature": "one of the supplied existing feature names",
       "step": 1,
+      "_comment": "one declaration - the ordinary case",
       "title": "verb + object: what the system does here",
       "intent": "one sentence: what must stay true",
       "lensTags": ["backend"],
@@ -873,10 +1065,187 @@ Return this exact top-level shape:
           "assert": {}
         }
       ]
+    },
+    {
+      "identities": ["api/main.py::get_agencies:function",
+                     "api/main.py::get_mps:function",
+                     "api/main.py::get_states:function"],
+      "role": "behaviour",
+      "feature": "one of the supplied existing feature names",
+      "step": 2,
+      "dimensions": ["agency", "MP", "state"],
+      "title": "one behaviour, read across all three",
+      "intent": "one sentence true of all three",
+      "lensTags": ["backend"],
+      "readings": { "frontend": "…", "backend": "…", "database": "…", "security": "…" },
+      "rules": [
+        {
+          "kind": "behaviour",
+          "target": "api/main.py::get_agencies:function",
+          "assert": {}
+        }
+      ]
     }
   ]
 }
+
+Do not copy the "_comment" key into your answer - it is there to label the
+two shapes. The second shape is not rare: on a project that repeats a
+behaviour per noun, several of your nodes should look like it.
+
+
+--------------------------------------------------
+LAST CHECK - THE ROLL CALL
+--------------------------------------------------
+
+You were given ${declarations.length} declarations. Before you answer, read
+the list below and tick each one off against your nodes. Every identity must
+appear in exactly one node's "identities" array.
+
+${declarations.map(entry => `  ${entry.identity}`).join("\n")}
+
+This is the failure this prompt exists to prevent: merging four declarations
+in your head, writing one node, and listing one identity. The other three
+then vanish from the plan and nobody finds out. A merged node LISTS EVERY
+DECLARATION IT MERGED.
+
+${declarations.length} identities in. ${declarations.length} identities out,
+spread over however many nodes you wrote.
 `.trim();
+}
+
+
+// --------------------------------------------------
+// WHICH DECLARATIONS A DRAFT NODE STANDS FOR
+// --------------------------------------------------
+// "identities" is the shape asked for. "identity" is accepted beside it so a
+// model that answers in the older single-declaration shape still drafts, and
+// so do the fixtures written against it.
+// --------------------------------------------------
+
+function draftIdentities(
+    draft
+) {
+    const raw =
+        Array.isArray(draft?.identities)
+            ? draft.identities
+            : [draft?.identity];
+
+    return [
+        ...new Set(
+            raw.filter(
+                value =>
+                    typeof value === "string" &&
+                    value.trim()
+            )
+        )
+    ];
+}
+
+
+// --------------------------------------------------
+// DOES ONE ASSERT HOLD FOR ONE DECLARATION
+// --------------------------------------------------
+// Every clause in it must pass against that declaration's own facts. A
+// clause verify cannot evaluate counts as not holding: an assert that errors
+// is not evidence the two declarations are the same behaviour.
+// --------------------------------------------------
+
+function assertHolds(
+    assertion,
+    facts
+) {
+    const clauses =
+        Object.entries(
+            assertion || {}
+        );
+
+    // getEvolutionFacts returns { file, kind, properties }, and
+    // evaluateClause reads the fact fields themselves. Passing the wrapper
+    // made every field "not present in the current facts", so every clause
+    // errored, so no assert ever held and every merge the model proposed
+    // was refused - twenty-one of them in one measured run, silently
+    // correct-looking because a refusal splits rather than fails.
+    const fields =
+        facts?.properties &&
+        typeof facts.properties === "object"
+            ? facts.properties
+            : facts;
+
+    if (
+        clauses.length === 0 ||
+        !fields
+    ) {
+        return false;
+    }
+
+    return clauses.every(
+        ([field, clause]) => {
+            const result =
+                evaluateClause(
+                    field,
+                    clause,
+                    fields,
+                    null
+                );
+
+            return result?.pass === true;
+        }
+    );
+}
+
+
+// --------------------------------------------------
+// THE MERGE GATE
+// --------------------------------------------------
+// Returns the groups of declarations to draw as nodes: one group holding all
+// of them when the merge holds, or one group each when it does not.
+//
+// The gate is PlanMap's own verification primitive. If a single assert is
+// true of every declaration, they are the same claim by the definition the
+// rest of the system already uses; if no assert is, they are different
+// behaviours whatever they look like.
+// --------------------------------------------------
+
+function mergeGroups(
+    identities,
+    rules,
+    factsByIdentity,
+    dropped
+) {
+    const split = () =>
+        identities.map(
+            identity => [identity]
+        );
+
+    if (
+        identities.length < 2
+    ) {
+        return [identities];
+    }
+
+    const shared =
+        rules.some(
+            rule =>
+                identities.every(
+                    identity =>
+                        assertHolds(
+                            rule.assert,
+                            factsByIdentity[identity]
+                        )
+                )
+        );
+
+    if (!shared) {
+        dropped.push(
+            `${identities[0]}: merged with ${identities.length - 1} other declaration(s) ` +
+            "without one assert true of all of them, so they were drawn separately"
+        );
+
+        return split();
+    }
+
+    return [identities];
 }
 
 
@@ -984,14 +1353,16 @@ export function dropRepeatedReadings(
 }
 
 
-function normalizeBrownfieldNodes(
+export function normalizeBrownfieldNodes(
     parsed,
     plan,
     candidates,
     dropped = [],
     skipped = [],
     lensesByIdentity = {},
-    stageByIdentity = {}
+    stageByIdentity = {},
+    factsByIdentity = {},
+    roleByIdentity = {}
 ) {
     if (
         !parsed ||
@@ -1079,10 +1450,18 @@ function normalizeBrownfieldNodes(
             );
         }
 
+        // One node may stand for several declarations - see the merge
+        // gate below. "identity" is the first of them and stays the node's
+        // own, so everything downstream that names a single declaration
+        // keeps working on an unmerged plan exactly as it did.
+        const identities =
+            draftIdentities(draft);
+
         if (
-            typeof draft.identity !== "string" ||
-            !candidateIdentities.has(
-                draft.identity
+            identities.length === 0 ||
+            identities.some(
+                value =>
+                    !candidateIdentities.has(value)
             )
         ) {
             throw new Error(
@@ -1090,9 +1469,16 @@ function normalizeBrownfieldNodes(
             );
         }
 
+        const identity =
+            identities[0];
+
+        // A declaration a person has ruled on keeps the node they ruled on.
+        // Merging it into a new one would move their decision onto a claim
+        // they never read, so the whole draft node stands aside.
         if (
-            protectedIdentities.has(
-                draft.identity
+            identities.some(
+                value =>
+                    protectedIdentities.has(value)
             )
         ) {
             continue;
@@ -1103,7 +1489,7 @@ function normalizeBrownfieldNodes(
             !draft.title.trim()
         ) {
             throw new Error(
-                `Brownfield draft for ${draft.identity} has no title.`
+                `Brownfield draft for ${identity} has no title.`
             );
         }
 
@@ -1112,7 +1498,7 @@ function normalizeBrownfieldNodes(
             !draft.intent.trim()
         ) {
             throw new Error(
-                `Brownfield draft for ${draft.identity} has no intent.`
+                `Brownfield draft for ${identity} has no intent.`
             );
         }
 
@@ -1123,7 +1509,7 @@ function normalizeBrownfieldNodes(
             draft.rules.length === 0
         ) {
             throw new Error(
-                `Brownfield draft for ${draft.identity} must contain behaviour rules.`
+                `Brownfield draft for ${identity} must contain behaviour rules.`
             );
         }
 
@@ -1139,10 +1525,10 @@ function normalizeBrownfieldNodes(
 
         const lensTags =
             lensesByIdentity[
-                draft.identity
+                identity
             ]?.length
                 ? lensesByIdentity[
-                    draft.identity
+                    identity
                 ]
                 : canonicalLenses(
                     draft.lensTags
@@ -1194,7 +1580,7 @@ function normalizeBrownfieldNodes(
                         typeof rule !== "object"
                     ) {
                         throw new Error(
-                            `Brownfield draft for ${draft.identity} contains an invalid rule.`
+                            `Brownfield draft for ${identity} contains an invalid rule.`
                         );
                     }
 
@@ -1203,16 +1589,17 @@ function normalizeBrownfieldNodes(
                         "behaviour"
                     ) {
                         throw new Error(
-                            `Brownfield draft for ${draft.identity} contains a non-behaviour rule.`
+                            `Brownfield draft for ${identity} contains a non-behaviour rule.`
                         );
                     }
 
                     if (
-                        rule.target !==
-                        draft.identity
+                        !identities.includes(
+                            rule.target
+                        )
                     ) {
                         throw new Error(
-                            `Brownfield rule target does not match ${draft.identity}.`
+                            `Brownfield rule target does not match ${identity}.`
                         );
                     }
 
@@ -1221,7 +1608,7 @@ function normalizeBrownfieldNodes(
                         typeof rule.assert !== "object"
                     ) {
                         throw new Error(
-                            `Brownfield draft for ${draft.identity} contains an invalid assertion.`
+                            `Brownfield draft for ${identity} contains an invalid assertion.`
                         );
                     }
 
@@ -1243,7 +1630,7 @@ function normalizeBrownfieldNodes(
 
                                     if (problem) {
                                         dropped.push(
-                                            `${draft.identity}: ${problem}`
+                                            `${identity}: ${problem}`
                                         );
                                     }
 
@@ -1257,7 +1644,7 @@ function normalizeBrownfieldNodes(
                             "behaviour",
 
                         target:
-                            draft.identity,
+                            identity,
 
                         assert
                     };
@@ -1308,7 +1695,7 @@ function normalizeBrownfieldNodes(
         if (!featureId) {
             const known =
                 stageByIdentity[
-                    draft.identity
+                    identity
                 ];
 
             if (known) {
@@ -1321,64 +1708,144 @@ function normalizeBrownfieldNodes(
 
         if (!featureId) {
             throw new Error(
-                `Brownfield draft for ${draft.identity} contains an unknown feature.`
+                `Brownfield draft for ${identity} contains an unknown feature.`
             );
         }
 
-        const node = {
-            id:
-                createId(
-                    "plan",
-                    nodeNumber++
-                ),
+        // What this declaration is FOR, which decides how it is drawn. The
+        // model's answer wins where it named one PlanMap knows; the facts'
+        // own proposal is the fallback, and a step is the fallback to that,
+        // because that is what every node was before roles existed.
+        const role =
+            canonicalRole(
+                draft.role
+            ) ||
+            roleByIdentity[identity] ||
+            DEFAULT_ROLE;
 
-            feature:
-                featureId,
+        // --------------------------------------------------
+        // THE MERGE GATE
+        // --------------------------------------------------
+        // Several declarations are one step only when one assert is true of
+        // all of them. Checked here against the same facts verify will use,
+        // rather than trusted: "they look similar" is exactly the judgement
+        // a model makes loosely, and a wrong merge hides a declaration
+        // behind a claim that was never about it.
+        //
+        // A merge that fails is not thrown away - it is split back into one
+        // node per declaration and reported. Dropping it would lose every
+        // declaration in it from the plan, which is the one outcome worse
+        // than an over-eager merge.
+        // --------------------------------------------------
+        const groups =
+            mergeGroups(
+                identities,
+                rules,
+                factsByIdentity,
+                dropped
+            );
 
-            identity:
-                draft.identity,
+        const dimensions =
+            Array.isArray(draft.dimensions)
+                ? draft.dimensions
+                    .filter(
+                        entry =>
+                            typeof entry === "string" &&
+                            entry.trim()
+                    )
+                    .map(
+                        entry =>
+                            entry.trim()
+                    )
+                : [];
 
-            title:
-                draft.title.trim(),
-
-            intent:
-                draft.intent.trim(),
-
-            lensTags,
-
-            ...(Object.keys(readings).length
-                ? { readings }
-                : {}),
-
-            edgesOut:
-                Array.isArray(
-                    draft.edgesOut
-                )
-                    ? draft.edgesOut
-                    : [],
-
-            rules,
-
-            status:
-                "intended",
-
-            origin:
-                "ai_drafted"
-        };
-
-        if (
-            Number.isFinite(
-                Number(draft.step)
-            )
+        for (
+            const group of groups
         ) {
-            node.step =
-                Number(draft.step);
-        }
+            const primary =
+                group[0];
 
-        nodes.push(node);
+            const node = {
+                id:
+                    createId(
+                        "plan",
+                        nodeNumber++
+                    ),
+
+                feature:
+                    featureId,
+
+                identity:
+                    primary,
+
+                // Only written when the node really does stand for several
+                // declarations, so an unmerged plan is byte-identical to
+                // one drafted before merging existed.
+                ...(group.length > 1
+                    ? { identities: [...group] }
+                    : {}),
+
+                ...(group.length > 1 && dimensions.length
+                    ? { dimensions }
+                    : {}),
+
+                role,
+
+                title:
+                    draft.title.trim(),
+
+                intent:
+                    draft.intent.trim(),
+
+                lensTags,
+
+                ...(Object.keys(readings).length
+                    ? { readings }
+                    : {}),
+
+                edgesOut:
+                    Array.isArray(
+                        draft.edgesOut
+                    )
+                        ? draft.edgesOut
+                        : [],
+
+                // Every declaration the node stands for carries every
+                // assert, so verify checks the claim against all of them
+                // rather than against whichever one happened to be first.
+                rules:
+                    group.flatMap(
+                        target =>
+                            rules.map(
+                                rule => ({
+                                    kind: "behaviour",
+                                    target,
+                                    assert: rule.assert
+                                })
+                            )
+                    ),
+
+                status:
+                    "intended",
+
+                origin:
+                    "ai_drafted"
+            };
+
+            if (
+                Number.isFinite(
+                    Number(draft.step)
+                )
+            ) {
+                node.step =
+                    Number(draft.step);
+            }
+
+            nodes.push(node);
+        }
       } catch (error) {
         skipped.push(
-            `${typeof draft?.identity === "string" ? draft.identity : "unnamed node"}: ${error.message}`
+            `${typeof draft?.identity === "string" ? identity : "unnamed node"}: ${error.message}`
         );
       }
     }
@@ -1390,6 +1857,35 @@ function normalizeBrownfieldNodes(
     // An isolated mistake is skipped and reported above. A response that is
     // mostly wrong is not a draft, and nothing is written.
     // --------------------------------------------------
+
+    // --------------------------------------------------
+    // COVERAGE
+    // --------------------------------------------------
+    // A declaration that reached no node is gone from the plan, and nothing
+    // above would have said so: the model simply did not mention it. That
+    // was survivable while one node meant one declaration, because an
+    // omission was a missing node. Now that a node may stand for several,
+    // a model that merges four declarations in its head and lists one
+    // identity loses three of them silently - so the count is checked here
+    // rather than trusted.
+    // --------------------------------------------------
+
+    const covered =
+        new Set(
+            nodes.flatMap(
+                node =>
+                    Array.isArray(node.identities)
+                        ? node.identities
+                        : [node.identity]
+            )
+        );
+
+    const missing =
+        [...candidateIdentities].filter(
+            identity =>
+                !covered.has(identity) &&
+                !protectedIdentities.has(identity)
+        );
 
     const batchSkipped =
         skipped.length -
@@ -1407,22 +1903,44 @@ function normalizeBrownfieldNodes(
         );
     }
 
+    // Reported after the fail-closed check, and never counted into it. A
+    // response that is malformed is not a draft and nothing is written; a
+    // response that is merely incomplete still carries every node it did
+    // get right, and throwing those away to protest the gap would cost the
+    // reader more than the gap does. So it is said plainly instead.
+    for (
+        const identity of missing
+    ) {
+        skipped.push(
+            `${identity}: the draft never mentioned it, so it has no node`
+        );
+    }
+
     return nodes;
 }
 
 
 // --------------------------------------------------
-// LINK EACH FEATURE'S STEPS IN ORDER
+// LINK EACH FEATURE'S STEPS
 // --------------------------------------------------
-// The model numbers the steps inside a feature, and those numbers become the
-// edges, so a feature reads as the journey a user takes instead of a pile of
-// declarations. Batches are numbered independently, so this runs over the
-// whole plan: a node keeps its place among everything already drafted.
-// The step number itself is working state and does not reach plan.json.
+// An edge says "this leads to that". It used to be drawn between every step
+// and the next one the model numbered, which made each feature a single
+// unbranching line: 178 edges over 179 nodes in one measured project, with
+// four sibling lookups drawn as though one caused the next.
+//
+// Now an edge is drawn only where one step's code calls another's. Where the
+// code shows nothing, nothing is drawn, and the steps sit as what they are -
+// things this feature does, in no forced order.
+//
+// The model's step number is kept instead of deleted. It is a reading order,
+// which is a weaker claim than an arrow and a useful one: the feature still
+// reads top to bottom in the order a person meets it, while only the real
+// relationships are drawn as relationships.
 // --------------------------------------------------
 
-function linkFeatureSteps(
-    nodes
+export function linkFeatureSteps(
+    nodes,
+    callGraph = null
 ) {
     const byFeature =
         new Map();
@@ -1469,26 +1987,81 @@ function linkFeatureSteps(
             }
         );
 
-        members.forEach(
-            (member, position) => {
-                const next =
-                    members[position + 1];
+        // Which node owns which declaration, so a call between two
+        // declarations can be read as a link between two steps. A merged
+        // node owns all of the declarations it stands for.
+        const nodeByIdentity =
+            new Map();
 
-                member.node.edgesOut =
-                    next
-                        ? [next.node.id]
-                        : [];
+        for (
+            const member of members
+        ) {
+            for (
+                const identity of nodeIdentities(member.node)
+            ) {
+                nodeByIdentity.set(
+                    identity,
+                    member.node.id
+                );
             }
-        );
-    }
+        }
 
-    for (
-        const node of nodes
-    ) {
-        delete node.step;
+        for (
+            const member of members
+        ) {
+            const targets =
+                new Set();
+
+            for (
+                const identity of nodeIdentities(member.node)
+            ) {
+                const calls =
+                    callGraph?.callees?.get(
+                        identity
+                    );
+
+                for (
+                    const called of calls || []
+                ) {
+                    const target =
+                        nodeByIdentity.get(called);
+
+                    // Inside this feature, and not the node itself: a
+                    // merged node calling its own other declaration is one
+                    // step, not a step leading to itself.
+                    if (
+                        target &&
+                        target !== member.node.id
+                    ) {
+                        targets.add(target);
+                    }
+                }
+            }
+
+            member.node.edgesOut =
+                [...targets];
+        }
     }
 
     return nodes;
+}
+
+
+// Every declaration a node stands for. One for an ordinary node, several
+// for a merged one.
+function nodeIdentities(
+    node
+) {
+    if (
+        Array.isArray(node?.identities) &&
+        node.identities.length > 0
+    ) {
+        return node.identities;
+    }
+
+    return typeof node?.identity === "string"
+        ? [node.identity]
+        : [];
 }
 
 
@@ -1539,32 +2112,34 @@ function linkStages(
             continue;
         }
 
-        // The last step of this stage is the one nothing else follows.
-        const targets =
-            new Set(
-                here.flatMap(
-                    node => node.edgesOut || []
-                )
-            );
+        // By step, which is the order a person meets these. It used to be
+        // "the node nothing else points at", which worked only while every
+        // feature was one unbroken chain - now that an edge needs evidence,
+        // most nodes have nothing pointing at them and that test picks an
+        // arbitrary one.
+        const inStepOrder =
+            members =>
+                [...members].sort(
+                    (left, right) =>
+                        (Number.isFinite(left.step)
+                            ? left.step
+                            : Number.MAX_SAFE_INTEGER) -
+                        (Number.isFinite(right.step)
+                            ? right.step
+                            : Number.MAX_SAFE_INTEGER)
+                );
+
+        const hereOrdered =
+            inStepOrder(here);
+
+        const nextOrdered =
+            inStepOrder(next);
 
         const last =
-            here.find(
-                node =>
-                    !targets.has(node.id)
-            ) || here[here.length - 1];
-
-        const entered =
-            new Set(
-                next.flatMap(
-                    node => node.edgesOut || []
-                )
-            );
+            hereOrdered[hereOrdered.length - 1];
 
         const first =
-            next.find(
-                node =>
-                    !entered.has(node.id)
-            ) || next[0];
+            nextOrdered[0];
 
         if (
             last &&
@@ -1914,6 +2489,54 @@ export async function draftBrownfield(
         );
 
     // --------------------------------------------------
+    // WHO CALLS WHOM
+    // --------------------------------------------------
+    // Built once for the whole draft. Two things read it: the role each
+    // declaration is proposed as, and the edges between the steps. Both
+    // need to know whether anything in the project actually calls a
+    // declaration, which no single declaration's own facts can say.
+    // --------------------------------------------------
+
+    const callGraph =
+        buildCallGraph(
+            baseline?.declarations || []
+        );
+
+    // Declarations that look like one behaviour written once per thing it
+    // applies to. Offered to the model as merge candidates; the gate in
+    // normalize decides whether any of them really are.
+    const familyByIdentity =
+        siblingFamilies(
+            baseline?.declarations || []
+        );
+
+    const roleByIdentity =
+        {};
+
+    for (
+        const declaration of baseline?.declarations || []
+    ) {
+        if (
+            typeof declaration?.identity !== "string"
+        ) {
+            continue;
+        }
+
+        roleByIdentity[
+            declaration.identity
+        ] =
+            proposeRole(
+                declaration,
+                callGraph.callerCount.get(
+                    declaration.identity
+                ) || 0,
+                callGraph.callees.get(
+                    declaration.identity
+                )?.size || 0
+            );
+    }
+
+    // --------------------------------------------------
     // WHAT EVOLUTION ALREADY DECIDED
     // --------------------------------------------------
     // Per identity: the lenses it is seen through, and the feature and
@@ -2087,7 +2710,13 @@ export async function draftBrownfield(
             )
             : isLocalLlm()
                 ? 10
-                : 30;
+                // Was 30. A batch is now bookkeeping as well as judgement -
+                // every declaration has to be ticked off against a node, and
+                // a node may hold several - and at thirty a measured run
+                // lost 128 of 183 declarations to a model that merged in its
+                // head and listed one identity. Twenty is small enough to
+                // track and still large enough to see a whole feature.
+                : 20;
 
     const sortedCandidates =
         [...directoryGroups.keys()]
@@ -2136,7 +2765,9 @@ export async function draftBrownfield(
                 batch,
                 factsByIdentity,
                 vocabulary,
-                groupByIdentity
+                groupByIdentity,
+                roleByIdentity,
+                familyByIdentity
             );
 
         const parsed =
@@ -2152,7 +2783,9 @@ export async function draftBrownfield(
                 dropped,
                 skipped,
                 lensesByIdentity,
-                stageByIdentity
+                stageByIdentity,
+                factsByIdentity,
+                roleByIdentity
             );
 
         const batchIdentities =
@@ -2204,10 +2837,13 @@ export async function draftBrownfield(
         );
 
         const linked =
-            linkFeatureSteps([
-                ...preservedNodes,
-                ...nodes
-            ]);
+            linkFeatureSteps(
+                [
+                    ...preservedNodes,
+                    ...nodes
+                ],
+                callGraph
+            );
 
         // Across the whole plan, not per batch: each batch is its own call
         // and two of them reach for the same stock phrase readily. Preserved
@@ -2312,11 +2948,24 @@ export async function draftBrownfield(
         drafted +=
             nodes.length;
 
+        // Declarations, not nodes. A batch where four declarations became
+        // one step has drafted all four, and counting nodes would report
+        // every merge as three declarations lost.
+        const coveredInBatch =
+            new Set(
+                nodes.flatMap(
+                    node =>
+                        Array.isArray(node.identities)
+                            ? node.identities
+                            : [node.identity]
+                )
+            ).size;
+
         if (
-            nodes.length < batch.length
+            coveredInBatch < batch.length
         ) {
             console.log(
-                `Batch ${batches}: ${nodes.length} of ${batch.length} declarations drafted; the rest are retried on the next run.`
+                `Batch ${batches}: ${coveredInBatch} of ${batch.length} declarations drafted; the rest are retried on the next run.`
             );
         }
     }

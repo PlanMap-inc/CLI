@@ -24,6 +24,10 @@ import {
 // invent a second word for the same thing.
 const HUMAN = "human_authored";
 
+// A feature carries a different vocabulary from a node: the plan model calls
+// a feature's provenance "derived" or "human_added".
+const HUMAN_FEATURE = "human_added";
+
 
 function loadPlan(
     projectRoot
@@ -244,6 +248,62 @@ export function renamePlanNode(
     save(projectRoot, plan);
 
     return node;
+}
+
+
+// --------------------------------------------------
+// RENAME A FEATURE
+// --------------------------------------------------
+// The Constellation is the first thing a reader sees, and the names on it
+// come from a model reading the code. Where it has called a capability
+// something the team does not, the person looking at it should be able to
+// say so - in the card, on the map, without opening plan.json.
+//
+// The feature is marked as a person's own so a later draft can tell that
+// this name was chosen rather than derived.
+// --------------------------------------------------
+
+export function renamePlanFeature(
+    projectRoot,
+    reference,
+    name
+) {
+    const clean =
+        String(name || "").trim();
+
+    if (!clean) {
+        throw new Error(
+            "A feature needs a name."
+        );
+    }
+
+    const plan =
+        loadPlan(projectRoot);
+
+    const feature =
+        findFeature(plan, reference);
+
+    const clash =
+        (plan.features || []).find(
+            candidate =>
+                candidate !== feature &&
+                candidate.name === clean
+        );
+
+    // Two features with one name draw two boxes a reader cannot tell apart,
+    // and every later lookup by name picks whichever comes first.
+    if (clash) {
+        throw new Error(
+            `Another feature is already called "${clean}".`
+        );
+    }
+
+    feature.name = clean;
+    feature.source = HUMAN_FEATURE;
+
+    save(projectRoot, plan);
+
+    return feature;
 }
 
 

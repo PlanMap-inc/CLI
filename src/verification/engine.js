@@ -182,18 +182,34 @@ function hasIdentity(
 }
 
 
+// Every declaration this node stands for. One for an ordinary node; several
+// where one behaviour is written once per thing it applies to, and the node
+// was allowed to merge them because a single assert holds for all of them.
+function nodeIdentities(
+    node
+) {
+    return Array.isArray(node?.identities) &&
+        node.identities.length > 0
+        ? node.identities
+        : typeof node?.identity === "string"
+            ? [node.identity]
+            : [];
+}
+
+
 function evaluateBehaviourRules(
     node,
-    declaration
+    declaration,
+    currentMap = null
 ) {
     const violations = [];
     const errors = [];
 
-    const facts =
-        declaration?.properties;
-
     const approvedFacts =
         node?.approvedFacts;
+
+    const identities =
+        nodeIdentities(node);
 
     for (
         const rule
@@ -214,9 +230,12 @@ function evaluateBehaviourRules(
             continue;
         }
 
+        // A rule may target any declaration the node stands for. Before
+        // merging existed there was only ever one, so this compared against
+        // node.identity - which made every rule on a merged node an error.
         if (
             typeof rule.target === "string" &&
-            rule.target !== node.identity
+            !identities.includes(rule.target)
         ) {
             errors.push({
                 target: rule.target,
@@ -227,6 +246,37 @@ function evaluateBehaviourRules(
 
             continue;
         }
+
+        // Each rule is checked against the facts of the declaration it
+        // targets, not against the node's first one. A merged node carries
+        // the same assert once per declaration, and checking all of them
+        // against one declaration's facts would verify a single member and
+        // call the whole claim proven.
+        const target =
+            typeof rule.target === "string"
+                ? rule.target
+                : node.identity;
+
+        const targeted =
+            target === node.identity || !currentMap
+                ? declaration
+                : currentMap.get(target);
+
+        if (
+            !targeted
+        ) {
+            errors.push({
+                target,
+                field: null,
+                message:
+                    `${target} is missing from the current project`
+            });
+
+            continue;
+        }
+
+        const facts =
+            targeted.properties;
 
         for (
             const [
@@ -512,7 +562,8 @@ export function verifyPlan(
         const evaluation =
             evaluateBehaviourRules(
                 node,
-                declaration
+                declaration,
+                currentMap
             );
 
         let status = "implemented";

@@ -398,7 +398,7 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .evo-node{position:relative;}
 .evo-children{margin-left:15px;padding-left:14px;border-left:1px solid var(--border-soft);}
 .evo-children[hidden]{display:none;}
-.evo-row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;cursor:pointer;}
+.evo-row{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:7px;cursor:pointer;}
 .evo-row:hover{background:var(--surface-2);}
 .evo-row.selected{background:var(--surface-3);}
 .evo-row.evo-feature .evo-title{font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:13px;}
@@ -412,16 +412,17 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .evo-row.is-new:hover{background:rgba(255,255,255,.075);}
 .evo-toggle{width:14px;height:14px;flex-shrink:0;display:flex;align-items:center;justify-content:center;color:var(--text-low);font-size:9px;cursor:pointer;}
 .evo-toggle.leaf{visibility:hidden;}
-.evo-status-icon{width:14px;flex-shrink:0;text-align:center;font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--text-low);}
+/* The markers at the start of a row: one per lens, so the group is sized
+   for the most a declaration can carry. A fixed width keeps every title on
+   the same line whether its declaration is read through one lens or three. */
+.evo-marks{display:flex;align-items:center;gap:2px;flex-shrink:0;}
+.evo-status-icon{width:8px;flex-shrink:0;text-align:center;font-size:10.5px;font-family:'JetBrains Mono',monospace;color:var(--text-low);}
 .evo-status-icon.status-intended{color:var(--text-low);}
 .evo-status-icon.status-approved{color:var(--text-hi);}
 .evo-status-icon.status-implemented{color:var(--text-hi);}
 .evo-status-icon.status-drifted, .evo-status-icon.status-error{color:var(--danger);}
 .evo-status-icon.status-superseded{color:var(--text-mid);}
 .evo-title{font-size:12.5px;color:var(--text-hi);flex-shrink:0;}
-.evo-tags{display:flex;gap:10px;margin-left:auto;padding-left:12px;}
-.evo-tag{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);}
-.evo-tag-dot{width:6px;height:6px;border-radius:50%;}
 .statusbar .legend-item .evo-status-icon{width:auto;}
 .badge .evo-status-icon{width:auto;}
 .drift-callout{margin-top:8px;}
@@ -451,3 +452,47 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .progress-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-mid);margin-top:8px;font-variant-ligatures:none;}
 .progress-log{font-family:'JetBrains Mono',monospace;font-size:10.5px;line-height:1.6;color:var(--text-low);background:var(--void);border:1px solid var(--border-soft);border-radius:8px;padding:8px 10px;margin:8px 0 0;max-height:132px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;user-select:text;font-variant-ligatures:none;}
 @media (prefers-reduced-motion: reduce){.progress-bar.indeterminate span{animation:none;width:100%;opacity:.5;}}
+
+/* --------------------------------------------------
+   LANES, AND WHAT SITS BESIDE THE SPINE
+   --------------------------------------------------
+   A band is a label on steps you can already see, not a card hiding them,
+   so it is a hairline down the left and a name - quiet enough that the
+   steps stay the thing being read.
+
+   The terms and preconditions sit inside the canvas content, so they pan
+   and zoom with the steps. They are part of the feature's space rather
+   than chrome describing it from outside.
+   -------------------------------------------------- */
+
+.band-label{position:absolute;width:150px;pointer-events:none;
+  border-left:1px solid var(--border);padding-left:10px;display:flex;flex-direction:column;gap:3px;}
+.band-label .band-name{font-family:'Space Grotesk',system-ui,sans-serif;font-size:11px;font-weight:600;
+  letter-spacing:.02em;color:var(--text-mid);}
+.band-label .band-count{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-low);}
+
+.feature-aside{position:absolute;width:412px;display:flex;flex-direction:column;gap:7px;}
+.aside-head{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--text-low);cursor:help;}
+.aside-chips{display:flex;flex-wrap:wrap;gap:6px;}
+.aside-chip{background:var(--surface-2);border:1px solid var(--border-soft);border-radius:var(--r-sm);
+  padding:5px 9px;font:inherit;font-size:11px;color:var(--text-mid);cursor:pointer;text-align:left;
+  max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  transition:border-color .15s, color .15s;}
+.aside-chip:hover{border-color:var(--text-low);color:var(--text-hi);}
+.aside-chip:focus-visible{outline:2px solid var(--accent-a);outline-offset:2px;}
+
+.aside-dims{color:var(--text-mid);margin:0 0 8px;}
+
+/* A glimpse of what a feature opens onto, on its Constellation card, and
+   what a merged step stands for, on the step. Both are quiet: they are
+   there to be recognised on the next screen, not read closely on this one. */
+
+.node-preview{margin-top:7px;display:flex;flex-direction:column;gap:3px;}
+.preview-step{font-size:10.5px;line-height:1.35;color:var(--text-low);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-left:8px;position:relative;}
+.preview-step::before{content:"";position:absolute;left:0;top:7px;width:3px;height:3px;
+  border-radius:50%;background:var(--text-low);}
+
+.node-backing{margin-top:6px;font-family:'JetBrains Mono',monospace;font-size:9.5px;
+  color:var(--text-low);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
