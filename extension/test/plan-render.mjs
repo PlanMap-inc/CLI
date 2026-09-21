@@ -8,6 +8,7 @@ import {
     buildFeatureGraph,
     constellationEdges,
     featureRegisters,
+    FLAT_LIMIT,
     nodeSub,
     roleOf,
     NODE_H_EST
@@ -72,9 +73,9 @@ assert.deepEqual(auth.edges, [
     { from: "a3", to: "a4" }
 ]);
 
-// A chain lays out as one column, each step above the one it follows.
+// A chain lays out as one column, each step below the one it follows.
 const y = Object.fromEntries(auth.nodes.map(n => [n.id, n.y]));
-assert.ok(y.a1 > y.a2 && y.a2 > y.a3 && y.a3 > y.a4, "steps climb"),
+assert.ok(y.a1 < y.a2 && y.a2 < y.a3 && y.a3 < y.a4, "steps descend"),
 assert.equal(new Set(auth.nodes.map(n => n.x)).size, 1);
 
 // A cycle (o1 -> o3 -> o1) still produces a finite layout and keeps both edges.
@@ -89,7 +90,7 @@ for (const n of orders.nodes) assert.ok(Number.isFinite(n.x) && Number.isFinite(
 const rowY = orders.nodes.filter(n => n.id !== "o1").map(n => n.y);
 assert.equal(new Set(rowY).size, 1, "o2 and o3 share a row");
 assert.equal(new Set(orders.nodes.filter(n => n.id !== "o1").map(n => n.x)).size, 2, "and sit apart on it");
-assert.ok(orders.nodes.find(n => n.id === "o1").y > rowY[0], "o1 leads to both, so it sits below them");
+assert.ok(orders.nodes.find(n => n.id === "o1").y < rowY[0], "o1 leads to both, so it sits above them");
 
 assert.deepEqual(
     buildFeatureGraph(plan, "empty", {}),
@@ -196,25 +197,45 @@ assert.equal(roleOf({ role: "nonsense" }), "behaviour");
 assert.deepEqual(bandsOf([{ id: "a", path: ["Fetch"] }, { id: "b", path: ["Fetch"] }]), [], "one heading is just the feature");
 assert.deepEqual(bandsOf([{ id: "a" }, { id: "b" }]), [], "no headings, no bands");
 
-const banded = bandsOf([
-    { id: "a", path: ["Build"], step: 5 },
-    { id: "b", path: ["Fetch"], step: 1 },
-    { id: "c", path: ["Build"], step: 6 },
-    { id: "d", path: ["Fetch"], step: 2 }
-]);
+// Banding exists to make a LONG spine manageable - a spine short enough to
+// read flat never needs it, however many headings the outline gave it.
+// Splitting five steps into two lanes fragments something that would read
+// as one flow perfectly well without them.
+assert.deepEqual(
+    bandsOf([
+        { id: "a", path: ["Steps"], step: 1 },
+        { id: "b", path: ["Steps"], step: 2 },
+        { id: "c", path: ["Submit"], step: 3 },
+        { id: "d", path: ["Submit"], step: 4 },
+        { id: "e", path: ["Submit"], step: 5 }
+    ]),
+    [],
+    "a spine at or under FLAT_LIMIT never bands, however many headings it has"
+);
+
+// Past FLAT_LIMIT, banding activates as before - long enough that reading
+// it flat would cost real zoom, so the lanes earn their place.
+const longSpine = [];
+for (let i = 1; i <= FLAT_LIMIT; i += 1) longSpine.push({ id: `build${i}`, path: ["Build"], step: i + FLAT_LIMIT });
+for (let i = 1; i <= FLAT_LIMIT; i += 1) longSpine.push({ id: `fetch${i}`, path: ["Fetch"], step: i });
+
+const banded = bandsOf(longSpine);
 assert.deepEqual(banded.map(b => b.name), ["Fetch", "Build"], "bands run in journey order, not plan order");
-assert.deepEqual(banded.map(b => b.nodes.length), [2, 2]);
+assert.deepEqual(banded.map(b => b.nodes.length), [FLAT_LIMIT, FLAT_LIMIT]);
 
 const bandedGraph = buildFeatureGraph({
     features: [{ id: "f" }],
-    nodes: [
-        { id: "a", title: "A", feature: "f", path: ["Fetch"], step: 1 },
-        { id: "b", title: "B", feature: "f", path: ["Build"], step: 2 }
-    ]
+    nodes: longSpine.map(node => ({ ...node, title: node.id, feature: "f" }))
 }, "f", {});
 assert.deepEqual(bandedGraph.bands.map(b => b.name), ["Fetch", "Build"]);
-assert.ok(bandedGraph.bands[0].bottom > bandedGraph.bands[1].bottom, "the first band sits lowest");
-assert.ok(bandedGraph.bands.every(b => b.count === 1));
+assert.ok(bandedGraph.bands[0].top < bandedGraph.bands[1].top, "the first band sits highest");
+assert.deepEqual(bandedGraph.bands.map(b => b.count), [FLAT_LIMIT, FLAT_LIMIT]);
+
+// Each band spans the rows it really covers, so its lane cannot stop short.
+for (const band of bandedGraph.bands) {
+    assert.ok(band.height >= 104, `band ${band.name} has no height`);
+    assert.ok(band.bottom >= band.top);
+}
 
 // --------------------------------------------------
 // A STEP STANDING FOR SEVERAL DECLARATIONS
@@ -301,12 +322,14 @@ for (let i = 1; i < ordered.length; i += 1) {
 assert.ok(stack[0].y > stack[10].y, "feature one sits below feature eleven");
 
 // And inside a feature, where a merged step is taller than its neighbours.
+// Chained by real edges rather than headings, so this is provable whether
+// or not the spine is long enough to band.
 const tallRow = buildFeatureGraph({
     features: [{ id: "f" }],
     nodes: [
-        { id: "a", title: "Plain", feature: "f", step: 1, path: ["P"] },
-        { id: "b", title: "Merged", feature: "f", step: 2, path: ["Q"], identity: "x::b:function", identities: ["x::b:function", "x::c:function"] },
-        { id: "c", title: "After", feature: "f", step: 3, path: ["R"] }
+        { id: "a", title: "Plain", feature: "f", step: 1, edgesOut: ["b"] },
+        { id: "b", title: "Merged", feature: "f", step: 2, identity: "x::b:function", identities: ["x::b:function", "x::c:function"], edgesOut: ["c"] },
+        { id: "c", title: "After", feature: "f", step: 3 }
     ]
 }, "f", {});
 
@@ -315,12 +338,6 @@ assert.ok(
     tallRow.nodes.find(n => n.id === "b").h > tallRow.nodes.find(n => n.id === "a").h,
     "the merged step's row is taller"
 );
-
-// Each band spans the rows it really covers, so its lane cannot stop short.
-for (const band of tallRow.bands) {
-    assert.ok(band.height >= 104, `band ${band.name} has no height`);
-    assert.ok(band.bottom >= band.top);
-}
 
 // --------------------------------------------------
 // THE NUMBER ON A CARD COUNTS THE CANVAS
@@ -338,15 +355,21 @@ const interleaved = buildFeatureGraph({
         { id: "n1", title: "Initialize the button", feature: "f", step: 1, path: ["Start up"] },
         { id: "n2", title: "Store the session", feature: "f", step: 2, path: ["Sign in"] },
         { id: "n3", title: "Send the token", feature: "f", step: 3, path: ["Tokens"] },
-        { id: "n4", title: "Send the identity", feature: "f", step: 4, path: ["Sign in"] }
+        { id: "n4", title: "Send the identity", feature: "f", step: 4, path: ["Sign in"] },
+        // Past FLAT_LIMIT, so banding activates at all - grouping only costs
+        // the plan's own order once a spine is long enough to need lanes.
+        // A later heading, so it never disturbs the first four positions.
+        ...Array.from({ length: FLAT_LIMIT }, (_, i) => ({
+            id: `pad${i}`, title: `Pad ${i}`, feature: "f", step: i + 5, path: ["Padding"]
+        }))
     ]
 }, "f", {});
 
-const upTheCanvas = [...interleaved.nodes].sort((a, b) => b.y - a.y);
+const downTheCanvas = [...interleaved.nodes].sort((a, b) => a.y - b.y);
 
-assert.deepEqual(upTheCanvas.map(n => n.step), [1, 2, 3, 4], "the numbers always climb");
-assert.deepEqual(upTheCanvas.map(n => n.planStep), [1, 2, 4, 3], "the plan's own order is kept, and differs");
-assert.deepEqual(interleaved.bands.map(b => b.name), ["Start up", "Sign in", "Tokens"]);
+assert.deepEqual(downTheCanvas.slice(0, 4).map(n => n.step), [1, 2, 3, 4], "the numbers always count down the page");
+assert.deepEqual(downTheCanvas.slice(0, 4).map(n => n.planStep), [1, 2, 4, 3], "the plan's own order is kept, and differs");
+assert.deepEqual(interleaved.bands.map(b => b.name), ["Start up", "Sign in", "Tokens", "Padding"]);
 
 // --------------------------------------------------
 // A BAND KNOWS WHERE ITS OWN CARDS START
@@ -362,7 +385,14 @@ const lopsided = buildFeatureGraph({
         { id: "w1", title: "One of three", feature: "f", step: 1, path: ["Wide"] },
         { id: "w2", title: "Two of three", feature: "f", step: 2, path: ["Wide"] },
         { id: "w3", title: "Three of three", feature: "f", step: 3, path: ["Wide"] },
-        { id: "s1", title: "Alone", feature: "f", step: 4, path: ["Narrow"] }
+        { id: "s1", title: "Alone", feature: "f", step: 4, path: ["Narrow"] },
+        // Past FLAT_LIMIT, so banding activates at all. Piled onto "Wide"
+        // rather than a new heading, so Wide stays the wider band, Narrow
+        // stays a single card, and the band-edge math under test - not the
+        // padding - is what these assertions still check.
+        ...Array.from({ length: FLAT_LIMIT }, (_, i) => ({
+            id: `wpad${i}`, title: `Pad ${i}`, feature: "f", step: i + 5, path: ["Wide"]
+        }))
     ]
 }, "f", {});
 
@@ -378,8 +408,8 @@ assert.equal(
 
 // The rows the asides sit next to, so they align with what is beside them
 // rather than with the widest row somewhere else.
-assert.equal(lopsided.bottomRowX, wide.minX, "the bottom row is the wide one");
-assert.equal(lopsided.topRowX, narrow.minX, "the top row is the narrow one");
+assert.equal(lopsided.topRowX, wide.minX, "the top row is the wide one");
+assert.equal(lopsided.bottomRowX, narrow.minX, "the bottom row is the narrow one");
 
 // --------------------------------------------------
 // NO FABRICATED CROSS-FEATURE EDGE

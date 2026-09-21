@@ -335,7 +335,7 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .statusbar .spacer{flex:1;}
 
 .flow-tag{position:absolute;left:22px;bottom:18px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);display:flex;align-items:center;gap:6px;z-index:2;pointer-events:none;}
-.flow-tag .arrow-up{color:var(--text-mid);}
+.flow-tag .arrow-up, .flow-tag .arrow-down{color:var(--text-mid);}
 
 .compile-banner{background:var(--surface-2);border-bottom:1px solid var(--border);padding:10px 20px;font-size:12px;display:none;flex-shrink:0;}
 .compile-banner.show{display:block;}

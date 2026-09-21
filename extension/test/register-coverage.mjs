@@ -104,28 +104,39 @@ assert.equal(merged.backing, 3);
 assert.deepEqual(merged.dimensions, ["agency", "MP", "state"]);
 
 // --------------------------------------------------
-// LANES, NOT DOORS
+// FOUR STEPS IS TOO SHORT TO BAND
 // --------------------------------------------------
+// Banding exists to make a long spine manageable. Four steps read as one
+// flow on their own, however many headings the outline gave them, so no
+// lanes are drawn - "Load", "Lookups" and "Aggregation" stay path headings
+// on the nodes, never a positional split. Real banding, on a spine long
+// enough to need it, is covered in plan-render.mjs.
 
-assert.deepEqual(graph.bands.map(band => band.name), ["Load", "Lookups", "Aggregation"]);
-assert.deepEqual(graph.bands.map(band => band.count), [1, 2, 1]);
+assert.deepEqual(graph.bands, [], "four steps is under FLAT_LIMIT, so nothing bands");
 
-// Every step is on the canvas whatever band it is in - a lane labels what
-// you can see, where the middle level used to hide it behind a card.
+// Every step is on the canvas regardless - a lane labels what you can see,
+// where the middle level used to hide it behind a card, and dropping the
+// lane must not drop the step.
 assert.equal(
     graph.nodes.length,
     featureRegisters(plan, "risk").spine.length,
-    "banding draws every step, never a subset"
+    "no banding still draws every step, never a subset"
 );
 
-// The two Lookups steps share a row: neither calls the other.
-const lookups = graph.nodes.filter(node => ["s2", "s3"].includes(node.id));
-assert.equal(new Set(lookups.map(node => node.y)).size, 1, "siblings share a row");
-assert.equal(new Set(lookups.map(node => node.x)).size, 2, "and sit apart on it");
-
-// s1 leads to s2, so it is below it and the arrow is real.
+// s1 leads to s2, so s2 sits in the layer below it - a real edge, honoured
+// now that it is not truncated at a band boundary the way it used to be.
 assert.deepEqual(graph.edges, [{ from: "s1", to: "s2" }]);
-assert.ok(graph.nodes.find(n => n.id === "s1").y > lookups[0].y);
+const s1 = graph.nodes.find(n => n.id === "s1");
+const s2 = graph.nodes.find(n => n.id === "s2");
+assert.ok(s2.y > s1.y, "s2 sits below s1, the step it follows");
+
+// One link, and nothing branching or merging: the flow is a single column,
+// so s3 and s4 stack with the rest instead of fanning out beside s1. They
+// still get no arrow - the layout draws the links the code has and no
+// others. flow-layout.mjs covers the shapes this rule does and does not
+// apply to.
+assert.equal(new Set(graph.nodes.map(node => node.x)).size, 1, "no branch, so one column");
+assert.equal(new Set(graph.nodes.map(node => node.y)).size, graph.nodes.length, "one step to a row");
 
 // --------------------------------------------------
 // THE CARD MATCHES WHAT IT OPENS
@@ -136,7 +147,7 @@ assert.ok(graph.nodes.find(n => n.id === "s1").y > lookups[0].y);
 const card = buildConstellation(plan, {}).find(node => node.id === "risk");
 
 assert.equal(card.count, 4, "the card counts steps, not every declaration");
-assert.equal(card.sub, "4 steps · 3 parts");
+assert.equal(card.sub, "4 steps", "four steps is under FLAT_LIMIT, so the card does not claim parts that are never drawn as lanes");
 assert.deepEqual(
     card.preview.map(step => step.title),
     ["Open the risk tables from disk", "Check a district's state boundary", "Assemble the risk table views"],

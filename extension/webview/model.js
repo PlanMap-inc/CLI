@@ -962,6 +962,13 @@ export const CARD_EVIDENCE_LINES = 2;
 // --------------------------------------------------
 
 export function bandsOf(steps) {
+    // Banding exists to make a LONG spine manageable - the same reason
+    // FLAT_LIMIT gates the areas level one screen over. A spine short
+    // enough to read flat never needs lanes, however many headings the
+    // outline gave it: splitting five steps into two labeled lanes
+    // fragments something that would read as one flow on its own.
+    if (steps.length <= FLAT_LIMIT) return [];
+
     const order = [];
     const byName = new Map();
 
@@ -1025,15 +1032,29 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
     // --------------------------------------------------
     // LAYOUT
     // --------------------------------------------------
-    // Bands stack up the canvas in journey order, step 1 at the bottom. A
-    // band's own steps are layered by what calls what, so a step that leads
-    // to another sits below it - and steps with nothing between them share a
-    // row, side by side.
+    // The flow reads top to bottom, step 1 at the top, and bands follow one
+    // another in journey order. A band's own steps are layered by what calls
+    // what, so a step that leads to another sits below it.
     //
-    // That last part is the point. Four sibling lookups used to be drawn as
-    // a four-step ladder because the layout had only one column to put them
-    // in, and a column is a sequence whether or not anything says so.
+    // What shares a row depends on the shape of the links. Where any step
+    // leads to, or is reached from, more than one other, that is a real
+    // branch or merge, and steps with nothing between them share a row, side
+    // by side - stacking them would draw a sequence the code does not have.
+    // Where no step does, there is nothing to fan out: the flow is one
+    // column, and putting siblings beside each other would only make a plain
+    // sequence look like a branch. No links at all is a set, not a flow, and
+    // stays a row.
+    //
+    // Which one applies is decided by the links alone. Bands, headings and
+    // lenses group what is drawn; they never move a step off its column.
     // --------------------------------------------------
+
+    const links = new Map();
+    for (const { from, to } of edges) {
+        links.set(`out ${from}`, (links.get(`out ${from}`) ?? 0) + 1);
+        links.set(`in ${to}`, (links.get(`in ${to}`) ?? 0) + 1);
+    }
+    const oneColumn = edges.length > 0 && Math.max(...links.values()) === 1;
 
     const bands = bandsOf(members);
     const groups = bands.length > 0 ? bands : [{ name: "", nodes: members }];
@@ -1073,7 +1094,8 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
                 (Number.isFinite(left.step) ? left.step : Number.MAX_SAFE_INTEGER) -
                 (Number.isFinite(right.step) ? right.step : Number.MAX_SAFE_INTEGER));
 
-            rows.push(row);
+            if (oneColumn) row.forEach(node => rows.push([node]));
+            else rows.push(row);
         }
 
         bandRuns.push({ name: band.name, from: start, to: rows.length - 1, count: band.nodes.length });
@@ -1092,23 +1114,24 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
             evidence: evidenceOf.get(node.id)
         }))));
 
-    const totalHeight = rowHeights.reduce((sum, h) => sum + h + CARD_GAP, -CARD_GAP);
-
+    // Each row starts a fixed gap below the last one ends. Rows are not
+    // snapped to the grid one by one: that rounds every gap differently, and
+    // a column whose spacing wanders looks arranged by accident.
     const rowTop = [];
-    let fromBottom = 0;
+    let nextTop = snap(TOP_Y);
 
     for (let index = 0; index < rows.length; index += 1) {
-        rowTop.push(snap(TOP_Y + totalHeight - fromBottom - rowHeights[index]));
-        fromBottom += rowHeights[index] + CARD_GAP;
+        rowTop.push(nextTop);
+        nextTop += rowHeights[index] + CARD_GAP;
     }
 
     const rowY = index => rowTop[index];
 
     const nodes = [];
 
-    // Rows run bottom to top, so this counts up the canvas: the number on a
-    // card is its place in what the reader is looking at. It used to be the
-    // plan's own step, which jumps about once the spine is grouped - a
+    // Rows run top to bottom, so this counts down the canvas: the number on
+    // a card is its place in what the reader is looking at. It used to be
+    // the plan's own step, which jumps about once the spine is grouped - a
     // measured feature read 1, 2, 4, 3 down the page.
     let position = 0;
 
@@ -1175,9 +1198,9 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
             ? bandRuns.map(run => ({
                 name: run.name,
                 count: run.count,
-                top: rowY(run.to),
-                bottom: rowY(run.from),
-                height: rowY(run.from) + rowHeights[run.from] - rowY(run.to),
+                top: rowY(run.from),
+                bottom: rowY(run.to),
+                height: rowY(run.to) + rowHeights[run.to] - rowY(run.from),
                 // Where THIS band's cards start, not where the widest row in
                 // the feature starts. A label placed from the latter is
                 // dragged left by whichever row happens to be widest, and
@@ -1187,9 +1210,47 @@ export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null
             : [],
         // For the bands above and below the spine, which sit against the
         // rows they are next to rather than against the whole feature.
-        topRowX: rowMinX.length ? rowMinX[rowMinX.length - 1] : CENTER_X,
-        bottomRowX: rowMinX.length ? rowMinX[0] : CENTER_X
+        topRowX: rowMinX.length ? rowMinX[0] : CENTER_X,
+        bottomRowX: rowMinX.length ? rowMinX[rowMinX.length - 1] : CENTER_X
     };
+}
+
+// How far a connector that has to go round a card sits from the column.
+const SKIP_LANE = 28;
+
+// The line for one link in the Feature Flow, which runs top to bottom.
+//
+// Neighbours in one column get a straight line from the bottom of one card
+// to the top of the next: a sequence should read without decoding the
+// geometry. A link that would cross another card in the same column - it
+// skips ahead, or loops back - runs down the right of the column instead. A
+// straight line there would pass behind the cards between and read as an
+// edge into each of them.
+//
+// Cards in different columns are an ordinary branch or merge, joined by an
+// elbow.
+export function flowEdgePath(from, to, nodes, cardW) {
+    const height = node => node.h ?? NODE_H_EST;
+    const centre = node => node.x + cardW / 2;
+
+    if (from.x !== to.x) {
+        const midY = (from.y + height(from) + to.y) / 2;
+        return `M ${centre(from)} ${from.y + height(from)} L ${centre(from)} ${midY} L ${centre(to)} ${midY} L ${centre(to)} ${to.y}`;
+    }
+
+    const between = nodes.some(node =>
+        node !== from && node !== to && node.x === from.x &&
+        node.y > Math.min(from.y, to.y) && node.y < Math.max(from.y, to.y));
+
+    if (to.y > from.y && !between) {
+        return `M ${centre(from)} ${from.y + height(from)} L ${centre(to)} ${to.y}`;
+    }
+
+    const lane = from.x + cardW + SKIP_LANE;
+    const out = from.y + height(from) / 2;
+    const back = to.y + height(to) / 2;
+
+    return `M ${from.x + cardW} ${out} L ${lane} ${out} L ${lane} ${back} L ${to.x + cardW} ${back}`;
 }
 
 

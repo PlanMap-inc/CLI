@@ -9,6 +9,7 @@ import {
     buildConstellation,
     buildFeatureGraph,
     featureRegisters,
+    flowEdgePath,
     colorAt,
     constellationEdges,
     describeHistory,
@@ -49,9 +50,11 @@ const MIN_SCALE = 0.3;
 // journey rather than something you can read - so the map opens at full size
 // and runs off the bottom of the screen, which is what panning is for.
 const FIT_MIN_SCALE = 1;
-// How far above the bottom the first step sits when the map is taller than
-// the canvas. The journey climbs, so opening at the bottom opens at step one.
+// How far from the edge the first step sits when the map is taller than the
+// canvas: above the bottom on the Constellation, whose journey climbs, and
+// below the top in a feature, whose flow runs down.
 const FIT_BOTTOM_PAD = 72;
+const FIT_TOP_PAD = 72;
 const MAX_SCALE = 2.2;
 const FLY_MS = 450;
 // Add, rename, delete, connect and compile need CLI commands that don't exist yet.
@@ -261,9 +264,11 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             if (!a || !b) return;
             const d = opts.variant === "area"
                 ? straightPath(a.x + CARD_W / 2, a.y + heightOf(a) / 2, b.x + CARD_W / 2, b.y + heightOf(b) / 2)
-                : opts.horizontal
-                    ? elbowPathH(a.x + CARD_W, a.y + heightOf(a) / 2, b.x, b.y + heightOf(b) / 2)
-                    : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + heightOf(b));
+                : opts.topDown
+                    ? flowEdgePath(a, b, nodes, CARD_W)
+                    : opts.horizontal
+                        ? elbowPathH(a.x + CARD_W, a.y + heightOf(a) / 2, b.x, b.y + heightOf(b) / 2)
+                        : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + heightOf(b));
             markup += `<path class="edge-path" d="${d}" data-style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
         });
         svgEl.innerHTML = markup;
@@ -337,10 +342,10 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     // --------------------------------------------------
     // THE MAP STAYS WHERE IT CAN BE READ
     // --------------------------------------------------
-    // The journey runs bottom to top, so up and down is travel and sideways
-    // is not. Horizontally the content is centred and held there while it
-    // fits; only a row too wide for the canvas can be moved sideways, and
-    // only as far as its own edges. Vertically you may travel, but not past
+    // The journey runs up or down the canvas, so vertical is travel and
+    // sideways is not. Horizontally the content is centred and held there
+    // while it fits; only a row too wide for the canvas can be moved
+    // sideways, and only as far as its own edges. Vertically you may travel, but not past
     // the ends - panning used to be unbounded in both directions, so the
     // map could be pushed off-screen entirely with nothing to say where it
     // had gone.
@@ -413,16 +418,20 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
         const panX = rect.width / 2 - (minX + (maxX - minX) / 2) * s;
 
-        // Taller than the canvas, which is now the normal case: open at the
-        // bottom, where the journey starts. Centring a map that does not fit
-        // opens it in the middle of itself, with the beginning off-screen
-        // above and no sign that it is there.
+        // Taller than the canvas, which is now the normal case: open where
+        // the journey starts - the top of a flow that runs down, the bottom
+        // of one that climbs. Centring a map that does not fit opens it in
+        // the middle of itself, with the beginning off-screen and no sign
+        // that it is there.
         const overflows = h * s > rect.height - pad * 2;
+        const atStart = opts.topDown
+            ? FIT_TOP_PAD - minY * s
+            : rect.height - FIT_BOTTOM_PAD - maxY * s;
 
         return {
             panX,
             panY: overflows
-                ? rect.height - FIT_BOTTOM_PAD - maxY * s
+                ? atStart
                 : rect.height / 2 - (minY + h / 2) * s,
             scale: s
         };
@@ -560,6 +569,8 @@ const constellationGraph = createGraph(constellationCanvas, document.getElementB
 const featureGraph = createGraph(featureCanvas, document.getElementById("featureGrid"), document.getElementById("featureContent"), {
     id: "feat",
     showToolbar: true,
+    // The flow reads top to bottom, and its connectors are drawn to match.
+    topDown: true,
     onMove: node => request("action", { type: "moveNode", target: node.id, x: node.x, y: node.y }),
     onRename: node => renameStep(node),
     onRemove: node => {
