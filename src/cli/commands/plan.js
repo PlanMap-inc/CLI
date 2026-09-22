@@ -327,20 +327,37 @@ function reportSummaries(
         );
     }
 
-    if (
-        fallbacks?.length > 0
-    ) {
-        console.log(
-            `Summary steps named from their own parts, not the model: ${fallbacks.length}`
-        );
+    // Grouped by reason. A run that could not reach the model at all
+    // failed for one reason, once, and printing that reason 36 times -
+    // measured on expressjs/express - buries the lines that differ.
+    const byReason =
+        new Map();
 
-        for (
-            const line of fallbacks
+    for (
+        const fallback of fallbacks || []
+    ) {
+        if (
+            !byReason.has(fallback.reason)
         ) {
-            console.log(
-                `  ${line}`
+            byReason.set(
+                fallback.reason,
+                []
             );
         }
+
+        byReason
+            .get(fallback.reason)
+            .push(fallback.id);
+    }
+
+    for (
+        const [reason, ids] of byReason
+    ) {
+        console.log(
+            ids.length === 1
+                ? `Summary step ${ids[0]} uses a fallback title: ${reason}`
+                : `${ids.length} summary steps use fallback titles: ${reason}`
+        );
     }
 }
 
@@ -409,6 +426,39 @@ export async function runPlanSummarise(
             { callGraph }
         );
 
+    // --------------------------------------------------
+    // NOTHING FOLDED MEANS NOTHING WRITTEN
+    // --------------------------------------------------
+    // This used to relink and rewrite plan.json on every run, whatever it
+    // found. Relinking replaces a feature's edges with the call graph's,
+    // so the first run of this command on a plan somebody had ordered by
+    // hand quietly threw that order away - while printing that every
+    // feature was already inside the cap.
+    //
+    // A feature can also be over the cap with nothing to fold, because
+    // its settled steps alone fill it. That is worth saying, and it is
+    // not a reason to touch the file.
+    // --------------------------------------------------
+    if (
+        summaries.length === 0
+    ) {
+        console.log(
+            "Nothing to fold."
+        );
+
+        for (
+            const entry of report
+        ) {
+            console.log(
+                entry.line
+            );
+        }
+
+        process.exitCode = 0;
+
+        return;
+    }
+
     // Every step keeps its fallback title when there is no model to ask.
     // That is the point of the fallback: the cap is deterministic, and
     // only the wording of a summary step ever needs one.
@@ -466,18 +516,6 @@ export async function runPlanSummarise(
         );
 
         process.exitCode = 1;
-
-        return;
-    }
-
-    if (
-        report.length === 0
-    ) {
-        console.log(
-            "Every feature is already inside the step cap."
-        );
-
-        process.exitCode = 0;
 
         return;
     }

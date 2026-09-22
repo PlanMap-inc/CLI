@@ -176,8 +176,9 @@ assert.match(main, /panBy\(dx, dy\) \{ panX \+= dx; panY \+= dy; clampPan\(\);/)
 assert.match(main, /if \(panning\) \{[\s\S]{0,200}clampPan\(\);/);
 assert.equal(
     (main.match(/clampPan\(\);/g) ?? []).length,
-    4,
-    "keys, drag and zoom move the map; a canvas resize moves it too"
+    7,
+    "keys, drag, the wheel and zoom move the map; so do holding a row in "
+    + "place, focusing a step, and a canvas resize"
 );
 
 // What gets centred is the steps. Lane labels are margin furniture: they
@@ -186,21 +187,18 @@ assert.equal(
 // empty left half and put the steps well right of centre.
 assert.match(main, /minX: Math\.min\(\.\.\.xs\),/);
 assert.doesNotMatch(main, /Math\.min\(\.\.\.xs\) - insetLeft/);
-assert.match(main, /padStart: insetLeft/);
-assert.match(main, /insetLeft: asideInset\(graph\)/);
+assert.match(main, /padStart: insetLeft/, "the clamp still supports a left margin");
 
-// Vertically the terms and preconditions ARE content, not margin: panning
-// locks when the steps fit, so a band drawn above the top row was cut off
-// with no way to reach it. They go in the box on that axis.
+// Nothing is drawn beside the column any more. The lanes are gone, and the
+// terms, preconditions and helpers are rows IN the column rather than
+// bands off to one side - so there is no furniture to measure.
+assert.doesNotMatch(main, /asideInset/, "nothing computes a left inset");
+assert.doesNotMatch(main, /BAND_GUTTER/, "the lane labels are gone");
+assert.doesNotMatch(main, /ASIDE_REACH/, "the chip bands beside the spine are gone");
+
 assert.match(main, /minY: Math\.min\(\.\.\.nodes\.map\(n => n\.y\)\) - insetTop/);
 assert.match(main, /maxY: Math\.max\(\.\.\.nodes\.map\(n => n\.y \+ heightOf\(n\)\)\) \+ insetBottom/);
-assert.match(main, /insetTop: registers\.vocabulary\.length \? ASIDE_REACH : 0/);
-assert.match(main, /insetBottom: \(registers\.machinery\.length \|\| registers\.tools\.length\)/);
-
-// And the labels sit against the column rather than at a fixed canvas edge,
-// so they are never stranded far from the steps they describe.
-assert.match(main, /const BAND_GUTTER = 170;/);
-assert.match(main, /left:\$\{band\.minX - BAND_GUTTER\}px/, "each label sits against its own band's cards");
+assert.match(main, /panBy\(dx, dy\)/, "the graph exposes a way to be moved");
 assert.match(main, /panBy\(dx, dy\)/, "the graph exposes a way to be moved");
 
 // The operating system's key repeat is ignored - holding a key is one press

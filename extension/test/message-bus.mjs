@@ -14,7 +14,15 @@ const expected = {
     approve: [{ type: "approve", target: "plan_0001" }, ["approve", root, "plan_0001"]],
     // The toolbar's one approve button on the Constellation: the whole plan.
     approveAll: [{ type: "approveAll" }, ["approve", root, "--all"]],
-    approveLens: [{ type: "approveLens", lensId: "security" }, ["approve", root, "--lens", "security"]],
+    // "Approve Survey" from inside a feature.
+    approveFeature: [{ type: "approveFeature", featureId: "feat_0003" }, ["approve", root, "--feature", "feat_0003"]],
+    // "Approve Security" from inside a feature is scoped to that feature.
+    // Without the featureId - which is how the Constellation would send it -
+    // it stays the plan-wide call it has always been.
+    approveLens: [
+        { type: "approveLens", lensId: "security", featureId: "feat_0003" },
+        ["approve", root, "--feature", "feat_0003", "--lens", "security"]
+    ],
     reject: [{ type: "reject", target: "plan_0001", force: false }, ["reject", root, "plan_0001"]],
     // plan revise matches identity only.
     revise: [{ type: "revise", identity }, ["plan", "revise", root, identity]],
@@ -64,6 +72,12 @@ assert.equal(isWebviewMessage({ type: "approve", target: "" }), false);
 assert.equal(isWebviewMessage({ type: "approve", target: 42 }), false);
 assert.equal(isWebviewMessage({ type: "approve", target: "--all" }), false, "a flag can't be smuggled in as a target");
 assert.equal(isWebviewMessage({ type: "approveLens", lensId: "--feature" }), false);
+
+// A lens with no feature is still the plan-wide call.
+assert.deepEqual(
+    buildCliArgs({ type: "approveLens", lensId: "security" }, root),
+    ["approve", root, "--lens", "security"]
+);
 assert.equal(isWebviewMessage({ type: "revise", identity: "-x" }), false);
 
 // --------------------------------------------------

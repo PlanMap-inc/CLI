@@ -33,7 +33,7 @@ export function runPlanApprove(
         !projectRoot
     ) {
         console.error(
-            "Usage: planmap approve <project> [target] [--all|--lens <lens>|--feature <feature>]"
+            "Usage: planmap approve <project> [target] [--all|--lens <lens>|--feature <feature>|--feature <feature> --lens <lens>]"
         );
 
         process.exitCode = 1;

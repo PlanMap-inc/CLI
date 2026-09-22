@@ -596,6 +596,58 @@ Results:
 ---
 
 
+## 12. Plan Graph layout
+
+**Decision:** a feature is one straight column, in `step` order, top to bottom. The Constellation reads the same way. Nothing else moves a card: not the call graph, not a stored `x`/`y`, not the lens.
+
+**Why:** the layout used to come from `edgesOut` by longest path, so two steps that did not call each other were drawn side by side and a step with two callers fanned out.
+
+**What it prevents:** a picture of the call graph presented as the plan. A reader cannot tell a layout claim from a code fact when the same arrangement means both.
+
+**Verified in:** `buildSpine()` in `extension/webview/model.js`, `extension/test/spine-layout.mjs`, `extension/test/flow-layout.mjs`.
+
+---
+
+**Decision:** the line between two cards means "next in this feature" and carries no arrowhead. A call is shown as a chip on the card, and as a dashed arc in the gutter only while that card is selected.
+
+**Why:** `edgesOut` had two meanings — the draft wrote it as calls, `plan order` overwrote it as an order chain — and one line on the canvas stood for whichever had last touched the file.
+
+**What it prevents:** an arrow read as cause when it is only sequence, and thirty call arcs drawn at once, which is the call graph again.
+
+**Verified in:** `extension/test/calls-chip.mjs`, `extension/test/constellation-order.mjs`.
+
+---
+
+**Decision:** a lens folds, and never renames. Titles, numbers and order hold still under every lens; a run of consecutive steps the lens has nothing to say about becomes one row that says how many, and opens. A reading shows as the card's detail line. Entering a feature selects **All**.
+
+**Why:** the lens used to replace each title with `node.readings[lens]`, and entering a feature switched the first lens on — so the first titles a reader ever saw were a perspective's rewording of the plan rather than the plan, and one step appeared under four names.
+
+**What it prevents:** a reader who cannot tell that two cards are the same step, and one who never sees what a perspective is leaving out. Folding shows the gap and offers to open it; hiding does neither.
+
+**Verified in:** `extension/test/lens-fold.mjs`, `extension/test/lens-filter.mjs`.
+
+---
+
+**Decision:** a feature with more than 12 steps (`FLAT_LIMIT`) opens folded by part — the first heading in each step's `path` — with one part open at a time. A single-part feature folds into ranges of ten. Part rows always carry their failing counts, and **Next drift** opens whatever is in front of the next drifted step.
+
+**Why:** past a dozen steps a feature stops being something you read and becomes something you scroll. The lanes this replaces labelled a banded column off to one side and still left every card on screen.
+
+**What it prevents:** drift hidden behind a fold. A fold that can conceal a problem is worse than a long column.
+
+**Verified in:** `partsOf()` and `buildSpine()` in `extension/webview/model.js`, `extension/test/part-fold.mjs`.
+
+---
+
+**Decision:** order lives in `step`. `plan order` and `plan add` renumber a feature's steps 1..N and never write an edge; `edgesOut` only ever means "this step's code calls that step's code".
+
+**Why:** `featureOrder()` followed the `edgesOut` chain and `relink()` rewrote it, so reordering a feature destroyed the call information the draft had extracted, and the graph then laid the feature out from whichever meaning the field happened to hold.
+
+**What it prevents:** one field standing for two different claims, and a layout that changes meaning depending on what last touched the file.
+
+**Verified in:** `src/plan/authoring.js`, `test/v0.9/order-lives-in-step.mjs`.
+
+---
+
 ## 13. Plan size
 
 **Decision:** a feature holds at most **20 behaviour steps** (`FEATURE_STEP_CAP`). A brownfield draft that produces more folds related steps into **summary steps**. Nothing is ever dropped.
@@ -610,7 +662,11 @@ Results:
 
 **Why:** their decision is about the step they read. Moving it onto a claim they never read is a lie about what they approved. A feature whose settled steps alone exceed the cap folds the rest as tightly as it can and reports the overflow rather than touching them.
 
-**Decision:** `budget = max(1, cap − settled behaviour steps)`, and groups merge in three passes, stopping as soon as the feature fits:
+**Decision:** no summary step may cover more than **12** steps (`MAX_SUMMARY_SIZE`), counted in covered steps rather than declarations. Where the cap and this limit conflict, the cap gives way: the feature stays over 20 and the report line says why.
+
+**Why:** measured on expressjs/express 4.21.2. A feature with 25 approved steps already fills the cap, so its budget falls to one group, and all 136 new steps folded into a single card. Nobody reviews a card covering 136 steps — and a summary step nobody reviews is a way of not reading code, which is the one thing the cap must never become. A feature that stays over twenty and says so is honest; one card standing for half the repo is not.
+
+**Decision:** `budget = max(1, cap − settled behaviour steps)`, and groups merge in three passes, stopping as soon as the feature fits or no pair may merge without breaking the summary limit:
 
 1. **Call tree** — a step folds into the step that calls it, when every caller of all its declarations sits inside that one other group. Repeated, so a chain A → B → C ends up together.
 2. **Same part** — within one `path[0]` heading, the two neighbouring groups with the smallest combined size.

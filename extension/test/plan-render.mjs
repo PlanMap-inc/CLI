@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
 
 import {
-    bandsOf,
     cardHeight,
     CARD_GAP,
     buildConstellation,
-    buildFeatureGraph,
+    buildSpine,
     constellationEdges,
+    detailLine,
     featureRegisters,
+    FEATURE_H,
     FLAT_LIMIT,
     nodeSub,
+    partsOf,
     roleOf,
-    NODE_H_EST
+    STEP_H
 } from "../webview/model.js";
 
 const plan = {
@@ -33,19 +35,56 @@ const plan = {
     ]
 };
 
-// Constellation: one node per feature, with the member count.
+// Constellation: one card per feature that has steps, with the count.
 const constellation = buildConstellation(plan, {});
-assert.equal(constellation.length, 3);
-assert.deepEqual(constellation.map(n => n.sub), ["4 steps", "3 steps", "0 steps"]);
-assert.deepEqual(constellation.map(n => n.step), [1, 2, 3], "features are numbered in the order they are met");
-assert.deepEqual(constellation.map(n => n.title), ["Login", "Orders", "Ratings"]);
 
-// Features stack bottom to top in plan order, in one column: the first
-// thing a person does sits at the bottom, and the journey climbs.
-const featureY = constellation.map(n => n.y);
-assert.ok(featureY[0] > featureY[1] && featureY[1] > featureY[2], "the first feature sits at the bottom");
-assert.equal(new Set(constellation.map(n => n.x)).size, 1);
-for (let i = 1; i < featureY.length; i++) assert.ok(featureY[i - 1] - featureY[i] >= NODE_H_EST, "feature rows overlap");
+assert.equal(constellation.cards.length, 2, "Ratings has no steps, so it gets no card");
+assert.deepEqual(constellation.cards.map(n => n.sub), ["4 steps", "3 steps"]);
+assert.deepEqual(constellation.cards.map(n => n.step), [1, 2], "features are numbered in the order they are met");
+assert.deepEqual(constellation.cards.map(n => n.title), ["Login", "Orders"]);
+
+// --------------------------------------------------
+// THE CONSTELLATION READS DOWNWARDS
+// --------------------------------------------------
+// It used to climb, so the journey ran up while the feature you opened
+// from it ran down: one map, two directions, and a reader re-orienting at
+// every click.
+
+const featureY = constellation.cards.map(n => n.y);
+
+assert.ok(featureY[0] < featureY[1], "the first feature sits at the top");
+assert.equal(new Set(constellation.cards.map(n => n.x)).size, 1, "one column");
+
+// Every card is the same height, so the pitch is fixed.
+assert.ok(constellation.cards.every(card => card.h === FEATURE_H));
+
+// Snapped to the grid, so the pitch is the card plus the gap rounded to
+// the nearest 24 - never less than the card, which is what stops two
+// cards overlapping.
+assert.ok(
+    featureY[1] - featureY[0] >= FEATURE_H,
+    `cards overlap: ${featureY[1] - featureY[0]} < ${FEATURE_H}`
+);
+assert.ok(featureY[1] - featureY[0] <= FEATURE_H + CARD_GAP);
+
+// --------------------------------------------------
+// A FEATURE WITH NO STEPS IS NOT A STAGE OF THE JOURNEY
+// --------------------------------------------------
+// It used to draw an empty box. Whatever it holds goes into one folded
+// row under the journey instead.
+
+const setup = buildConstellation({
+    ...plan,
+    nodes: [...plan.nodes, { id: "e1", title: "DB config", intent: "x", feature: "empty", role: "vocabulary" }]
+}, {});
+
+assert.equal(setup.cards.length, 2, "still no card for the stepless feature");
+assert.equal(setup.setup.title, "Project setup");
+assert.equal(setup.setup.count, 1);
+assert.deepEqual(setup.setup.chips.map(chip => chip.title), ["DB config"]);
+assert.ok(setup.setup.y > setup.cards.at(-1).y, "and it sits under the journey");
+
+assert.equal(buildConstellation(plan, {}).setup, null, "nothing left over, no row");
 
 // Connected by the plan's own links: a4 (auth) points at o1 (orders). Nothing
 // links orders to Ratings, so that pair falls back to reading order - the real
@@ -64,352 +103,194 @@ assert.deepEqual(constellationEdges(unlinked), [
 assert.deepEqual(constellationEdges({ features: [{ id: "only" }], nodes: [] }), [], "one feature has nothing to connect to");
 assert.deepEqual(constellationEdges(null), []);
 
-// Feature Space: members only; dangling and cross-feature edges are dropped.
-const auth = buildFeatureGraph(plan, "auth", {});
-assert.equal(auth.nodes.length, 4);
-assert.deepEqual(auth.edges, [
-    { from: "a1", to: "a2" },
-    { from: "a2", to: "a3" },
-    { from: "a3", to: "a4" }
-]);
-
-// A chain lays out as one column, each step below the one it follows.
-const y = Object.fromEntries(auth.nodes.map(n => [n.id, n.y]));
-assert.ok(y.a1 < y.a2 && y.a2 < y.a3 && y.a3 < y.a4, "steps descend"),
-assert.equal(new Set(auth.nodes.map(n => n.x)).size, 1);
-
-// A cycle (o1 -> o3 -> o1) still produces a finite layout and keeps both edges.
-const orders = buildFeatureGraph(plan, "orders", {});
-assert.equal(orders.nodes.length, 3);
-assert.equal(orders.edges.length, 3);
-for (const n of orders.nodes) assert.ok(Number.isFinite(n.x) && Number.isFinite(n.y));
-
-// Siblings share a ROW, side by side. o2 and o3 both follow o1 and neither
-// leads to the other, so stacking them would draw a sequence the code does
-// not have - which is what a single column could only ever do.
-const rowY = orders.nodes.filter(n => n.id !== "o1").map(n => n.y);
-assert.equal(new Set(rowY).size, 1, "o2 and o3 share a row");
-assert.equal(new Set(orders.nodes.filter(n => n.id !== "o1").map(n => n.x)).size, 2, "and sit apart on it");
-assert.ok(orders.nodes.find(n => n.id === "o1").y < rowY[0], "o1 leads to both, so it sits above them");
-
-assert.deepEqual(
-    buildFeatureGraph(plan, "empty", {}),
-    { nodes: [], edges: [], bands: [], topRowX: 300, bottomRowX: 300 }
-);
 
 // --------------------------------------------------
-// AN EDGE NEEDS EVIDENCE
+// FEATURE SPACE IS ONE COLUMN
 // --------------------------------------------------
-// A feature whose nodes carry no links of their own used to be chained in
-// plan order. That arrow asserted a sequence nothing had established, and a
-// reader cannot tell an invented arrow from an earned one. Now nothing is
-// drawn, and the steps sit together as what they are.
+// Whatever the links do. A chain, a cycle and a pair of siblings all read
+// the same way: down, in step order, one to a row.
+
+const spineOf = (source, feature, options = {}) =>
+    buildSpine(source, feature, options).items.filter(item => item.kind === "step");
+
+const auth = spineOf(plan, "auth");
+
+assert.equal(auth.length, 4);
+assert.equal(new Set(auth.map(item => item.x)).size, 1);
+assert.deepEqual(auth.map(item => item.number), ["1", "2", "3", "4"]);
+assert.ok(auth.every(item => item.h === STEP_H), "every card the same height");
+
+// A cycle (o1 -> o3 -> o1) is a finite column like anything else.
+const orders = spineOf(plan, "orders");
+
+assert.equal(orders.length, 3);
+assert.equal(new Set(orders.map(item => item.y)).size, 3, "no two steps share a row");
+
+// A feature with no nodes draws nothing, and does not throw.
+assert.deepEqual(buildSpine(plan, "empty", {}).items, []);
+assert.deepEqual(buildSpine(plan, "empty", {}).links, []);
+
+
+// --------------------------------------------------
+// THE LINE IS THE ORDER, AND NEVER A CALL
+// --------------------------------------------------
+// A feature whose nodes carry no links of their own used to be drawn as a
+// set, because the layout came from the links. The line is the order now,
+// so it is always there and always means the same thing.
+
 const unlinkedFeature = {
     features: [{ id: "f", name: "F" }],
     nodes: [
-        { id: "n1", title: "One", feature: "f", step: 1, edgesOut: [] },
-        { id: "n2", title: "Two", feature: "f", step: 2 },
-        { id: "n3", title: "Three", feature: "f", step: 3, edgesOut: [] }
+        { id: "u1", title: "One", intent: "x", feature: "f", step: 1, edgesOut: [] },
+        { id: "u2", title: "Two", intent: "x", feature: "f", step: 2, edgesOut: [] },
+        { id: "u3", title: "Three", intent: "x", feature: "f", step: 3, edgesOut: [] }
     ]
 };
-const unchained = buildFeatureGraph(unlinkedFeature, "f", {});
-assert.deepEqual(unchained.edges, [], "no call evidence, no arrows");
-assert.equal(new Set(unchained.nodes.map(n => n.y)).size, 1, "they share one row");
-assert.deepEqual(unchained.nodes.map(n => n.id), ["n1", "n2", "n3"], "in the order a person meets them");
-assert.equal(new Set(unchained.nodes.map(n => n.x)).size, 3, "spread across it");
 
-assert.equal(buildFeatureGraph({ features: [{ id: "f" }], nodes: [{ id: "only", feature: "f" }] }, "f", {}).edges.length, 0, "one node has nothing to connect to");
+const unchained = buildSpine(unlinkedFeature, "f", {});
+
+assert.deepEqual(
+    unchained.links,
+    [{ from: "u1", to: "u2" }, { from: "u2", to: "u3" }],
+    "neighbours are joined in order, with nothing claimed about cause"
+);
+
+assert.deepEqual(
+    buildSpine({ features: [{ id: "f" }], nodes: [{ id: "only", feature: "f", title: "O", intent: "x" }] }, "f", {}).links,
+    [],
+    "one step has nothing to connect to"
+);
+
 
 // --------------------------------------------------
-// EVIDENCE RIDES ALONG WITH EACH STEP, CAPPED FOR THE CARD
+// EVIDENCE IS ONE LINE, NOT A BLOCK
 // --------------------------------------------------
+// It used to stack two lines under every title, which made a column of
+// steps a column of inspectors. The card carries one detail line, and the
+// panel carries the whole list.
 
 const factsByIdentity = {
     "auth/middleware.js::verifyJWT:function": {
+        throws: 0, throwTypes: [], returns: 3, returnsNullish: 0,
         calls: ["authHeader.split", "jwt.verify", "next", "res.status"],
-        numbers: [1, 401],
-        catches: 1
+        numbers: [1, 401], awaits: 0, catches: 1, emptyCatches: 0, params: 3
     }
 };
 
-// Reuses this file's existing `plan` fixture - a4 ("JWT issued") is the auth
-// feature's node carrying this identity, added above alongside the fixture.
-const withEvidence = buildFeatureGraph(plan, "auth", {}, null, null, factsByIdentity);
-const verifyStep = withEvidence.nodes.find(n => n.source.identity === "auth/middleware.js::verifyJWT:function");
+const jwt = plan.nodes.find(node => node.id === "a4");
 
-assert.ok(verifyStep, "the fixture's a4 node carries this identity");
-assert.deepEqual(verifyStep.evidence, ["calls authHeader.split", "answers 401"]);
-
-const noFacts = buildFeatureGraph(plan, "auth", {}, null, null, {});
-assert.ok(noFacts.nodes.every(n => Array.isArray(n.evidence) && n.evidence.length === 0), "no facts supplied means every step's evidence is an empty array, never invented");
-
-// The row is measured with those lines in it. It was not, once: the card
-// rendered two lines taller than the layout believed, so the gap below it
-// closed up and the edge into it stopped partway inside the card above.
-assert.ok(
-    verifyStep.h > noFacts.nodes.find(n => n.id === "a4").h,
-    "a step carrying evidence lines must be laid out taller than the same step without them"
+assert.deepEqual(
+    detailLine(jwt, { facts: factsByIdentity }),
+    { kind: "evidence", text: "calls authHeader.split" },
+    "the first fact, and only the first"
 );
-assertNoOverlap(withEvidence.nodes, "feature space with evidence");
 
-// Existing callers that pass no factsByIdentity at all still work.
-const noArgAtAll = buildFeatureGraph(plan, "auth", {});
-assert.ok(noArgAtAll.nodes.every(n => Array.isArray(n.evidence)));
+assert.equal(detailLine(jwt, { facts: {} }), null, "no facts, no line - never an invented one");
+assert.equal(detailLine(jwt), null, "and no facts argument at all still works");
+
+// A card's height never depends on what it holds any more.
+assert.equal(cardHeight(), STEP_H);
+assert.equal(cardHeight({ evidence: ["a", "b", "c"], backing: 9 }), STEP_H);
+
 
 // --------------------------------------------------
 // ROLES: ONLY A BEHAVIOUR IS A STEP
 // --------------------------------------------------
+
 const mixed = {
     features: [{ id: "f", name: "F" }],
     nodes: [
-        { id: "b1", title: "Verify the credential", feature: "f", step: 1, role: "behaviour" },
-        { id: "v1", title: "Three allowed columns", feature: "f", step: 2, role: "vocabulary" },
-        { id: "m1", title: "Open the connection pool", feature: "f", step: 3, role: "machinery" },
-        { id: "t1", title: "Build a slug", feature: "f", step: 4, role: "tool" }
+        { id: "s1", title: "Submit the survey", intent: "x", feature: "f", step: 1, role: "behaviour" },
+        { id: "v1", title: "Survey questions", intent: "x", feature: "f", role: "vocabulary" },
+        { id: "m1", title: "Connect the pool", intent: "x", feature: "f", role: "machinery" },
+        { id: "t1", title: "Format a date", intent: "x", feature: "f", role: "tool" },
+        { id: "s2", title: "Answer 200", intent: "x", feature: "f", step: 2, role: "behaviour" }
     ]
 };
 
-const registers = featureRegisters(mixed, "f");
-assert.deepEqual(registers.spine.map(n => n.id), ["b1"]);
-assert.deepEqual(registers.vocabulary.map(n => n.id), ["v1"]);
-assert.deepEqual(registers.machinery.map(n => n.id), ["m1"]);
-assert.deepEqual(registers.tools.map(n => n.id), ["t1"]);
-assert.equal(registers.total, 4, "every node is in exactly one register - nothing is dropped");
+assert.deepEqual(spineOf(mixed, "f").map(item => item.id), ["s1", "s2"], "only behaviours are on the line");
+
+const registers = buildSpine(mixed, "f", {}).items.filter(item => item.kind === "register");
 
 assert.deepEqual(
-    buildFeatureGraph(mixed, "f", {}).nodes.map(n => n.id),
-    ["b1"],
-    "the spine holds what the system does; the rest are drawn beside it"
+    registers.map(row => [row.title, row.count]),
+    [["Terms", 1], ["Runs on", 1], ["Helpers", 1]],
+    "the rest are rows beside the line, one per kind"
 );
+
+assert.ok(registers.every(row => row.offLine), "and never on it");
+
+// Terms sit above the steps; preconditions and helpers below.
+const items = buildSpine(mixed, "f", {}).items;
+assert.equal(items[0].title, "Terms");
+assert.deepEqual(items.slice(-2).map(row => row.title), ["Runs on", "Helpers"]);
 
 // A plan drafted before roles existed has every node on the spine, exactly
-// as it did then.
-assert.equal(featureRegisters(plan, "auth").spine.length, 4);
-assert.equal(roleOf({ title: "x" }), "behaviour");
-assert.equal(roleOf({ role: "tool" }), "tool");
-assert.equal(roleOf({ role: "nonsense" }), "behaviour");
+// as it did before roles.
+const legacy = {
+    features: [{ id: "f", name: "F" }],
+    nodes: [
+        { id: "l1", title: "One", intent: "x", feature: "f" },
+        { id: "l2", title: "Two", intent: "x", feature: "f" }
+    ]
+};
+
+assert.equal(featureRegisters(legacy, "f").spine.length, 2);
+assert.equal(spineOf(legacy, "f").length, 2);
+assert.equal(roleOf({}), "behaviour");
+
 
 // --------------------------------------------------
-// BANDS
+// PARTS
 // --------------------------------------------------
-// Lanes on one canvas, in the order the journey reaches them - not cards to
-// click into. One band is not a banding.
-assert.deepEqual(bandsOf([{ id: "a", path: ["Fetch"] }, { id: "b", path: ["Fetch"] }]), [], "one heading is just the feature");
-assert.deepEqual(bandsOf([{ id: "a" }, { id: "b" }]), [], "no headings, no bands");
+// A long feature folds by the heading the outline already gave each step.
+// A short one never does: splitting five steps into two labelled rows
+// fragments something that would read as one flow on its own.
 
-// Banding exists to make a LONG spine manageable - a spine short enough to
-// read flat never needs it, however many headings the outline gave it.
-// Splitting five steps into two lanes fragments something that would read
-// as one flow perfectly well without them.
+const short = Array.from({ length: 5 }, (_, at) =>
+    ({ id: `p${at}`, title: `Step ${at}`, intent: "x", feature: "f", step: at + 1, path: [at % 2 ? "Fetch" : "Transform"] }));
+
+assert.equal(buildSpine({ features: [{ id: "f", name: "F" }], nodes: short }, "f", {}).folded, false,
+    `${short.length} steps is under FLAT_LIMIT (${FLAT_LIMIT})`);
+
+// Past the limit it folds, in the order the journey reaches each part.
+const long = Array.from({ length: FLAT_LIMIT + 4 }, (_, at) =>
+    ({ id: `q${at}`, title: `Step ${at}`, intent: "x", feature: "f", step: at + 1, path: [at < 6 ? "Fetch" : "Transform"] }));
+
+const folded = buildSpine({ features: [{ id: "f", name: "F" }], nodes: long }, "f", {});
+
+assert.equal(folded.folded, true);
+assert.deepEqual(folded.parts.map(part => part.name), ["Fetch", "Transform"], "in the order their first step comes");
+
+// Steps the outline never placed come last, whenever they turned up.
 assert.deepEqual(
-    bandsOf([
-        { id: "a", path: ["Steps"], step: 1 },
-        { id: "b", path: ["Steps"], step: 2 },
-        { id: "c", path: ["Submit"], step: 3 },
-        { id: "d", path: ["Submit"], step: 4 },
-        { id: "e", path: ["Submit"], step: 5 }
-    ]),
-    [],
-    "a spine at or under FLAT_LIMIT never bands, however many headings it has"
+    partsOf([
+        { id: "a", step: 1, path: ["Write"] },
+        { id: "b", step: 2 },
+        { id: "c", step: 3, path: ["Read"] }
+    ]).map(part => part.name),
+    ["Write", "Read", "Other steps"]
 );
 
-// Past FLAT_LIMIT, banding activates as before - long enough that reading
-// it flat would cost real zoom, so the lanes earn their place.
-const longSpine = [];
-for (let i = 1; i <= FLAT_LIMIT; i += 1) longSpine.push({ id: `build${i}`, path: ["Build"], step: i + FLAT_LIMIT });
-for (let i = 1; i <= FLAT_LIMIT; i += 1) longSpine.push({ id: `fetch${i}`, path: ["Fetch"], step: i });
-
-const banded = bandsOf(longSpine);
-assert.deepEqual(banded.map(b => b.name), ["Fetch", "Build"], "bands run in journey order, not plan order");
-assert.deepEqual(banded.map(b => b.nodes.length), [FLAT_LIMIT, FLAT_LIMIT]);
-
-const bandedGraph = buildFeatureGraph({
-    features: [{ id: "f" }],
-    nodes: longSpine.map(node => ({ ...node, title: node.id, feature: "f" }))
-}, "f", {});
-assert.deepEqual(bandedGraph.bands.map(b => b.name), ["Fetch", "Build"]);
-assert.ok(bandedGraph.bands[0].top < bandedGraph.bands[1].top, "the first band sits highest");
-assert.deepEqual(bandedGraph.bands.map(b => b.count), [FLAT_LIMIT, FLAT_LIMIT]);
-
-// Each band spans the rows it really covers, so its lane cannot stop short.
-for (const band of bandedGraph.bands) {
-    assert.ok(band.height >= 104, `band ${band.name} has no height`);
-    assert.ok(band.bottom >= band.top);
-}
 
 // --------------------------------------------------
 // A STEP STANDING FOR SEVERAL DECLARATIONS
 // --------------------------------------------------
-const merged = buildFeatureGraph({
-    features: [{ id: "f" }],
-    nodes: [{
-        id: "m",
-        title: "Look up the risk score for any scope",
-        feature: "f",
-        identity: "api.py::get_agencies:function",
-        identities: ["api.py::get_agencies:function", "api.py::get_mps:function", "api.py::get_states:function"],
-        dimensions: ["agency", "MP", "state"]
-    }]
-}, "f", {});
+// The card says how many rather than naming the first and quietly holding
+// the rest.
 
-assert.equal(merged.nodes[0].backing, 3);
-assert.deepEqual(merged.nodes[0].dimensions, ["agency", "MP", "state"]);
-assert.equal(merged.nodes[0].sub, "3 declarations · api.py", "the step says how many it stands for");
+assert.equal(nodeSub({ identity: "api.py::get_agencies:function" }), "get_agencies() · api.py");
 assert.equal(
-    nodeSub({ identity: "api.py::get_agencies:function" }),
-    "get_agencies() · api.py",
-    "an ordinary step still names its one declaration"
+    nodeSub({ identity: "risk.py::agency_risk:function", identities: ["risk.py::agency_risk:function", "risk.py::mp_risk:function"] }),
+    "2 declarations · risk.py"
+);
+assert.equal(nodeSub({}), "greenfield");
+
+assert.deepEqual(
+    detailLine({ identity: "a.js::x:function", identities: ["a.js::x:function", "a.js::y:function"], dimensions: ["agency", "MP"] }),
+    { kind: "dimensions", text: "across agency · MP" }
 );
 
-// --------------------------------------------------
-// CARDS MUST NOT OVERLAP
-// --------------------------------------------------
-// A card's height depends on what it holds - a Constellation card carries a
-// preview of what it opens onto, a merged step carries the nouns it reads
-// across. The layout used to stack them on a fixed 144px pitch, so a card
-// with three preview lines was drawn straight through the one above it.
-
-assert.ok(cardHeight({}) < cardHeight({ preview: [1, 2, 3] }), "a preview makes a card taller");
-assert.ok(cardHeight({}) < cardHeight({ backing: 3 }), "so does standing for several declarations");
-assert.ok(cardHeight({}) < cardHeight({ evidence: ["calls jwt.verify"] }), "so do the evidence lines a step carries");
-assert.ok(cardHeight({ evidence: ["one"] }) < cardHeight({ evidence: ["one", "two"] }), "two evidence lines are taller than one");
-assert.equal(cardHeight({ preview: [] }), cardHeight({}), "an empty preview costs nothing");
-assert.equal(cardHeight({ evidence: [] }), cardHeight({}), "neither does an empty evidence list - a Constellation card never has the field at all");
-
-function assertNoOverlap(cards, what) {
-    const stacked = [...cards].sort((a, b) => a.y - b.y);
-
-    for (let i = 1; i < stacked.length; i += 1) {
-        const above = stacked[i - 1];
-        const below = stacked[i];
-
-        // Cards sharing a row sit side by side, so they only have to clear
-        // each other horizontally.
-        if (above.y === below.y) {
-            assert.notEqual(above.x, below.x, `${what}: two cards on one spot`);
-            continue;
-        }
-
-        const gap = below.y - (above.y + (above.h ?? 104));
-        assert.ok(gap >= 0, `${what}: "${below.title}" overlaps "${above.title}" by ${-gap}px`);
-    }
-}
-
-// Eleven features, each with a different amount to show.
-const many = {
-    lenses: [],
-    features: Array.from({ length: 11 }, (_, i) => ({ id: `f${i}`, name: `Feature ${i}` })),
-    nodes: Array.from({ length: 11 }, (_, i) =>
-        Array.from({ length: (i % 4) + 1 }, (_, j) => ({
-            id: `n${i}_${j}`, title: `Step ${j} of ${i}`, feature: `f${i}`, step: j + 1, role: "behaviour", path: [`Part ${j % 2}`]
-        }))).flat()
-};
-
-const stack = buildConstellation(many, {});
-assert.equal(stack.length, 11);
-assertNoOverlap(stack, "constellation");
-assert.ok(stack.every(card => card.h >= 104), "every card reports its height");
-
-// The gap between neighbours is the one the layout promises, give or take
-// the 24px grid it snaps to.
-const ordered = [...stack].sort((a, b) => a.y - b.y);
-for (let i = 1; i < ordered.length; i += 1) {
-    const gap = ordered[i].y - (ordered[i - 1].y + ordered[i - 1].h);
-    assert.ok(Math.abs(gap - CARD_GAP) <= 24, `neighbouring cards sit ${gap}px apart, not ${CARD_GAP}`);
-}
-
-// The first feature is at the bottom: the journey climbs.
-assert.ok(stack[0].y > stack[10].y, "feature one sits below feature eleven");
-
-// And inside a feature, where a merged step is taller than its neighbours.
-// Chained by real edges rather than headings, so this is provable whether
-// or not the spine is long enough to band.
-const tallRow = buildFeatureGraph({
-    features: [{ id: "f" }],
-    nodes: [
-        { id: "a", title: "Plain", feature: "f", step: 1, edgesOut: ["b"] },
-        { id: "b", title: "Merged", feature: "f", step: 2, identity: "x::b:function", identities: ["x::b:function", "x::c:function"], edgesOut: ["c"] },
-        { id: "c", title: "After", feature: "f", step: 3 }
-    ]
-}, "f", {});
-
-assertNoOverlap(tallRow.nodes, "feature space");
-assert.ok(
-    tallRow.nodes.find(n => n.id === "b").h > tallRow.nodes.find(n => n.id === "a").h,
-    "the merged step's row is taller"
-);
-
-// --------------------------------------------------
-// THE NUMBER ON A CARD COUNTS THE CANVAS
-// --------------------------------------------------
-// Grouping a spine by heading costs the plan's step order, because headings
-// recur rather than running in sequence. The number used to be the plan's
-// own step, so a grouped feature read 1, 2, 4, 3 down the page. It now
-// counts what is in front of the reader, and the plan's step is kept beside
-// it rather than thrown away.
-
-const interleaved = buildFeatureGraph({
-    features: [{ id: "f" }],
-    lenses: [],
-    nodes: [
-        { id: "n1", title: "Initialize the button", feature: "f", step: 1, path: ["Start up"] },
-        { id: "n2", title: "Store the session", feature: "f", step: 2, path: ["Sign in"] },
-        { id: "n3", title: "Send the token", feature: "f", step: 3, path: ["Tokens"] },
-        { id: "n4", title: "Send the identity", feature: "f", step: 4, path: ["Sign in"] },
-        // Past FLAT_LIMIT, so banding activates at all - grouping only costs
-        // the plan's own order once a spine is long enough to need lanes.
-        // A later heading, so it never disturbs the first four positions.
-        ...Array.from({ length: FLAT_LIMIT }, (_, i) => ({
-            id: `pad${i}`, title: `Pad ${i}`, feature: "f", step: i + 5, path: ["Padding"]
-        }))
-    ]
-}, "f", {});
-
-const downTheCanvas = [...interleaved.nodes].sort((a, b) => a.y - b.y);
-
-assert.deepEqual(downTheCanvas.slice(0, 4).map(n => n.step), [1, 2, 3, 4], "the numbers always count down the page");
-assert.deepEqual(downTheCanvas.slice(0, 4).map(n => n.planStep), [1, 2, 4, 3], "the plan's own order is kept, and differs");
-assert.deepEqual(interleaved.bands.map(b => b.name), ["Start up", "Sign in", "Tokens", "Padding"]);
-
-// --------------------------------------------------
-// A BAND KNOWS WHERE ITS OWN CARDS START
-// --------------------------------------------------
-// A label placed from the leftmost card in the whole feature is dragged out
-// by whichever row is widest: one measured feature had a lane 20px from its
-// steps and two others 236px away.
-
-const lopsided = buildFeatureGraph({
-    features: [{ id: "f" }],
-    lenses: [],
-    nodes: [
-        { id: "w1", title: "One of three", feature: "f", step: 1, path: ["Wide"] },
-        { id: "w2", title: "Two of three", feature: "f", step: 2, path: ["Wide"] },
-        { id: "w3", title: "Three of three", feature: "f", step: 3, path: ["Wide"] },
-        { id: "s1", title: "Alone", feature: "f", step: 4, path: ["Narrow"] },
-        // Past FLAT_LIMIT, so banding activates at all. Piled onto "Wide"
-        // rather than a new heading, so Wide stays the wider band, Narrow
-        // stays a single card, and the band-edge math under test - not the
-        // padding - is what these assertions still check.
-        ...Array.from({ length: FLAT_LIMIT }, (_, i) => ({
-            id: `wpad${i}`, title: `Pad ${i}`, feature: "f", step: i + 5, path: ["Wide"]
-        }))
-    ]
-}, "f", {});
-
-const wide = lopsided.bands.find(b => b.name === "Wide");
-const narrow = lopsided.bands.find(b => b.name === "Narrow");
-
-assert.ok(wide.minX < narrow.minX, "the wide band reaches further left than the narrow one");
-assert.equal(
-    narrow.minX,
-    Math.min(...lopsided.nodes.filter(n => n.id === "s1").map(n => n.x)),
-    "a band's left edge is its own cards, not the feature's"
-);
-
-// The rows the asides sit next to, so they align with what is beside them
-// rather than with the widest row somewhere else.
-assert.equal(lopsided.topRowX, wide.minX, "the top row is the wide one");
-assert.equal(lopsided.bottomRowX, narrow.minX, "the bottom row is the narrow one");
 
 // --------------------------------------------------
 // NO FABRICATED CROSS-FEATURE EDGE

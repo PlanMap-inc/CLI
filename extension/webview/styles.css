@@ -500,3 +500,109 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 .node-evidence{margin-top:6px;display:flex;flex-direction:column;gap:2px;}
 .evidence-line{font-family:'JetBrains Mono',monospace;font-size:9.5px;line-height:1.4;
   color:var(--text-low);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* --------------------------------------------------
+   THE COLUMN
+   --------------------------------------------------
+   One card shape, one row shape, one line. Every value below is spacing
+   and state, never a new colour: the palette and the lens colours are
+   defined once at the top of this file and read from there.
+   -------------------------------------------------- */
+
+.gnode.step, .gnode.feature { min-height: 0; }
+
+/* The one line under the code line. A lens reading gets its lens dot in
+   front of it, so the reader can see whose words these are. */
+.gnode .node-detail {
+    font-family: 'Inter', sans-serif; font-size: 10.5px; line-height: 1.35;
+    color: var(--text-mid); margin-top: 6px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.gnode .node-detail.reading { display: flex; align-items: baseline; gap: 5px; }
+.gnode .node-detail .node-lens { flex: 0 0 auto; align-self: center; }
+
+/* Where this step's code calls. Never a line on the canvas by default -
+   an arc is drawn only when the card is selected. */
+.gnode .node-calls { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.calls-chip {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; line-height: 1;
+    padding: 3px 5px; border-radius: 4px;
+    background: var(--surface-3, rgba(255,255,255,.05)); color: var(--text-low);
+    white-space: nowrap;
+}
+.gnode:hover .calls-chip { color: var(--text-mid); }
+
+/* A step the active lens speaks to. A drifted step keeps its red border,
+   because a problem outranks a category. */
+.gnode.owns { border-width: 1px; }
+.gnode.status-drifted.owns, .gnode.status-error.owns { border-color: rgba(255,92,92,.45) !important; }
+
+/* A step unfolded from behind a lens fold row: present, and visibly not
+   what the lens is about. */
+.gnode.muted { border-style: dashed; opacity: .62; }
+.gnode.muted .title { font-weight: 500; color: var(--text-mid); }
+
+/* A part row, a lens fold row, a register row: one line that opens. */
+.gnode.row {
+    width: 172px; min-height: 0; padding: 0 12px;
+    flex-direction: row; align-items: center; gap: 8px;
+    background: transparent; border-style: dashed;
+}
+.gnode.row:hover { transform: none; border-color: var(--text-mid); }
+.gnode.row .row-title {
+    font-family: 'Space Grotesk', sans-serif; font-size: 12px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.gnode.row .row-count, .gnode.row .row-lens, .gnode.row .row-failing {
+    font-family: 'JetBrains Mono', monospace; font-size: 9px; color: var(--text-low); white-space: nowrap;
+}
+.gnode.row .row-failing { color: var(--danger); }
+.gnode.row .row-chevron { margin-left: auto; font-size: 11px; color: var(--text-low); }
+.gnode.row.open { border-style: solid; }
+.gnode.fold { opacity: .8; }
+
+/* A register row opens into chips rather than into the column: its
+   contents are terms, not steps, and they never sit on the line. */
+.gnode.row .row-chips {
+    position: absolute; left: 0; top: 100%; margin-top: 6px;
+    display: flex; flex-wrap: wrap; gap: 4px; width: 320px;
+}
+.row-chip {
+    font-family: 'Inter', sans-serif; font-size: 10px; line-height: 1;
+    padding: 4px 7px; border-radius: 10px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-mid);
+}
+.row-chip:hover { color: var(--text-hi); border-color: var(--text-low); }
+
+/* Where a dragged card would land. */
+.insertion { position: absolute; height: 2px; border-radius: 1px; background: var(--text-hi); opacity: .8; pointer-events: none; }
+
+/* The order line carries no arrowhead: it means "next", not "because". A
+   call arc is dashed and does, and only ever for the selected card. */
+.edge-path.order { stroke-width: 2.2; }
+.edge-path.call { stroke-width: 1.3; stroke-dasharray: 4 4; opacity: .85; }
+
+/* Find, in the toolbar. */
+.find-box { position: relative; }
+.find-input {
+    width: 150px; padding: 5px 9px; border-radius: 6px;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-hi);
+    font-family: 'Inter', sans-serif; font-size: 11px;
+}
+.find-input:focus { outline: none; border-color: var(--text-low); }
+.find-results {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 280px;
+    display: flex; flex-direction: column;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.find-hit {
+    text-align: left; padding: 7px 10px; cursor: pointer;
+    background: transparent; border: 0; color: var(--text-mid);
+    font-family: 'Inter', sans-serif; font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.find-hit:hover { background: var(--surface-3, rgba(255,255,255,.06)); color: var(--text-hi); }
+
+/* "All" sits before the lens pills and carries no swatch: it is the
+   absence of a perspective, not another one. */
+.lens-btn.all { font-family: 'Inter', sans-serif; }

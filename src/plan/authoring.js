@@ -203,9 +203,7 @@ export function addPlanNode(
             ? order.findIndex(entry => entry.id === after || entry.identity === after) + 1
             : order.length - 1;
 
-    relink(
-        plan,
-        feature.id,
+    renumber(
         moved(order.filter(entry => entry.id !== node.id), node, at)
     );
 
@@ -358,57 +356,55 @@ export function movePlanNode(
 
 
 // --------------------------------------------------
-// ORDER
+// ORDER LIVES IN step
 // --------------------------------------------------
-// The order the steps happen in, which is what edgesOut records. Reordering
-// rewrites the chain inside one feature and leaves every other feature alone.
+// It used to live in edgesOut, as a chain: each step pointed at the next
+// one. That made edgesOut mean two different things depending on how the
+// plan was last touched - the draft writes it from the call graph ("this
+// code calls that code"), and reordering overwrote those calls with an
+// order nobody could tell apart from them afterwards.
+//
+// So the two are separated. `step` is the order a person meets the steps
+// in, and it is the only thing the graph lays out by. `edgesOut` means
+// calls, and nothing here ever writes it.
+//
+// Missing numbers sort last, ties break by id, so the order is total and
+// does not depend on which way the array happened to be built.
 // --------------------------------------------------
 
 function featureOrder(
     plan,
     featureId
 ) {
-    const members =
-        plan.nodes.filter(
+    const stepOf =
+        node =>
+            Number.isFinite(node.step)
+                ? node.step
+                : Number.MAX_SAFE_INTEGER;
+
+    return plan.nodes
+        .filter(
             node => node.feature === featureId
+        )
+        .sort(
+            (left, right) =>
+                stepOf(left) - stepOf(right) ||
+                String(left.id).localeCompare(String(right.id))
         );
+}
 
-    const byId =
-        new Map(
-            members.map(node => [node.id, node])
-        );
 
-    // Start at the step nothing leads to, then follow the chain. A feature
-    // whose links are broken falls back to the order the plan lists it in.
-    const targets =
-        new Set(
-            members.flatMap(node => node.edgesOut || [])
-        );
-
-    const ordered = [];
-    const seen = new Set();
-
-    let cursor =
-        members.find(node => !targets.has(node.id)) || members[0];
-
-    while (
-        cursor &&
-        !seen.has(cursor.id)
-    ) {
-        seen.add(cursor.id);
-        ordered.push(cursor);
-        cursor = byId.get((cursor.edgesOut || [])[0]);
-    }
-
-    for (
-        const node of members
-    ) {
-        if (!seen.has(node.id)) {
-            ordered.push(node);
+// 1..N over one feature, in the order handed in. Every step in the
+// feature is numbered, so there are never two steps with the same number
+// and never a gap for a reader to wonder about.
+function renumber(
+    order
+) {
+    order.forEach(
+        (node, index) => {
+            node.step = index + 1;
         }
-    }
-
-    return ordered;
+    );
 }
 
 
@@ -430,38 +426,6 @@ function moved(
     next.splice(at, 0, node);
 
     return next;
-}
-
-
-// Rewrites one feature's chain, keeping every edge that leaves the feature -
-// the Constellation's own links between stages run along those.
-function relink(
-    plan,
-    featureId,
-    order
-) {
-    const inside =
-        new Set(
-            plan.nodes
-                .filter(node => node.feature === featureId)
-                .map(node => node.id)
-        );
-
-    order.forEach(
-        (node, index) => {
-            const outward =
-                (node.edgesOut || []).filter(
-                    target => !inside.has(target)
-                );
-
-            const next = order[index + 1];
-
-            node.edgesOut =
-                next
-                    ? [next.id, ...outward]
-                    : outward;
-        }
-    );
 }
 
 
@@ -507,9 +471,7 @@ export function reorderPlanNode(
         at = without.length;
     }
 
-    relink(
-        plan,
-        node.feature,
+    renumber(
         moved(without, node, at)
     );
 

@@ -51,6 +51,43 @@ export function verifyToken(token) {
 
 /*
  * ------------------------------------------------------------
+ * OFFLINE, ON EVERY MACHINE
+ * ------------------------------------------------------------
+ *
+ * An empty key alone does not mean offline - it only means
+ * "no key for whichever endpoint is configured".
+ *
+ * This test used to set nothing else, and passed only where
+ * something in the environment (a .env beside PlanMap, or a
+ * shell) already pointed PLANMAP_LLM_ENDPOINT at a hosted
+ * provider. Anywhere without that - CI, a fresh clone - the
+ * endpoint fell back to the built-in local default, and the
+ * run spent three attempts per batch on an Ollama nobody
+ * started before failing.
+ *
+ * So the endpoint is pinned too, the same way
+ * test/helpers/run-cli.mjs pins it: a hosted URL with no key,
+ * which is the one combination that means "no model" out loud
+ * and never touches the network.
+ * ------------------------------------------------------------
+ */
+
+const OFFLINE = {
+    ...process.env,
+
+    PLANMAP_LLM_ENDPOINT:
+        "https://openrouter.ai/api/v1/chat/completions",
+
+    PLANMAP_LLM_API_KEY:
+        "",
+
+    OPENROUTER_API_KEY:
+        ""
+};
+
+
+/*
+ * ------------------------------------------------------------
  * INIT
  * ------------------------------------------------------------
  */
@@ -70,12 +107,7 @@ const init =
             encoding:
                 "utf8",
 
-            env: {
-                ...process.env,
-
-                OPENROUTER_API_KEY:
-                    ""
-            }
+            env: OFFLINE
         }
     );
 
@@ -113,12 +145,7 @@ const evolution =
             encoding:
                 "utf8",
 
-            env: {
-                ...process.env,
-
-                OPENROUTER_API_KEY:
-                    ""
-            }
+            env: OFFLINE
         }
     );
 

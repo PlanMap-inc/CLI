@@ -358,7 +358,12 @@ class PlanMapPanel {
     // Removing a node, and approving a whole lens across every feature, are
     // confirmed in a VS Code dialog before the CLI runs.
     private async confirm(message: WebviewMessage): Promise<boolean> {
-        if (message.type !== "reject" && message.type !== "approveLens" && message.type !== "approveAll") return true;
+        if (
+            message.type !== "reject" &&
+            message.type !== "approveLens" &&
+            message.type !== "approveFeature" &&
+            message.type !== "approveAll"
+        ) return true;
 
         const { plan } = await readViewState(this.projectRoot);
         const nodes = ((plan as { nodes?: unknown[] } | null)?.nodes ?? []) as Array<Record<string, unknown>>;
@@ -374,20 +379,55 @@ class PlanMapPanel {
                 ? `Reject ${name}? It is approved, and rejecting removes it from plan.json.`
                 : `Reject ${name}? Rejecting removes it from plan.json.`;
             action = "Reject";
-        } else if (message.type === "approveAll") {
-            const count = nodes.filter(node => node.status === "intended").length;
-
-            question = `Approve the whole plan? That locks in all ${count} intended ${count === 1 ? "step" : "steps"}, and Verify then checks the code against every one.`;
-            action = "Approve plan";
         } else {
-            const lens = lenses.find(candidate => candidate.id === message.lensId);
-            const label = typeof lens?.label === "string" ? lens.label : message.lensId;
-            const count = nodes.filter(node =>
+            // The same scope the CLI is about to be given, so the number in
+            // the dialog is the number of things that will change. It used
+            // to count a lens across the whole plan while the button said
+            // the feature's name.
+            const features = ((plan as { features?: unknown[] } | null)?.features ?? []) as Array<Record<string, unknown>>;
+
+            const featureId = message.type === "approveFeature"
+                ? message.featureId
+                : message.type === "approveLens" ? message.featureId : undefined;
+
+            const lensId = message.type === "approveLens" ? message.lensId : undefined;
+
+            const matched = nodes.filter(node =>
                 node.status === "intended" &&
-                Array.isArray(node.lensTags) &&
-                node.lensTags.includes(message.lensId)
-            ).length;
-            question = `Approve ${count} intended ${count === 1 ? "node" : "nodes"} tagged ${label}? This covers every feature, not just the one open.`;
+                (!featureId || node.feature === featureId) &&
+                (!lensId || (Array.isArray(node.lensTags) && node.lensTags.includes(lensId))));
+
+            // Every role, because that is what the CLI approves: a dialog
+            // that says "4 steps" and approves a term as well is the same
+            // lie one size smaller.
+            const breakdown = ([
+                ["behaviour", "step", "steps"],
+                ["vocabulary", "term", "terms"],
+                ["machinery", "precondition", "preconditions"],
+                ["tool", "helper", "helpers"]
+            ] as Array<[string, string, string]>)
+                .map(([role, one, many]) => {
+                    const total = matched.filter(node => (node.role ?? "behaviour") === role).length;
+                    return total === 0 ? null : `${total} ${total === 1 ? one : many}`;
+                })
+                .filter((entry): entry is string => entry !== null)
+                .join(", ");
+
+            const lens = lenses.find(candidate => candidate.id === lensId);
+            const lensLabel = typeof lens?.label === "string" ? lens.label : lensId;
+
+            const feature = features.find(candidate => candidate.id === featureId);
+            const featureLabel = typeof feature?.name === "string" ? feature.name : featureId;
+
+            const where = lensId && featureId
+                ? `${lensLabel} in ${featureLabel}`
+                : featureId
+                    ? String(featureLabel)
+                    : lensId
+                        ? `${lensLabel}, in every feature`
+                        : "the whole plan";
+
+            question = `Approve ${where}? That locks in ${breakdown || "nothing"}, and Verify then checks the code against every one.`;
             action = "Approve";
         }
 

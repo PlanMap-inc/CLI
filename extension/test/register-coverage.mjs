@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 
 import {
-    bandsOf,
     buildConstellation,
-    buildFeatureGraph,
+    buildSpine,
     featureRegisters,
     nodesInFeature,
+    nodeSub,
+    orderedSteps,
     roleOf,
     ROLE_IDS
 } from "../webview/model.js";
@@ -88,55 +89,74 @@ assert.equal(declarations.length, 11, "three of the eleven reach the reader thro
 // THE SPINE IS SHORTER THAN THE FEATURE, AND HONESTLY SO
 // --------------------------------------------------
 
-const graph = buildFeatureGraph(plan, "risk", {});
+const spine = buildSpine(plan, "risk", {});
+const steps = spine.items.filter(item => item.kind === "step");
 
-assert.equal(graph.nodes.length, 4, "four steps drawn");
+assert.equal(steps.length, 4, "four steps drawn");
 assert.equal(nodesInFeature(plan, "risk").length, 8, "out of eight nodes");
+
 assert.equal(
-    graph.nodes.reduce((total, node) => total + node.backing, 0),
+    steps.reduce((total, item) => total + (item.node.identities?.length ?? 1), 0),
     6,
     "the four steps stand for six declarations between them"
 );
 
-// The merged step says so.
-const merged = graph.nodes.find(node => node.id === "s2");
-assert.equal(merged.backing, 3);
-assert.deepEqual(merged.dimensions, ["agency", "MP", "state"]);
+// The merged step says so, on its code line.
+const merged = steps.find(item => item.id === "s2");
+assert.equal(merged.node.identities.length, 3);
+assert.match(nodeSub(merged.node), /^3 declarations/);
 
 // --------------------------------------------------
-// FOUR STEPS IS TOO SHORT TO BAND
+// TERMS, PRECONDITIONS AND HELPERS ARE NOT ON THE LINE
 // --------------------------------------------------
-// Banding exists to make a long spine manageable. Four steps read as one
-// flow on their own, however many headings the outline gave them, so no
-// lanes are drawn - "Load", "Lookups" and "Aggregation" stay path headings
-// on the nodes, never a positional split. Real banding, on a spine long
-// enough to need it, is covered in plan-render.mjs.
+// They are rows in the column - "Terms · 1" above the steps, "Runs on"
+// and "Helpers" below - and the order line skips them, because they are
+// what the steps are written in rather than things the system does.
 
-assert.deepEqual(graph.bands, [], "four steps is under FLAT_LIMIT, so nothing bands");
+const registers = spine.items.filter(item => item.kind === "register");
 
-// Every step is on the canvas regardless - a lane labels what you can see,
-// where the middle level used to hide it behind a card, and dropping the
-// lane must not drop the step.
+assert.ok(registers.length > 0, "the feature's other registers are drawn as rows");
+assert.ok(registers.every(row => row.offLine), "and never sit on the order line");
+
+const onLine = spine.items.filter(item => !item.offLine).map(item => item.id);
+
+for (const link of spine.links) {
+    assert.ok(onLine.includes(link.from) && onLine.includes(link.to),
+        "the line only joins things that are on it");
+}
+
+// Every step is on the canvas: four steps is under FLAT_LIMIT, so the
+// feature reads flat with no part rows in front of anything.
+assert.equal(spine.folded, false, "four steps is under FLAT_LIMIT");
+assert.deepEqual(spine.parts, []);
+
 assert.equal(
-    graph.nodes.length,
+    steps.length,
     featureRegisters(plan, "risk").spine.length,
-    "no banding still draws every step, never a subset"
+    "an unfolded feature draws every step, never a subset"
 );
 
-// s1 leads to s2, so s2 sits in the layer below it - a real edge, honoured
-// now that it is not truncated at a band boundary the way it used to be.
-assert.deepEqual(graph.edges, [{ from: "s1", to: "s2" }]);
-const s1 = graph.nodes.find(n => n.id === "s1");
-const s2 = graph.nodes.find(n => n.id === "s2");
-assert.ok(s2.y > s1.y, "s2 sits below s1, the step it follows");
+// --------------------------------------------------
+// ONE COLUMN, WHATEVER THE CODE CALLS
+// --------------------------------------------------
+// s1 calls s2, and that changes nothing about where either sits. The
+// layout is `step` order and only that; the call shows as a chip and, on
+// the selected card, as an arc.
 
-// One link, and nothing branching or merging: the flow is a single column,
-// so s3 and s4 stack with the rest instead of fanning out beside s1. They
-// still get no arrow - the layout draws the links the code has and no
-// others. flow-layout.mjs covers the shapes this rule does and does not
-// apply to.
-assert.equal(new Set(graph.nodes.map(node => node.x)).size, 1, "no branch, so one column");
-assert.equal(new Set(graph.nodes.map(node => node.y)).size, graph.nodes.length, "one step to a row");
+assert.equal(new Set(steps.map(item => item.x)).size, 1, "one column");
+assert.equal(new Set(steps.map(item => item.y)).size, steps.length, "one step to a row");
+
+assert.deepEqual(
+    steps.map(item => item.id),
+    orderedSteps(plan, "risk").map(node => node.id),
+    "in step order"
+);
+
+assert.deepEqual(
+    steps.map(item => item.number),
+    ["1", "2", "3", "4"],
+    "numbered by position, 1..N"
+);
 
 // --------------------------------------------------
 // THE CARD MATCHES WHAT IT OPENS
@@ -144,17 +164,17 @@ assert.equal(new Set(graph.nodes.map(node => node.y)).size, graph.nodes.length, 
 // The first lines on the Constellation card are the first steps of the view
 // it opens, in the same order, so nothing appears from nowhere.
 
-const card = buildConstellation(plan, {}).find(node => node.id === "risk");
+const card = buildConstellation(plan, {}).cards.find(node => node.id === "risk");
 
 assert.equal(card.count, 4, "the card counts steps, not every declaration");
-assert.equal(card.sub, "4 steps", "four steps is under FLAT_LIMIT, so the card does not claim parts that are never drawn as lanes");
+assert.equal(card.sub, "4 steps", "four steps is under FLAT_LIMIT, so the card claims no parts");
 assert.deepEqual(
     card.preview.map(step => step.title),
     ["Open the risk tables from disk", "Check a district's state boundary", "Assemble the risk table views"],
     "a sample of the real spine: it opens where the feature opens, ends where it ends, and samples between"
 );
 assert.ok(
-    card.preview.every(step => graph.nodes.some(node => node.plainTitle === step.title)),
+    card.preview.every(step => steps.some(item => item.node.title === step.title)),
     "every previewed line is a step the feature really has"
 );
 
@@ -174,9 +194,16 @@ const legacy = {
 };
 
 assert.equal(featureRegisters(legacy, "f").spine.length, 2);
-assert.equal(buildFeatureGraph(legacy, "f", {}).nodes.length, 2);
-assert.deepEqual(buildFeatureGraph(legacy, "f", {}).bands, [], "no headings, no lanes");
-assert.ok(buildFeatureGraph(legacy, "f", {}).nodes.every(node => node.backing === 1));
+
+const old = buildSpine(legacy, "f", {});
+
+assert.equal(old.items.filter(item => item.kind === "step").length, 2);
+assert.equal(old.folded, false, "two steps do not fold");
+assert.ok(old.items.every(item => (item.node?.identities?.length ?? 1) === 1));
+
+// No step numbers either: they fall to the end in plan order, and are
+// still numbered by position.
+assert.deepEqual(old.items.map(item => item.number), ["1", "2"]);
 
 // The webview's role list matches the one the backend writes.
 assert.deepEqual(ROLE_IDS, ["behaviour", "vocabulary", "machinery", "tool"]);

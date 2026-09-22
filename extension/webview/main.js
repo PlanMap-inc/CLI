@@ -1,15 +1,11 @@
 import {
-    AREA_W,
-    AREA_H,
-    buildAreas,
-    layoutAreas,
-    NODE_W,
-    NODE_H_EST,
-    bandsOf,
+    areaOf,
+    approveScope,
     buildConstellation,
-    buildFeatureGraph,
-    featureRegisters,
-    flowEdgePath,
+    buildSpine,
+    callArcs,
+    callsChips,
+    clampScale,
     colorAt,
     constellationEdges,
     coversBlocks,
@@ -19,13 +15,20 @@ import {
     describeViolation,
     escapeHtml,
     evidenceLines,
+    featureRegisters,
+    findSteps,
     isSummary,
     lensColors,
     lensCoverage,
+    lensName,
     LENS_QUESTIONS,
     FEATURE_PALETTE,
+    MIN_SCALE,
+    nextDrift,
+    nodeSub,
     nodeActions,
     onboardingState,
+    orderedSteps,
     panAxis,
     panDirection,
     panVelocity,
@@ -36,8 +39,9 @@ import {
     railModel,
     statusClass,
     statusDotStyle,
-    zoomFactorFor,
-    verifyResultFor
+    STATUSES,
+    verifyResultFor,
+    wheelAction
 } from "./model.js";
 import { createEvolutionView } from "./evolution-view.js";
 import { paint } from "./paint.js";
@@ -46,7 +50,15 @@ import { paint } from "./paint.js";
 // posts, and asks the host for anything that has to touch .planmap/.
 const vscode = acquireVsCodeApi();
 
-const MIN_SCALE = 0.3;
+// The card the column is built from. One width, one height - see STEP_H
+// in model.js for why every card is the same size now.
+const CARD_W = 172;
+const STEP_H = 118;
+const ROW_H = 56;
+
+// How far right of the column a call arc bows. Far enough that it reads as
+// a detour rather than a line through the cards.
+const ARC_GUTTER = 92;
 // Fitting stops here even when the content is taller than the canvas. A map
 // is opened to be read, and a whole journey shrunk to fit is a picture of a
 // journey rather than something you can read - so the map opens at full size
@@ -77,60 +89,11 @@ function scaledAboutCenter(view, factor, w, h) {
 
 
 // ================= GRAPH (the demo's createGraph, fed real data) =================
-// --------------------------------------------------
-// A BEHAVIOURAL AREA, AS A CARD
-// --------------------------------------------------
-// Deliberately not a step. It carries no code identity, because an area is
-// not a code entity and giving it a file name would be a lie about what it
-// is - the identity line is what tells a reader they have reached Level 3.
-// It carries the one thing a reader needs before deciding to open it: how
-// much is inside.
-// --------------------------------------------------
-
-function areaCard(n) {
-    const colors = lensColors(plan());
-
-    // Aggregation loses the count, and the count is the actionable part: one
-    // drifted step of twenty-one and fourteen of twenty-one are different
-    // situations and the first must not look like the second.
-    const state = n.failing > 0
-        ? `${n.failing} of ${n.count} ${n.status}`
-        : n.status;
-
-    // The card's subject is what this process DOES. A name and a number say
-    // the process is large and nothing about what it is for, so the four
-    // steps are the body of the card and the count is a footnote to them.
-    const hidden = n.count - (n.preview?.length ?? 0);
-
-    const flow = (n.preview ?? []).map((step, index) => `
-        ${index > 0 ? '<span class="pv-arrow" aria-hidden="true">↓</span>' : ""}
-        <span class="pv-step">${escapeHtml(step.title)}</span>`).join("");
-
-    return `
-        <div class="area-head">
-            <div class="title"${opts.onRename ? ' title="Double-click to rename"' : ""}>${escapeHtml(n.title)}</div>
-            ${n.oversized ? '<span class="area-large" title="Large enough to be hard to read when opened">large</span>' : ""}
-        </div>
-        <div class="area-flow">${flow}</div>
-        <div class="area-foot">
-            <span class="area-count">${n.count} steps${hidden > 0 ? `<em> · ${hidden} more inside</em>` : ""}</span>
-            ${n.lenses?.length ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>` : ""}
-        </div>
-        <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color)}"></span>${escapeHtml(state)}</div>`;
-}
-
 
 function createGraph(canvasEl, gridEl, contentEl, opts) {
-    // The box this graph's cards occupy. Fitting, edge anchors and fly-to all
-    // measure from it, so a graph drawing a different card must say so.
-    const CARD_W = opts.variant === "area" ? AREA_W : NODE_W;
-    const CARD_H = opts.variant === "area" ? AREA_H : NODE_H_EST;
-
-    // Cards no longer share a height: a Constellation card carries a preview
-    // of what it opens onto, a merged step carries the nouns it reads
-    // across. The layout measures each one, so everything that reasons about
-    // where a card ENDS has to ask the card rather than the constant.
-    const heightOf = node => node?.h ?? CARD_H;
+    // Every card is the same width; a step card and a fold row differ only
+    // in height, and each item carries its own.
+    const heightOf = node => node?.h ?? STEP_H;
 
     let nodes = [], edges = [];
     // What the view draws to the left of the steps - lane labels, the
@@ -163,54 +126,148 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         if (selectedId) renderToolbar();
     }
 
-    function renderNode(n) {
-        const el = document.createElement("button");
-        el.type = "button";
-        el.className = `gnode ${statusClass(n.status)}`
-            + (opts.variant === "area" ? " area" : "")
-            + (n.ungrouped ? " ungrouped" : "")
-            + (n.id === selectedId ? " selected" : "");
-        el.dataset.id = n.id;
-        el.style.left = n.x + "px";
-        el.style.top = n.y + "px";
-        el.setAttribute("aria-label", `${n.title}, ${n.status}`);
-        el.innerHTML = opts.variant === "area"
-            ? areaCard(n)
-            : `
+    // --------------------------------------------------
+    // ONE CARD, ONE SHAPE
+    // --------------------------------------------------
+    // A number, a title, the code it is a claim about, one detail line,
+    // its lenses and its status. The preview, the backing line and the
+    // evidence block are gone: they turned a column of steps into a column
+    // of inspectors, and the panel is where the detail belongs.
+    // --------------------------------------------------
+
+    function stepCard(n) {
+        const colors = lensColors(plan());
+
+        const detail = n.detail
+            ? `<div class="node-detail${n.detail.kind === "reading" ? " reading" : ""}">`
+                + (n.detail.kind === "reading"
+                    ? `<span class="node-lens" data-style="background:${colors[n.detail.lens] ?? "var(--text-low)"}"></span>`
+                    : "")
+                + escapeHtml(n.detail.text)
+                + "</div>"
+            : "";
+
+        const chips = (n.chips ?? [])
+            .map(chip => `<span class="calls-chip ${chip.kind}">${escapeHtml(chip.text)}</span>`)
+            .join("");
+
+        return `
             <div class="handle top"></div>
+            <div class="bar" data-style="background:${n.color || dotColor}"></div>
+            ${n.number ? `<div class="step">${escapeHtml(n.number)}</div>` : ""}
+            <div class="title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</div>
+            ${n.sub ? `<div class="sub" title="${escapeHtml(n.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
+            ${detail}
+            ${chips ? `<div class="node-calls">${chips}</div>` : ""}
+            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
+            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${escapeHtml(n.status)}</div>
+            <div class="handle bottom"></div>`;
+    }
+
+    function featureCard(n) {
+        const colors = lensColors(plan());
+
+        const state = n.failing > 0
+            ? `${n.failing} of ${n.count} ${n.status}`
+            : n.status;
+
+        return `
             <div class="bar" data-style="background:${n.color || dotColor}"></div>
             ${n.step ? `<div class="step">${n.step}</div>` : ""}
             <div class="title">${escapeHtml(n.title)}</div>
-            ${n.sub ? `<div class="sub" title="${escapeHtml(n.source?.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
+            <div class="sub">${escapeHtml(n.sub)}</div>
             ${n.preview?.length ? `<div class="node-preview">${n.preview.map(step => `<div class="preview-step">${escapeHtml(step.title)}</div>`).join("")}</div>` : ""}
-            ${n.backing > 1 ? `<div class="node-backing" title="${escapeHtml(n.dimensions.join(", "))}">${n.dimensions.length ? escapeHtml(n.dimensions.join(" · ")) : `${n.backing} declarations`}</div>` : ""}
-            ${n.evidence?.length ? `<div class="node-evidence">${n.evidence.map(line => `<div class="evidence-line">${escapeHtml(line)}</div>`).join("")}</div>` : ""}
-            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${lensColors(plan())[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
-            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${n.failing > 0 ? `${n.failing} of ${n.count ?? ""} ${n.status}`.replace("  ", " ") : n.status}</div>
-            ${n.exit ? `<div class="exit" title="Continues in ${escapeHtml(n.exit.area)}: ${escapeHtml(n.exit.title ?? "")}">↗ ${escapeHtml(n.exit.area)}</div>` : ""}
-            <div class="handle bottom"></div>`;
+            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
+            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${escapeHtml(state)}</div>`;
+    }
+
+    // A part row, a lens fold row, a register row and the Constellation's
+    // setup row are the same object on the canvas: one line that opens.
+    function rowCard(n) {
+        const colors = lensColors(plan());
+
+        const right = [
+            n.lensLabel ? `<span class="row-lens">${escapeHtml(n.lensLabel)}</span>` : "",
+            n.failing > 0 ? `<span class="row-failing">${n.failing} ${escapeHtml(n.status)}</span>` : "",
+            (n.lenses ?? []).length
+                ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>`
+                : ""
+        ].join("");
+
+        return `
+            ${n.number ? `<div class="step">${escapeHtml(n.number)}</div>` : ""}
+            <div class="row-title">${escapeHtml(n.title)}</div>
+            ${n.count != null ? `<span class="row-count">${n.count} ${n.count === 1 ? "step" : "steps"}</span>` : ""}
+            ${right}
+            <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>`;
+    }
+
+    function chipRow(n) {
+        return `
+            <div class="row-title">${escapeHtml(n.title)}</div>
+            <span class="row-count">${n.count}</span>
+            <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>
+            ${n.open ? `<div class="row-chips">${(n.chips ?? []).map(chip =>
+                `<button type="button" class="row-chip ${statusClass(chip.status)}" data-chip="${escapeHtml(chip.id)}">${escapeHtml(chip.title)}</button>`).join("")}</div>` : ""}`;
+    }
+
+    function renderNode(n) {
+        const kind = n.kind ?? "step";
+
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = `gnode ${kind === "step" || kind === "feature" ? statusClass(n.status) : "row"} ${kind}`
+            + (n.muted ? " muted" : "")
+            + (n.owns ? " owns" : "")
+            + (n.open ? " open" : "")
+            + (n.id === selectedId ? " selected" : "");
+        el.dataset.id = n.id;
+        el.dataset.kind = kind;
+        el.style.left = n.x + "px";
+        el.style.top = n.y + "px";
+        el.style.height = heightOf(n) + "px";
+
+        if (n.owns && n.lensColor) el.style.borderColor = n.lensColor;
+
+        el.setAttribute("aria-label", `${n.title}${n.status ? `, ${n.status}` : ""}`);
+
+        el.innerHTML = kind === "feature"
+            ? featureCard(n)
+            : kind === "step"
+                ? stepCard(n)
+                : kind === "register" || kind === "setup"
+                    ? chipRow(n)
+                    : rowCard(n);
+
         paint(el);
-        // Dragging moves the step; a click that never moved opens it. The
-        // 4px threshold is what separates the two - without it every drag
-        // ends by opening the panel you were dragging out from under.
+
+        // Dragging reorders the feature; a click that never moved opens the
+        // card. 4px is what separates the two - without it every drag ends
+        // by opening the panel you were dragging out from under.
         el.addEventListener("mousedown", e => {
             e.stopPropagation();
-            if (!opts.onMove) return;
+            if (!opts.onReorder || kind !== "step") return;
             e.preventDefault();
-            dragging = { node: n, fromX: e.clientX, fromY: e.clientY, startX: n.x, startY: n.y, moved: false };
+            dragging = { node: n, fromY: e.clientY, startY: n.y, moved: false };
         });
 
         el.addEventListener("click", e => {
             e.stopPropagation();
             if (suppressClick) { suppressClick = false; return; }
+
+            const chip = e.target.closest("[data-chip]");
+
+            if (chip && opts.onChip) { opts.onChip(chip.dataset.chip); return; }
+
             select(n.id);
             if (onOpen) onOpen(n);
         });
 
         el.addEventListener("dblclick", e => {
             e.stopPropagation();
-            if (opts.onRename) opts.onRename(n);
+            if (opts.onRename && kind === "step") opts.onRename(n);
         });
+
         contentEl.appendChild(el);
     }
 
@@ -253,26 +310,58 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
     function elbowPath(x1, y1, x2, y2) { const midY = (y1 + y2) / 2; return `M ${x1} ${y1} L ${x1} ${midY} L ${x2} ${midY} L ${x2} ${y2}`; }
     function elbowPathH(x1, y1, x2, y2) { const midX = (x1 + x2) / 2; return `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`; }
-    // Areas are a set, not a column: a link between two of them says only
-    // "this part feeds that one", so it runs straight between their centres
-    // and sits behind the cards rather than routing around them.
-    function straightPath(x1, y1, x2, y2) { return `M ${x1} ${y1} L ${x2} ${y2}`; }
+
+    // --------------------------------------------------
+    // TWO KINDS OF LINE, AND THEY MEAN DIFFERENT THINGS
+    // --------------------------------------------------
+    // The order line is straight, from the bottom of one card to the top
+    // of the next, with no arrowhead: it means "next in this feature" and
+    // nothing more. Reading an arrowhead into it is how a plain sequence
+    // starts looking like a claim about cause.
+    //
+    // A call arc bows out into the gutter, dashed, with an arrowhead at
+    // the called end. It is only ever drawn for the selected card, because
+    // drawing every call at once is the call graph again.
+    // --------------------------------------------------
+
+    function orderPath(a, b) {
+        const x = a.x + CARD_W / 2;
+        return `M ${x} ${a.y + heightOf(a)} L ${b.x + CARD_W / 2} ${b.y}`;
+    }
+
+    function arcPath(a, b) {
+        const right = Math.max(a.x + CARD_W, b.x + CARD_W);
+        const y1 = a.y + heightOf(a) / 2;
+        const y2 = b.y + heightOf(b) / 2;
+        const bow = right + ARC_GUTTER;
+
+        return `M ${a.x + CARD_W} ${y1} C ${bow} ${y1}, ${bow} ${y2}, ${b.x + CARD_W} ${y2}`;
+    }
 
     function drawEdges() {
         const svgEl = contentEl.querySelector("svg.edges");
-        let markup = `<defs><marker id="arrow-${opts.id}" markerWidth="6" markerHeight="6" refX="3" refY="3"><circle cx="3" cy="3" r="2.1" fill="${edgeColor}"/></marker></defs>`;
+
+        let markup = `<defs><marker id="arrow-${opts.id}" markerWidth="7" markerHeight="7" refX="5" refY="3.5" orient="auto">`
+            + `<path d="M 0 0 L 6 3.5 L 0 7 z" fill="${edgeColor}"/></marker></defs>`;
+
         edges.forEach(e => {
             const a = nodes.find(n => n.id === e.from), b = nodes.find(n => n.id === e.to);
             if (!a || !b) return;
-            const d = opts.variant === "area"
-                ? straightPath(a.x + CARD_W / 2, a.y + heightOf(a) / 2, b.x + CARD_W / 2, b.y + heightOf(b) / 2)
-                : opts.topDown
-                    ? flowEdgePath(a, b, nodes, CARD_W)
-                    : opts.horizontal
-                        ? elbowPathH(a.x + CARD_W, a.y + heightOf(a) / 2, b.x, b.y + heightOf(b) / 2)
-                        : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + heightOf(b));
-            markup += `<path class="edge-path" d="${d}" data-style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
+
+            if (e.kind === "call") {
+                markup += `<path class="edge-path call" d="${arcPath(a, b)}" data-style="stroke:${edgeColor}" marker-end="url(#arrow-${opts.id})"/>`;
+                return;
+            }
+
+            const d = opts.topDown
+                ? orderPath(a, b)
+                : opts.horizontal
+                    ? elbowPathH(a.x + CARD_W, a.y + heightOf(a) / 2, b.x, b.y + heightOf(b) / 2)
+                    : elbowPath(a.x + CARD_W / 2, a.y, b.x + CARD_W / 2, b.y + heightOf(b));
+
+            markup += `<path class="edge-path order" d="${d}" data-style="stroke:${edgeColor}"/>`;
         });
+
         svgEl.innerHTML = markup;
         paint(svgEl);
     }
@@ -283,10 +372,24 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         panning = true; panStart = { x: e.clientX, y: e.clientY }; panOrigin = { x: panX, y: panY };
         canvasEl.classList.add("panning");
     });
+    // A wheel scrolls, the way it does everywhere else on the machine. A
+    // pinch arrives as ctrl+wheel, and Ctrl/Cmd+wheel is the deliberate
+    // zoom - so zooming is something you ask for.
     canvasEl.addEventListener("wheel", e => {
         e.preventDefault();
-        const rect = canvasEl.getBoundingClientRect();
-        zoomAround(e.clientX - rect.left, e.clientY - rect.top, zoomFactorFor(e));
+
+        const action = wheelAction(e);
+
+        if (action.kind === "zoom") {
+            const rect = canvasEl.getBoundingClientRect();
+            zoomAround(e.clientX - rect.left, e.clientY - rect.top, action.factor);
+            return;
+        }
+
+        panX -= action.dx;
+        panY -= action.dy;
+        clampPan();
+        applyTransform();
     }, { passive: false });
     document.addEventListener("mousemove", e => {
         if (panning) {
@@ -296,45 +399,87 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             applyTransform();
         }
 
+        // --------------------------------------------------
+        // DRAGGING A CARD REORDERS THE FEATURE
+        // --------------------------------------------------
+        // It used to move the card, and the position was saved on the node
+        // - so a step could sit anywhere, the column stopped being an
+        // order, and `step` and the picture disagreed. A card only ever
+        // moves up or down the one column now, and dropping it is a
+        // reorder that the CLI carries out.
+        // --------------------------------------------------
         if (dragging) {
-            const dx = (e.clientX - dragging.fromX) / scale;
             const dy = (e.clientY - dragging.fromY) / scale;
 
-            if (!dragging.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+            if (!dragging.moved && Math.abs(dy) < 4) return;
 
             dragging.moved = true;
-            dragging.node.x = dragging.startX + dx;
-            dragging.node.y = dragging.startY + dy;
 
             const el = contentEl.querySelector(`.gnode[data-id="${dragging.node.id}"]`);
-            if (el) { el.style.left = dragging.node.x + "px"; el.style.top = dragging.node.y + "px"; el.classList.add("dragging"); }
-            drawEdges();
+
+            if (el) {
+                el.style.top = (dragging.startY + dy) + "px";
+                el.classList.add("dragging");
+            }
+
+            dragging.at = dropTarget(dragging.node, dragging.startY + dy);
+            showInsertion(dragging.node, dragging.at);
             contentEl.querySelector(".node-toolbar")?.remove();
         }
     });
+
+    // Where a card dropped at `y` would land: the item it goes after, or
+    // null for the top. Only the cards it may move between are considered,
+    // which in a folded feature is its own part.
+    function dropTarget(node, y) {
+        const siblings = nodes.filter(other =>
+            other.kind === "step" &&
+            other.id !== node.id &&
+            (other.partId ?? null) === (node.partId ?? null));
+
+        let after = null;
+
+        for (const other of siblings) {
+            if (other.y + heightOf(other) / 2 < y) after = other;
+        }
+
+        return after;
+    }
+
+    function showInsertion(node, after) {
+        contentEl.querySelector(".insertion")?.remove();
+
+        const line = document.createElement("div");
+        line.className = "insertion";
+        line.style.left = (node.x - 12) + "px";
+        line.style.width = (CARD_W + 24) + "px";
+        line.style.top = (after
+            ? after.y + heightOf(after) + 22
+            : (nodes[0]?.y ?? node.y) - 22) + "px";
+
+        contentEl.appendChild(line);
+    }
 
     document.addEventListener("mouseup", () => {
         if (panning) { panning = false; canvasEl.classList.remove("panning"); }
 
         if (dragging) {
-            const { node, moved } = dragging;
+            const { node, moved, at } = dragging;
             dragging = null;
+
+            contentEl.querySelector(".insertion")?.remove();
             contentEl.querySelector(`.gnode[data-id="${node.id}"]`)?.classList.remove("dragging");
 
             if (moved) {
-                // Snapped, so hand-placed steps still line up with the grid
-                // and with the ones the layout placed.
-                node.x = Math.round(node.x / 24) * 24;
-                node.y = Math.round(node.y / 24) * 24;
-                render();
                 suppressClick = true;
-                opts.onMove(node);
+                render();
+                opts.onReorder?.(node, at?.id ?? null);
             }
         }
     });
 
     function zoomAround(mx, my, factor) {
-        const newScale = clamp(scale * factor, MIN_SCALE, MAX_SCALE);
+        const newScale = clampScale(scale * factor, MAX_SCALE);
         const lx = (mx - panX) / scale, ly = (my - panY) / scale;
         panX = mx - lx * newScale; panY = my - ly * newScale; scale = newScale;
         clampPan();
@@ -513,8 +658,41 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         zoomOut: () => { const r = canvasEl.getBoundingClientRect(); zoomAround(r.width / 2, r.height / 2, 0.8); },
         fitToContent: () => setView(fitView()),
         fitView, setView, flyTo, zoomedOnto,
+
+        // Where an item sits on the screen right now, and how to put it
+        // back there after a re-layout. Opening a part inserts rows above
+        // the ones below it, and without this the row you clicked jumps
+        // out from under the pointer.
+        screenYOf(id) {
+            const node = nodes.find(entry => entry.id === id);
+            return node ? node.y * scale + panY : null;
+        },
+
+        holdAt(id, screenY) {
+            const node = nodes.find(entry => entry.id === id);
+            if (!node || screenY == null) return;
+
+            panY = screenY - node.y * scale;
+            clampPan();
+            applyTransform();
+        },
+
+        // Bring an item into view and select it.
+        focus(id) {
+            const node = nodes.find(entry => entry.id === id);
+            if (!node) return;
+
+            const rect = canvasEl.getBoundingClientRect();
+
+            panY = rect.height / 2 - (node.y + heightOf(node) / 2) * scale;
+            clampPan();
+            applyTransform();
+            select(id);
+        },
+
         get view() { return { panX, panY, scale }; },
         get scale() { return scale; },
+        get selectedId() { return selectedId; },
         get nodes() { return nodes; }
     };
 }
@@ -522,22 +700,29 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
 // ================= STATE =================
 let state = null;
-// Where the reader is. The journey is System -> Feature -> Behaviour ->
-// Code, and the middle level appears only where a feature is large enough
-// to need it - a feature a reader can take in at once must not cost an
-// extra click to open.
-let level = "constellation";   // "constellation" | "areas" | "steps"
-let currentAreaName = null;
+// Where the reader is. Two levels: the Constellation, and one feature.
+// The middle "areas" level is gone - a feature folds by part in place
+// instead, so there is no door in front of the steps.
+let level = "constellation";   // "constellation" | "steps"
 let currentFeatureId = null;
+// No lens is the default. Entering a feature used to switch the first one
+// on, so the first titles a reader ever saw were a perspective's rewording
+// of the plan rather than the plan.
 let currentLensId = null;
 let flying = false;
 let constellationHome = null;
 
+// Which part of a folded feature is open, which lens folds the reader has
+// opened, and which registers. All per-feature and per-lens: they reset
+// when either changes, because a fold row only means anything next to the
+// lens that created it.
+let openPartId = null;
+let openFolds = [];
+let openRegisters = [];
+let findQuery = "";
+
 const constellationCanvas = document.getElementById("constellationCanvas");
 const featureCanvas = document.getElementById("featureCanvas");
-const areasCanvas = document.getElementById("areasCanvas");
-const areasTag = document.getElementById("areasTag");
-const areasTagText = document.getElementById("areasTagText");
 const breadcrumb = document.getElementById("breadcrumb");
 const lensSwitch = document.getElementById("lensSwitch");
 const statusHint = document.getElementById("statusHint");
@@ -550,30 +735,30 @@ const constellationFlowTag = document.getElementById("constellationFlowTag");
 const constellationFlowLabel = document.getElementById("constellationFlowLabel");
 const featureFlowLabel = document.getElementById("featureFlowLabel");
 
-// Level 2. Read-only and no handles: an area is not something you drag,
-// rename or delete - it is a view onto steps that are. Authoring stays where
-// the declarations are.
-const areasGraph = createGraph(areasCanvas, document.getElementById("areasGrid"), document.getElementById("areasContent"), {
-    id: "areas", showToolbar: false, hideHandles: true, variant: "area"
-});
 const constellationGraph = createGraph(constellationCanvas, document.getElementById("constellationGrid"), document.getElementById("constellationContent"), {
     id: "const",
     showToolbar: false,
     hideHandles: true,
+    // The journey reads downwards, the same way a feature does.
+    topDown: true,
+    onChip: id => openDetailById(id),
     // Double-click to rename, the same gesture as a step inside a feature.
     // Nothing else here is authorable: a feature is not added or deleted on
     // the map, it appears because declarations belong to it.
     onRename: node => renameFeature(node)
 });
+
 // Authoring lives in Feature Space, where the steps are. Each callback is
-// one CLI command: the canvas never writes plan.json itself, so a step moved
-// here and a step moved from a terminal end up byte-identical.
+// one CLI command: the canvas never writes plan.json itself, so a step
+// reordered here and a step reordered from a terminal end up identical.
 const featureGraph = createGraph(featureCanvas, document.getElementById("featureGrid"), document.getElementById("featureContent"), {
     id: "feat",
     showToolbar: true,
     // The flow reads top to bottom, and its connectors are drawn to match.
     topDown: true,
-    onMove: node => request("action", { type: "moveNode", target: node.id, x: node.x, y: node.y }),
+    onReorder: (node, afterId) =>
+        request("action", { type: "reorderNode", target: node.id, after: afterId }),
+    onChip: id => openDetailById(id),
     onRename: node => renameStep(node),
     onRemove: node => {
         const source = node.source ?? {};
@@ -634,9 +819,7 @@ const renameFeature = node =>
 const inFeature = () => level !== "constellation";
 
 function activeGraph() {
-    if (level === "steps") return featureGraph;
-    if (level === "areas") return areasGraph;
-    return constellationGraph;
+    return level === "steps" ? featureGraph : constellationGraph;
 }
 function syncZoomLabel() { zoomLabel.textContent = Math.round(activeGraph().scale * 100) + "%"; }
 
@@ -647,193 +830,262 @@ function lensById(id) { return plan()?.lenses.find(l => l.id === id); }
 
 // ================= RENDER FROM STATE =================
 function mountConstellation() {
-    const nodes = buildConstellation(plan(), state.verifiedStatus);
-    const edges = constellationEdges(plan());
+    const built = buildConstellation(plan(), state.verifiedStatus);
 
-    constellationFlowTag.hidden = edges.length === 0;
-    constellationFlowLabel.textContent = edges[0]?.source === "nodes" ? "how one leads to the next" : "the order a person meets them";
+    const cards = built.cards.map(card => ({ ...card, kind: "feature" }));
 
-    constellationGraph.setData({ nodes, edges, edgeColor: "var(--text-low)", onOpen: n => enterFeature(n.id) });
+    const setup = built.setup
+        ? [{
+            ...built.setup,
+            kind: "setup",
+            open: openRegisters.includes("setup"),
+            offLine: true
+        }]
+        : [];
+
+    // Only the order line by default. A real link between two features -
+    // a step in one whose code calls a step in another - is drawn as an
+    // arc, and only while a card is selected: drawing them all at once
+    // turns the journey back into a call graph.
+    const links = cards
+        .slice(0, -1)
+        .map((card, index) => ({ from: card.id, to: cards[index + 1].id, kind: "order" }));
+
+    const selected = constellationGraph.selectedId;
+
+    const arcs = selected
+        ? constellationEdges(plan())
+            .filter(edge =>
+                edge.source === "nodes" &&
+                (edge.from === selected || edge.to === selected) &&
+                cards.some(card => card.id === edge.from) &&
+                cards.some(card => card.id === edge.to))
+            .map(edge => ({ ...edge, kind: "call" }))
+        : [];
+
+    constellationFlowTag.hidden = cards.length < 2;
+    constellationFlowLabel.textContent = "in the order a person meets them";
+
+    constellationGraph.setData({
+        nodes: [...cards, ...setup],
+        edges: [...links, ...arcs],
+        edgeColor: "var(--text-low)",
+        onOpen: n => {
+            if (n.kind === "setup") { toggleRegister(n.id); return; }
+            enterFeature(n.id);
+        }
+    });
 }
 
 function remountLevel() {
-    if (level === "areas") mountAreas();
-    else if (level === "steps") mountFeature();
+    if (level === "steps") mountFeature();
 }
 
-function mountAreas() {
-    const p = plan();
-    const shape = buildAreas(p, currentFeatureId, state.verifiedStatus);
-    const colors = lensColors(p);
-    const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
-    const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
+// --------------------------------------------------
+// ONE FEATURE, ONE COLUMN
+// --------------------------------------------------
+// buildSpine decides everything: the order, the folding, the numbers and
+// the positions. This turns its items into view nodes and hands them to
+// the canvas, and does no layout of its own.
+// --------------------------------------------------
 
-    // Every card here is a way in, never a declaration. This screen answers
-    // one question - how is this feature organised - and a step drawn beside
-    // the cards would start answering the next one too.
-    const placed = layoutAreas(
-        shape.areas.map(area => ({ ...area, title: area.name })),
-        areasCanvas.clientWidth || 900
-    );
-
-    areasTag.hidden = placed.length === 0;
-    areasTagText.textContent = `${shape.total} steps in ${placed.length} ${placed.length === 1 ? "part" : "parts"}`;
-
-    areasGraph.setData({
-        nodes: placed.map(n => ({ ...n, color })),
-        edges: shape.edges,
-        dotColor: color,
-        edgeColor: currentLensId ? color : "var(--edge)",
-        onOpen: n => enterArea(n.id)
-    });
-}
+let spine = null;
 
 function mountFeature() {
     const p = plan();
-    const graph = buildFeatureGraph(p, currentFeatureId, state.verifiedStatus, currentLensId, currentAreaName, state.facts);
     const colors = lensColors(p);
     const featureIndex = p.features.findIndex(f => f.id === currentFeatureId);
     const color = currentLensId ? colors[currentLensId] : colorAt(FEATURE_PALETTE, featureIndex);
 
-    const registers = featureRegisters(p, currentFeatureId);
-
-    featureGraph.setData({
-        nodes: graph.nodes.map(n => ({ ...n, color })),
-        edges: graph.edges,
-        dotColor: color,
-        edgeColor: currentLensId ? color : "var(--edge)",
-        insetLeft: asideInset(graph),
-        insetTop: registers.vocabulary.length ? ASIDE_REACH : 0,
-        insetBottom: (registers.machinery.length || registers.tools.length)
-            ? ASIDE_REACH + (registers.machinery.length && registers.tools.length ? ASIDE_STACK : 0)
-            : 0,
-        onOpen: n => openDetail(n)
+    spine = buildSpine(p, currentFeatureId, {
+        verifiedStatus: state.verifiedStatus,
+        lensId: currentLensId,
+        facts: state.facts ?? {},
+        openPart: openPartId,
+        openFolds,
+        openRegisters
     });
 
-    // Grouping a spine by heading costs the plan's step order - the
-    // headings recur rather than running in sequence - so a banded feature
-    // must not go on claiming the steps are in the order they happen.
-    featureFlowLabel.textContent = graph.bands.length > 0
-        ? "grouped by what each part does"
-        : "the order the steps happen";
+    const featureOfNode = new Map((p.nodes ?? []).map(node => [node.id, node.feature]));
+    const featureNames = new Map((p.features ?? []).map(feature => [feature.id, feature.name]));
 
-    renderFeatureAsides(graph, registers, color);
+    const nodes = spine.items.map(item => {
+        if (item.kind !== "step") {
+            return { ...item, title: item.title ?? item.name ?? item.label, color };
+        }
+
+        return {
+            ...item,
+            title: item.node.title,
+            identity: item.node.identity,
+            sub: nodeSub(item.node),
+            lenses: item.node.lensTags ?? [],
+            lensColor: currentLensId ? colors[currentLensId] : null,
+            chips: callsChips(item.node, {
+                numberById: spine.numberById,
+                featureOfNode,
+                featureNames
+            }),
+            color,
+            source: item.node
+        };
+    });
+
+    const selected = featureGraph.selectedId;
+
+    const arcs = callArcs(selected, spine.items, p).map(arc => ({ ...arc, kind: "call" }));
+
+    featureGraph.setData({
+        nodes,
+        edges: [...spine.links.map(link => ({ ...link, kind: "order" })), ...arcs],
+        dotColor: color,
+        edgeColor: currentLensId ? color : "var(--edge)",
+        onOpen: n => {
+            if (n.kind === "part") { openPart(n.id); return; }
+            if (n.kind === "fold") { toggleFold(n.id); return; }
+            if (n.kind === "register") { toggleRegister(n.id); return; }
+            openDetail(n);
+        }
+    });
+
+    featureFlowLabel.textContent = spine.flowLabel;
+
+    renderDriftButton();
 }
 
+// Opening a part closes the one before it, and the row keeps its place on
+// screen: a fold that jumps the canvas makes the reader find their place
+// again every time they open something.
+function openPart(id) {
+    const before = featureGraph.screenYOf(id);
 
-// A lane label is 150px wide and sits just left of the steps it labels. It
-// used to be pinned to a fixed left edge of the canvas, which on a narrow
-// feature left it stranded hundreds of pixels away from the column it was
-// describing - and made the gap between them count as content to be centred.
-const BAND_GUTTER = 170;
+    openPartId = openPartId === id ? null : id;
+    openFolds = [];
+    mountFeature();
 
-// How far a band of chips reaches beyond the steps: the offset it is drawn
-// at, plus its own height. One more ASIDE_STACK when preconditions and
-// helpers are both below the spine, because the second sits under the first.
-const ASIDE_REACH = 104;
-const ASIDE_STACK = 84;
-
-// How far the picture reaches left of the steps. A constant, because the
-// furniture now hugs the column rather than sitting wherever the canvas
-// happens to start.
-function asideInset(graph) {
-    return graph.bands.length > 0 ? BAND_GUTTER : 0;
+    featureGraph.holdAt(id, before);
 }
 
+function toggleFold(id) {
+    openFolds = openFolds.includes(id)
+        ? openFolds.filter(entry => entry !== id)
+        : [...openFolds, id];
+
+    mountFeature();
+}
+
+function toggleRegister(id) {
+    openRegisters = openRegisters.includes(id)
+        ? openRegisters.filter(entry => entry !== id)
+        : [...openRegisters, id];
+
+    if (level === "steps") mountFeature();
+    else mountConstellation();
+}
+
+function openDetailById(nodeId) {
+    const node = (plan()?.nodes ?? []).find(candidate => candidate.id === nodeId);
+    if (node) openDetail({ id: node.id, source: node, status: node.status });
+}
 
 // --------------------------------------------------
-// WHAT SITS BESIDE THE SPINE
+// NEXT DRIFT
 // --------------------------------------------------
-// The lane labels, the feature's own terms, and what has to be running
-// before any of its steps do. These are in the canvas content rather than
-// around it, so they pan and zoom with the steps - they are part of the
-// feature's space, not chrome describing it from outside.
-//
-// Everything here is drawn from nodes that are in the plan already. Nothing
-// is invented, and every node the feature holds is in exactly one of the
-// spine, the terms, or the preconditions.
+// A fold must never hide a problem. Part rows carry their failing counts,
+// and this walks the drifted steps in order - opening the part that holds
+// the next one, and unfolding any lens fold in front of it.
 // --------------------------------------------------
 
-function renderFeatureAsides(graph, registers, color) {
-    const content = document.getElementById("featureContent");
+const driftBtn = document.getElementById("nextDriftBtn");
 
-    content.querySelectorAll(".feature-aside, .band-label").forEach(el => el.remove());
+function renderDriftButton() {
+    if (!driftBtn) return;
 
-    // Each label against ITS OWN cards. Taking the leftmost card in the
-    // whole feature put every label at the mercy of the widest row: a
-    // measured feature had one lane 20px from its steps and two others 236px
-    // away, because a single row of three siblings reached further left.
-    for (const band of graph.bands) {
-        const label = document.createElement("div");
-        label.className = "band-label";
-        label.setAttribute("aria-hidden", "true");
-        label.dataset.style = `left:${band.minX - BAND_GUTTER}px;top:${band.top - 12}px;height:${band.height + 24}px;--band:${color}`;
-        label.innerHTML = `<span class="band-name">${escapeHtml(band.name || "Other")}</span><span class="band-count">${band.count}</span>`;
-        paint(label);
-        content.appendChild(label);
+    const count = spine?.drifts.length ?? 0;
+
+    driftBtn.hidden = level !== "steps" || count === 0;
+    driftBtn.textContent = `Next drift (${count})`;
+}
+
+function goToStep(nodeId) {
+    const partId = spine?.partIdByNode.get(nodeId) ?? null;
+
+    if (partId && openPartId !== partId) {
+        openPartId = partId;
+        openFolds = [];
+        mountFeature();
     }
 
-    const topY = graph.nodes.length ? Math.min(...graph.nodes.map(n => n.y)) : 60;
-    const bottomY = graph.nodes.length
-        ? Math.max(...graph.nodes.map(n => n.y + (n.h ?? NODE_H_EST)))
-        : 60;
+    const hiding = spine?.hiddenIn.get(nodeId);
 
-    const aside = (title, nodes, y, x, hint) => {
-        if (nodes.length === 0) return;
+    if (hiding) {
+        openFolds = [...openFolds, hiding];
+        mountFeature();
+    }
 
-        const el = document.createElement("div");
-        el.className = "feature-aside";
-        el.dataset.style = `left:${x}px;top:${y}px`;
-        el.innerHTML = `<div class="aside-head" title="${escapeHtml(hint)}">${escapeHtml(title)}</div>`
-            + `<div class="aside-chips">${nodes.map(node =>
-                `<button type="button" class="aside-chip" data-node="${escapeHtml(node.id)}" title="${escapeHtml(node.intent ?? node.title)}">${escapeHtml(node.title)}</button>`
-            ).join("")}</div>`;
-        paint(el);
-
-        el.querySelectorAll(".aside-chip").forEach(chip => {
-            chip.addEventListener("click", event => {
-                event.stopPropagation();
-                const node = nodes.find(n => n.id === chip.dataset.node);
-                if (node) openDetail({ id: node.id, title: node.title, source: node, status: node.status ?? "intended", color });
-            });
-        });
-
-        content.appendChild(el);
-    };
-
-    // Above the spine: the nouns the steps are written in. Aligned with the
-    // top row, which is the row it sits next to.
-    aside(
-        "This feature is about",
-        registers.vocabulary,
-        topY - 92,
-        graph.topRowX,
-        "Named lists, tables and constants this feature's steps are written in"
-    );
-
-    // Below it: what has to be true before any step runs, then the helpers
-    // the steps lean on. Both are preconditions in the reader's mind, which
-    // is why they sit under the thing they hold up.
-    aside(
-        "Runs on",
-        registers.machinery,
-        bottomY + 44,
-        graph.bottomRowX,
-        "Start-up, configuration and connections these steps need in place"
-    );
-
-    aside(
-        "Helpers",
-        registers.tools,
-        bottomY + 44 + (registers.machinery.length ? 84 : 0),
-        graph.bottomRowX,
-        "Small shared utilities the steps call"
-    );
+    featureGraph.focus(nodeId);
 }
 
-// The perspectives this feature actually has work of its own in. A lens with
-// nothing here is not a choice worth offering - it is an empty room with a
-// door on the switch - so it is left off entirely rather than shown at zero.
+driftBtn?.addEventListener("click", () => {
+    const next = nextDrift(spine?.drifts ?? [], featureGraph.selectedId);
+    if (next) goToStep(next);
+});
+
+
+// --------------------------------------------------
+// FIND A STEP
+// --------------------------------------------------
+
+const findInput = document.getElementById("findInput");
+const findResults = document.getElementById("findResults");
+
+function renderFind() {
+    if (!findInput || !findResults) return;
+
+    const results = findSteps(plan(), findQuery);
+
+    findResults.hidden = results.length === 0;
+    findResults.innerHTML = results
+        .map(result => `<button type="button" class="find-hit" data-id="${escapeHtml(result.id)}" data-feature="${escapeHtml(result.feature)}">${escapeHtml(result.label)}</button>`)
+        .join("");
+}
+
+findInput?.addEventListener("input", () => {
+    findQuery = findInput.value;
+    renderFind();
+});
+
+findInput?.addEventListener("keydown", e => {
+    if (e.key !== "Escape") return;
+    findInput.value = "";
+    findQuery = "";
+    renderFind();
+});
+
+findResults?.addEventListener("click", async e => {
+    const hit = e.target.closest(".find-hit");
+    if (!hit) return;
+
+    findResults.hidden = true;
+
+    if (hit.dataset.feature !== currentFeatureId || level !== "steps") {
+        await enterFeature(hit.dataset.feature);
+    }
+
+    goToStep(hit.dataset.id);
+});
+
+window.addEventListener("keydown", e => {
+    if (!(e.key === "f" && (e.ctrlKey || e.metaKey))) return;
+    if (!findInput) return;
+
+    e.preventDefault();
+    findInput.focus();
+    findInput.select();
+});
+
+
+
 function coveredLenses() {
     return lensCoverage(plan(), currentFeatureId).filter(lens => !lens.empty);
 }
@@ -842,20 +1094,35 @@ function renderLensSwitch() {
     const lenses = coveredLenses();
     const colors = lensColors(plan());
 
-    lensSwitch.innerHTML = lenses.map(lens => `
+    // "All" comes first, and it is what a feature opens on. Switching a
+    // lens on used to be automatic, so the first titles a reader ever saw
+    // were a perspective's rewording of the plan rather than the plan.
+    const all = `
+        <button class="lens-btn all${currentLensId === null ? " active" : ""}" data-lens="" role="radio" aria-checked="${currentLensId === null}" title="Every step, in the plan's own words">
+            All
+        </button>`;
+
+    lensSwitch.innerHTML = all + lenses.map(lens => `
         <button class="lens-btn${lens.id === currentLensId ? " active" : ""}" data-lens="${escapeHtml(lens.id)}" role="radio" aria-checked="${lens.id === currentLensId}" data-style="--swatch:${colors[lens.id]}" title="${escapeHtml(String(lens.count))} of this feature's steps">
             <span class="swatch"></span>${escapeHtml(lens.label)}<span class="lens-count">${lens.count}</span>
         </button>`).join("");
+
     paint(lensSwitch);
     lensSwitch.classList.toggle("show", inFeature() && lenses.length > 0);
     renderApprove();
+
     lensSwitch.querySelectorAll(".lens-btn").forEach(btn => {
         btn.addEventListener("click", () => {
-            currentLensId = btn.dataset.lens;
+            const next = btn.dataset.lens || null;
+
+            // Clicking the lens that is already on goes back to All, so
+            // the way out is the same gesture as the way in.
+            currentLensId = next === currentLensId ? null : next;
+
+            // A fold row only means anything beside the lens that made it.
+            openFolds = [];
+
             renderLensSwitch();
-            // Remount whichever level the reader is on. A lens is a way of
-            // reading what is in front of you, so it must not quietly
-            // rebuild a level they are not looking at.
             remountLevel();
             activeGraph().fitToContent();
             updateHint();
@@ -863,9 +1130,7 @@ function renderLensSwitch() {
     });
 }
 
-// Where the reader is, and every way back. The number of segments IS the
-// depth, so the trail states the level without the interface having to
-// label it.
+// Where the reader is, and the way back. Two levels, so two segments.
 function renderBreadcrumb() {
     if (!inFeature()) {
         breadcrumb.innerHTML = '<span class="crumb current">Constellation</span>';
@@ -873,53 +1138,30 @@ function renderBreadcrumb() {
     }
 
     const feature = escapeHtml(featureById(currentFeatureId)?.name ?? "");
-    const sep = '<span class="crumb-sep">›</span>';
-
-    // The feature segment is a link only when there is an areas level to go
-    // back to; in a small feature the steps ARE the feature.
-    const hasAreas = level === "steps" && currentAreaName;
 
     breadcrumb.innerHTML = [
         '<button class="crumb" data-up="top">Constellation</button>',
-        sep,
-        hasAreas
-            ? `<button class="crumb" data-up="areas">${feature}</button>`
-            : `<span class="crumb current">${feature}</span>`,
-        ...(hasAreas ? [sep, `<span class="crumb current">${escapeHtml(currentAreaName)}</span>`] : [])
+        '<span class="crumb-sep">\u203a</span>',
+        `<span class="crumb current">${feature}</span>`
     ].join("");
 
     breadcrumb.querySelectorAll("[data-up]").forEach(crumb => {
-        crumb.addEventListener("click", () => crumb.dataset.up === "top" ? exitFeature() : goUp());
+        crumb.addEventListener("click", () => exitFeature());
     });
 }
 
 function updateHint() {
     if (!state || state.setup !== "ready") { statusHint.textContent = ""; return; }
 
-    // Each level answers a different question, and the hint names the one
-    // the reader is on: what exists, how this feature is organised, what
-    // implements this part.
-    if (level === "areas") {
-        const shape = buildAreas(plan(), currentFeatureId, state.verifiedStatus);
-        const lens = lensById(currentLensId);
-        const owned = lens
-            ? shape.areas.reduce((total, area) => total + (area.lensCounts?.[lens.id] ?? 0), 0)
-            : 0;
-
-        const parts = `${shape.areas.length} ${shape.areas.length === 1 ? "part" : "parts"}, ${shape.total} steps`;
-
-        statusHint.textContent = lens
-            ? `${featureById(currentFeatureId)?.name} · ${parts} · ${owned} of them ${lens.label.toLowerCase()} work`
-            : `${featureById(currentFeatureId)?.name} · ${parts} · pick one to see what implements it`;
-        return;
-    }
-
     if (inFeature()) {
         const lens = lensById(currentLensId);
-        const steps = featureGraph.nodes.length;
 
-        const owned = featureGraph.nodes.filter(node => node.owns).length;
-        const where = currentAreaName ?? "Feature Space";
+        // The feature's own steps, not the rows on the canvas: a folded
+        // feature draws six part rows and holds fifty-nine steps, and the
+        // number a reader wants is the second one.
+        const coverage = lensCoverage(plan(), currentFeatureId);
+        const steps = orderedSteps(plan(), currentFeatureId).length;
+        const owned = coverage.find(entry => entry.id === currentLensId)?.count ?? 0;
 
         // What the feature holds beside its steps, named rather than
         // counted into them: a reader who sees "14 steps" and finds nine
@@ -934,14 +1176,14 @@ function updateHint() {
         ].filter(Boolean).join(", ");
 
         statusHint.textContent = lens
-            ? `${lens.label} · ${LENS_QUESTIONS[lens.id] ?? ""} · all ${steps} steps, ${owned} of them ${lens.label.toLowerCase()} work`
-            : `${where} · ${steps} ${steps === 1 ? "step" : "steps"}${beside ? ` · ${beside}` : ""} · scroll to zoom, drag empty space to pan`;
+            ? `${lens.label} \u00b7 ${LENS_QUESTIONS[lens.id] ?? ""} \u00b7 ${owned} of ${steps} ${steps === 1 ? "step" : "steps"}`
+            : `${featureById(currentFeatureId)?.name} \u00b7 ${steps} ${steps === 1 ? "step" : "steps"}${beside ? ` \u00b7 ${beside}` : ""} \u00b7 scroll to pan, Ctrl+scroll to zoom`;
         return;
     }
 
     {
         const count = plan().features.length;
-        statusHint.textContent = `Constellation · ${count} ${count === 1 ? "feature" : "features"} · scroll to zoom, drag empty space to pan`;
+        statusHint.textContent = `Constellation \u00b7 ${count} ${count === 1 ? "feature" : "features"} \u00b7 scroll to pan, Ctrl+scroll to zoom`;
     }
 }
 
@@ -953,10 +1195,10 @@ function updateHint() {
 // pages, and it is why the third level uses the same motion as the second.
 
 const canvasOf = name =>
-    name === "steps" ? featureCanvas : name === "areas" ? areasCanvas : constellationCanvas;
+    name === "steps" ? featureCanvas : constellationCanvas;
 
 const graphOf = name =>
-    name === "steps" ? featureGraph : name === "areas" ? areasGraph : constellationGraph;
+    name === "steps" ? featureGraph : constellationGraph;
 
 // The view each level was left at, so coming back up lands where the reader
 // was rather than resetting to the top.
@@ -985,7 +1227,7 @@ async function descend(to, focusId) {
     const canvas = canvasOf(to);
 
     canvas.classList.remove("hidden");
-    if (to === "areas") mountAreas(); else mountFeature();
+    mountFeature();
 
     const target = entering.fitView();
     entering.setView(scaledAboutCenter(target, 0.6, canvas.clientWidth, canvas.clientHeight));
@@ -1010,7 +1252,6 @@ async function ascend(to, focusId) {
     leaving.clearSelection();
 
     const entering = graphOf(to);
-    if (to === "areas") mountAreas();
 
     const back = home[to] ?? entering.fitView();
     entering.setView(entering.zoomedOnto(focusId, 2.4));
@@ -1025,60 +1266,33 @@ async function enterFeature(featureId) {
     closeDetail();
 
     currentFeatureId = featureId;
-    currentAreaName = null;
-    currentLensId = coveredLenses()[0]?.id ?? null;
 
-    // Two levels: the Constellation, and a feature's steps. A middle level
-    // of "areas" was tried here and read as a third thing to understand
-    // before you could read the first - so a feature opens on its steps.
+    // No lens. It used to switch the first one on, so a reader arrived at
+    // a feature whose titles were a perspective's rewording of the plan
+    // before they had read the plan.
+    currentLensId = null;
+    openPartId = null;
+    openFolds = [];
+    openRegisters = [];
+
     await descend("steps", featureId);
     flying = false;
 }
 
-async function enterArea(areaId) {
-    if (flying || level !== "areas") return;
-    flying = true;
-    closeDetail();
-
-    // "area:" with nothing after it is the ungrouped card; its steps are the
-    // ones the outline never placed, and "" is how they are selected.
-    currentAreaName = areaId.slice("area:".length);
-    await descend("steps", areaId);
-    flying = false;
-}
-
-// One step back up, wherever the reader is. Leaving the steps of an area
-// returns to the areas; leaving a feature that had no areas returns to the
-// Constellation.
-async function goUp() {
-    if (flying || !inFeature()) return;
-    flying = true;
-    closeDetail();
-
-    if (level === "steps" && currentAreaName) {
-        const area = `area:${currentAreaName}`;
-        currentAreaName = null;
-        await ascend("areas", area);
-    } else {
-        const origin = currentFeatureId;
-        currentAreaName = null;
-        await ascend("constellation", origin);
-    }
-
-    flying = false;
-}
-
-// All the way out, from wherever: the Constellation crumb is always a way
-// back to the top, not only a way back one level.
+// Two levels, so there is one way out and it is always the same one.
 async function exitFeature() {
     if (flying || !inFeature()) return;
+    flying = true;
+    closeDetail();
 
-    if (level === "steps" && currentAreaName) {
-        await goUp();
-    }
+    const origin = currentFeatureId;
 
-    await goUp();
+    await ascend("constellation", origin);
+
+    flying = false;
 }
+
+const goUp = exitFeature;
 
 
 // ================= NODE DETAIL =================
@@ -1394,34 +1608,33 @@ function refreshRequests() {
 // Constellation, the perspective you are reading inside a feature. The label
 // comes from the lens object, never a hard-coded name, so a project that
 // renames its lenses renames the button too.
+// --------------------------------------------------
+// THE BUTTON SAYS WHAT THE CLICK DOES
+// --------------------------------------------------
+// Inside a feature with a lens on it read "Approve Security" and ran a
+// plan-wide --lens, so it approved security steps in every other feature
+// too - steps the reader had never opened, under a label that said they
+// had. The scope is worked out in one place now, and it is the same scope
+// the CLI is given.
+// --------------------------------------------------
+
 function approveTarget() {
     if (state?.setup !== "ready") return null;
 
-    const nodes = plan()?.nodes ?? [];
-    const lens = inFeature() ? lensById(currentLensId) : null;
+    const scope = approveScope(plan(), {
+        featureId: inFeature() ? currentFeatureId : null,
+        lensId: inFeature() ? currentLensId : null
+    });
 
-    if (lens) {
-        const pending = nodes.filter(node =>
-            node.status === "intended" && (node.lensTags ?? []).includes(lens.id)
-        ).length;
-
-        return {
-            label: `Approve ${lens.label}`,
-            pending,
-            message: { type: "approveLens", lensId: lens.id },
-            reason: `Every ${lens.label.toLowerCase()} step is already approved`,
-            hint: `Approve all ${pending} intended ${lens.label} ${pending === 1 ? "step" : "steps"}, in every feature`
-        };
-    }
-
-    const pending = nodes.filter(node => node.status === "intended").length;
+    const what = scope.breakdown.join(", ");
 
     return {
-        label: "Approve plan",
-        pending,
-        message: { type: "approveAll" },
-        reason: "Every step in the plan is already approved",
-        hint: `Approve all ${pending} intended ${pending === 1 ? "step" : "steps"} in the plan`
+        ...scope,
+        pending: scope.count,
+        reason: scope.scope === "plan"
+            ? "Every step in the plan is already approved"
+            : "Everything in scope is already approved",
+        hint: `Approve ${what || "nothing"}`
     };
 }
 
@@ -1457,6 +1670,7 @@ function onCliResult(result) {
             break;
         case "approve":
         case "approveAll":
+        case "approveFeature":
         case "approveLens":
         case "addNode":
         case "renameNode":
@@ -1480,11 +1694,11 @@ function onCliResult(result) {
 }
 
 function onCancelled(message) {
-    if (["approve", "approveAll", "approveLens", "reject", "revise", "addNode", "renameNode", "moveNode", "reorderNode"].includes(message.requestType)) finish("action", null);
+    if (["approve", "approveAll", "approveFeature", "approveLens", "reject", "revise", "addNode", "renameNode", "moveNode", "reorderNode"].includes(message.requestType)) finish("action", null);
 }
 
-const ACTION_DONE = { approve: "Approved", approveAll: "Approved", approveLens: "Approved", reject: "Rejected", revise: "Revised", addNode: "Step added", renameNode: "Renamed", moveNode: "Moved", reorderNode: "Reordered" };
-const ACTION_FAILED = { approve: "Couldn't approve", approveAll: "Some steps couldn't be approved", approveLens: "Some steps couldn't be approved", reject: "Couldn't reject", revise: "Couldn't revise", addNode: "Couldn't add the step", renameNode: "Couldn't rename", moveNode: "Couldn't save the position", reorderNode: "Couldn't reorder" };
+const ACTION_DONE = { approve: "Approved", approveAll: "Approved", approveFeature: "Approved", approveLens: "Approved", reject: "Rejected", revise: "Revised", addNode: "Step added", renameNode: "Renamed", moveNode: "Moved", reorderNode: "Reordered" };
+const ACTION_FAILED = { approve: "Couldn't approve", approveAll: "Some steps couldn't be approved", approveFeature: "Some steps couldn't be approved", approveLens: "Some steps couldn't be approved", reject: "Couldn't reject", revise: "Couldn't revise", addNode: "Couldn't add the step", renameNode: "Couldn't rename", moveNode: "Couldn't save the position", reorderNode: "Couldn't reorder" };
 
 // Authoring shows itself: the step moves, the title changes, the new step
 // appears. A banner saying "Moved" is a second telling of something you just
@@ -1802,37 +2016,30 @@ function applyState(next) {
     renderPendingScan();
     if (state.setup !== "ready") { updateHint(); return; }
 
-    // A redraft can take the feature the reader is standing in, or the area
-    // - the outline regroups as the code moves. Either way they are put back
-    // at the deepest level that still exists rather than left looking at a
-    // view of nothing.
+    // A redraft can take the feature the reader is standing in - the
+    // outline regroups as the code moves. They are put back on the
+    // Constellation rather than left looking at a view of nothing.
     if (inFeature() && !featureById(currentFeatureId)) {
         level = "constellation";
-        currentAreaName = null;
         featureCanvas.classList.add("hidden");
-        areasCanvas.classList.add("hidden");
         constellationCanvas.classList.remove("hidden");
         closeDetail();
     }
 
-    if (level === "steps" && currentAreaName) {
-        const shape = buildAreas(plan(), currentFeatureId, state.verifiedStatus);
-        const stillThere = shape.mode === "areas"
-            && shape.areas.some(area => area.name === currentAreaName);
+    // A part or a fold that the redraft dissolved. Falling back to All is
+    // safe: it shows every step, which is never a lie about the feature.
+    if (currentLensId && !lensById(currentLensId)) currentLensId = null;
 
-        if (!stillThere) {
-            currentAreaName = null;
-            if (shape.mode === "areas") {
-                level = "areas";
-                featureCanvas.classList.add("hidden");
-                areasCanvas.classList.remove("hidden");
-                closeDetail();
-            }
-        }
-    }
-    if (currentLensId && !lensById(currentLensId)) currentLensId = plan().lenses[0]?.id ?? null;
     if (inFeature() && currentLensId && !coveredLenses().some(lens => lens.id === currentLensId)) {
-        currentLensId = coveredLenses()[0]?.id ?? null;
+        currentLensId = null;
+    }
+
+    if (inFeature()) {
+        const parts = buildSpine(plan(), currentFeatureId, { verifiedStatus: state.verifiedStatus }).parts;
+
+        if (openPartId && !parts.some(part => part.id === openPartId)) openPartId = null;
+
+        openFolds = [];
     }
 
     const firstMount = constellationGraph.nodes.length === 0;

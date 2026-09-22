@@ -76,12 +76,12 @@
         "planmap.llmEndpoint": {
           "type": "string",
           "default": "",
-          "markdownDescription": "OpenAI-compatible endpoint used to group code into features and draft plans. Leave empty for a local model with [Ollama](https://ollama.com) at `http://localhost:11434/v1/chat/completions`, which needs no API key. For OpenRouter: `https://openrouter.ai/api/v1/chat/completions`, with **PlanMap: Set OpenRouter API Key**."
+          "markdownDescription": "OpenAI-compatible endpoint used to group code into features and draft plans. Leave empty to let PlanMap choose: [OpenRouter](https://openrouter.ai) once a key is set with **PlanMap: Set OpenRouter API Key**, and a local model with [Ollama](https://ollama.com) at `http://localhost:11434/v1/chat/completions` when there is none. Set it to pin one provider, whatever key is stored."
         },
         "planmap.llmModel": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Model name for the endpoint above. Leave empty for `qwen2.5-coder:7b`, PlanMap's local default (`ollama pull qwen2.5-coder:7b`)."
+          "markdownDescription": "Model name for the endpoint above. Leave empty for PlanMap's default for whichever provider is in use: `nvidia/nemotron-3-ultra-550b-a55b:free` on OpenRouter, and `qwen2.5-coder:7b` locally (`ollama pull qwen2.5-coder:7b`)."
         },
         "planmap.llmBatchSize": {
           "type": "number",

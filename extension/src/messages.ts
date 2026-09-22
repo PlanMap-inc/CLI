@@ -17,7 +17,8 @@ export type WebviewMessage =
     // revise takes the identity, the only thing "plan revise" matches.
     | { type: "approve"; target: string }
     | { type: "approveAll" }
-    | { type: "approveLens"; lensId: string }
+    | { type: "approveFeature"; featureId: string }
+    | { type: "approveLens"; lensId: string; featureId?: string }
     | { type: "reject"; target: string; force: boolean }
     | { type: "revise"; identity: string }
     // Authoring on the canvas. Each is one CLI command, so a step added or
@@ -41,6 +42,7 @@ export const WEBVIEW_MESSAGE_TYPES: readonly WebviewMessage["type"][] = [
     "verify",
     "approve",
     "approveAll",
+    "approveFeature",
     "approveLens",
     "reject",
     "revise",
@@ -195,8 +197,15 @@ export function buildCliArgs(
             return ["approve", projectRoot, message.target];
         case "approveAll":
             return ["approve", projectRoot, "--all"];
+        case "approveFeature":
+            return ["approve", projectRoot, "--feature", message.featureId];
         case "approveLens":
-            return ["approve", projectRoot, "--lens", message.lensId];
+            // Scoped to one feature when the reader is standing in one, so
+            // "Approve Security" from inside Survey approves Survey's
+            // security steps and nothing else.
+            return message.featureId
+                ? ["approve", projectRoot, "--feature", message.featureId, "--lens", message.lensId]
+                : ["approve", projectRoot, "--lens", message.lensId];
         case "reject":
             return message.force
                 ? ["reject", projectRoot, message.target, "--force"]
@@ -265,6 +274,7 @@ export function buildCliSteps(message: WebviewMessage, projectRoot: string): str
 // as a flag (think "--all"), so it is refused rather than passed through.
 const ARGUMENT_FIELDS: Partial<Record<WebviewMessage["type"], string[]>> = {
     approve: ["target"],
+    approveFeature: ["featureId"],
     approveLens: ["lensId"],
     reject: ["target"],
     revise: ["identity"],

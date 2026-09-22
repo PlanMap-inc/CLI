@@ -89,7 +89,7 @@ function oneSummary(cap = 9) {
 
     const { fallbacks } = await titleSummaries(result.summaries, { call: callOpenRouter });
 
-    assert.deepEqual(fallbacks, [], `unexpected fallbacks: ${fallbacks.join("; ")}`);
+    assert.deepEqual(fallbacks, [], `unexpected fallbacks: ${JSON.stringify(fallbacks)}`);
     assert.equal(result.summaries[0].node.title, "Seal the van before it leaves");
     assert.equal(result.summaries[0].node.intent, "A loaded van is sealed and signed for in one pass.");
 }
@@ -138,7 +138,8 @@ for (const [what, build, expected] of rejections) {
     const { fallbacks } = await titleSummaries(result.summaries, { call: callOpenRouter });
 
     assert.equal(fallbacks.length, 1, `${what} must be reported`);
-    assert.match(fallbacks[0], expected, `${what}: ${fallbacks[0]}`);
+    assert.match(fallbacks[0].reason, expected, `${what}: ${fallbacks[0].reason}`);
+    assert.equal(fallbacks[0].id, summary.node.id, `${what} names the step it is about`);
     assert.equal(summary.node.title, fallbackTitle, `${what} must leave the fallback title`);
     assert.equal(summary.node.intent, fallbackIntent, `${what} must leave the fallback intent`);
 }
@@ -154,35 +155,84 @@ for (const [what, build, expected] of rejections) {
     const result = oneSummary();
     const summary = result.summaries[0];
 
-    assert.equal(summary.node.title, "Dispatch", "every member shares one part, so that names the step");
+    // The lead's own title and a count - never the part name, which is
+    // already in `path` and which every group in that part would share.
+    assert.equal(
+        summary.node.title,
+        `${summary.members[0].title} +1 more`,
+        `unexpected fallback title: ${summary.node.title}`
+    );
+
+    assert.ok(
+        !summary.node.title.includes("Dispatch"),
+        "the part name stays in path, not in the title"
+    );
 
     assert.match(
         summary.node.intent,
-        /^Covers 2 steps: Record the \w+ entry, Record the \w+ entry…$/,
-        `unexpected fallback intent: ${summary.node.intent}`
+        /^Covers 2 steps: Record the \w+ entry, Record the \w+ entry$/,
+        `two covered steps need no ellipsis: ${summary.node.intent}`
     );
+
+    assert.deepEqual(summary.node.path, ["Dispatch"], "the part is still recorded");
 }
 
-// Where the members share no heading, the lead's own title stands in.
-// Every step gets a part of its own, so the same-part fold has nothing to
-// do and the neighbour fold puts two different parts together.
+// More than three covered steps: the intent lists three and trails off.
 {
-    const nodes = NAMES.map((name, at) =>
-        drafted(at + 1, name, { path: [`Part ${at}`] }));
+    const nodes = NAMES.map((name, at) => drafted(at + 1, name));
 
     const result = summariseFeatures(
         { version: 1, lenses: [], features: [{ id: "f1", name: "Dispatch" }], nodes },
-        { cap: 9 }
+        { cap: 3 }
     );
 
-    const summary = result.summaries[0];
-    const leadTitle = summary.members[0].title;
+    const big = result.summaries.find(summary => summary.node.summaryOf.length > 3);
+
+    assert.ok(big, "a cap of 3 over 10 steps must produce a group of more than three");
+
+    assert.match(
+        big.node.intent,
+        /^Covers \d+ steps: [^:]+…$/,
+        `more than three covered steps trail off: ${big.node.intent}`
+    );
 
     assert.equal(
-        summary.node.title,
-        leadTitle,
-        "with no shared part the lead member's own title is the fallback"
+        big.node.intent.split(", ").length,
+        3,
+        "only the first three titles are listed"
     );
+}
+
+
+// --------------------------------------------------
+// FALLBACK TITLES ARE UNIQUE INSIDE A FEATURE
+// --------------------------------------------------
+// The old fallback was the shared part heading, so every group in one
+// part got the same title. On expressjs/express that gave one feature
+// seven cards called "response" and four called "Router".
+
+{
+    // Every step in one part, folded into several groups.
+    const nodes = NAMES.map((name, at) => drafted(at + 1, name));
+
+    const result = summariseFeatures(
+        { version: 1, lenses: [], features: [{ id: "f1", name: "Dispatch" }], nodes },
+        { cap: 4 }
+    );
+
+    assert.ok(result.summaries.length > 1, "the fixture must produce several groups in one part");
+
+    const titles = result.summaries.map(summary => summary.node.title);
+
+    assert.equal(
+        new Set(titles).size,
+        titles.length,
+        `fallback titles repeat inside one feature: ${titles.join(" | ")}`
+    );
+
+    for (const title of titles) {
+        assert.match(title, / \+\d+ more$/, `${title} must say how many others it holds`);
+    }
 }
 
 
@@ -216,7 +266,7 @@ for (const [what, build, expected] of rejections) {
     const { fallbacks } = await titleSummaries(result.summaries, { call: null });
 
     assert.equal(fallbacks.length, 1);
-    assert.match(fallbacks[0], /no model configured/);
+    assert.match(fallbacks[0].reason, /no model configured/);
     assert.equal(result.summaries[0].node.title, fallbackTitle);
 }
 
@@ -237,7 +287,7 @@ for (const [what, build, expected] of rejections) {
     process.env.PLANMAP_LLM_API_KEY = hadNeutral;
 
     assert.equal(fallbacks.length, 1);
-    assert.match(fallbacks[0], /not configured/);
+    assert.match(fallbacks[0].reason, /not configured/);
 }
 
 
@@ -275,6 +325,119 @@ for (const [what, build, expected] of rejections) {
         assert.ok(!prompt.includes("src/orders.js"), "a title prompt must not carry file paths");
         assert.ok(prompt.includes("Record the"), "a title prompt carries the member titles");
     }
+}
+
+// --------------------------------------------------
+// A PLAIN WORD IS NOT A FUNCTION NAME
+// --------------------------------------------------
+// The check was a substring match over every declaration name, so a group
+// holding a function called `save` refused "Save all answers together" -
+// and fell back to a title worse than the one the model wrote.
+
+const PLAIN = ["save", "get", "score", "submit"];
+
+function groupNamed(names) {
+    const nodes = names.map((name, at) => drafted(at + 1, name));
+
+    // One group holding every one of them, so the check sees all the
+    // names at once.
+    const result = summariseFeatures(
+        { version: 1, lenses: [], features: [{ id: "f1", name: "Dispatch" }], nodes },
+        { cap: 1 }
+    );
+
+    assert.equal(result.summaries.length, 1, "the fixture must produce one summary step");
+
+    assert.equal(
+        result.summaries[0].node.identities.length,
+        names.length,
+        "every named function must be in the group"
+    );
+
+    return result;
+}
+
+for (const [title, accepted, what] of [
+    ["Save all answers together", true, "a plain word a function happens to be called"],
+    ["Score risk for every agency", true, "another plain word"],
+    ["Get the submitted answers back", true, "two plain words at once"],
+    ["Save all answers with saveResponses", false, "a camelCase name"],
+    ["Read Store.agency_risk_for_scope first", false, "a dotted name"],
+    ["Read agency_risk_for_scope first", false, "a dotted name's own segment"]
+]) {
+    const result = groupNamed([...PLAIN, "saveResponses", "Store.agency_risk_for_scope"]);
+    const summary = result.summaries[0];
+    const fallbackTitle = summary.node.title;
+
+    process.env.PLANMAP_TEST_RESPONSE = JSON.stringify({
+        steps: [{ key: summary.node.id, title, intent: "Something true of the group." }]
+    });
+
+    const { fallbacks } = await titleSummaries(result.summaries, { call: callOpenRouter });
+
+    if (accepted) {
+        assert.deepEqual(
+            fallbacks,
+            [],
+            `"${title}" (${what}) must be accepted, got: ${JSON.stringify(fallbacks)}`
+        );
+        assert.equal(summary.node.title, title);
+    } else {
+        assert.equal(fallbacks.length, 1, `"${title}" (${what}) must be rejected`);
+        assert.match(fallbacks[0].reason, /names the function/);
+        assert.equal(summary.node.title, fallbackTitle);
+    }
+}
+
+// A name is matched as a whole word, so a title that merely contains its
+// letters is fine.
+{
+    const result = groupNamed([...PLAIN, "saveResponses"]);
+    const summary = result.summaries[0];
+
+    process.env.PLANMAP_TEST_RESPONSE = JSON.stringify({
+        steps: [{
+            key: summary.node.id,
+            title: "Save responses for every agency",
+            intent: "Something true of the group."
+        }]
+    });
+
+    const { fallbacks } = await titleSummaries(result.summaries, { call: callOpenRouter });
+
+    assert.deepEqual(
+        fallbacks,
+        [],
+        `"Save responses" is two words, not saveResponses: ${JSON.stringify(fallbacks)}`
+    );
+}
+
+
+// --------------------------------------------------
+// THE PROMPT CARRIES THE FEATURE'S NAME
+// --------------------------------------------------
+// It used to send node.feature, which is the id. A model asked to name a
+// step in "f1" has been told nothing about it.
+
+{
+    const nodes = NAMES.map((name, at) => drafted(at + 1, name));
+
+    const result = summariseFeatures(
+        { version: 1, lenses: [], features: [{ id: "f1", name: "Parcel Dispatch" }], nodes },
+        { cap: 9 }
+    );
+
+    let prompt = null;
+
+    await titleSummaries(result.summaries, {
+        call: async text => {
+            prompt = text;
+            return { steps: [] };
+        }
+    });
+
+    assert.match(prompt, /feature: Parcel Dispatch/, "the prompt names the feature");
+    assert.ok(!prompt.includes("feature: f1"), "the prompt must not send the feature id");
 }
 
 console.log("PASS: summarise-titles");

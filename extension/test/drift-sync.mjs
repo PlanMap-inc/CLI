@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import { runCli } from "../out/cli.js";
 import { readViewState } from "../out/state.js";
-import { buildConstellation, buildFeatureGraph, effectiveStatus, railModel, statusClass } from "../webview/model.js";
+import { buildConstellation, buildSpine, effectiveStatus, railModel, statusClass } from "../webview/model.js";
 import { buildEvolutionTree, evolutionIcon } from "../webview/evolution.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -52,10 +52,11 @@ assert.deepEqual(driftedIdentities, [identity]);
 const state = await readViewState(root);
 
 // Plan Graph: the node is drifted and pulses; its feature reads drifted.
-const planNode = buildFeatureGraph(state.plan, "auth", state.verifiedStatus).nodes.find(node => node.source.identity === identity);
+const planNode = buildSpine(state.plan, "auth", { verifiedStatus: state.verifiedStatus })
+    .items.find(item => item.node?.identity === identity);
 assert.equal(planNode.status, "drifted");
 assert.match(statusClass(planNode.status), /\bpulse\b/);
-assert.equal(buildConstellation(state.plan, state.verifiedStatus)[0].status, "drifted");
+assert.equal(buildConstellation(state.plan, state.verifiedStatus).cards[0].status, "drifted");
 
 // Evolution: the same identity shows ⚠ on its latest node, and only there.
 const evolutionItems = flatten(buildEvolutionTree(state.evolution)).filter(item => item.identity === identity);
@@ -69,7 +70,7 @@ assert.equal(railModel("planmap", state.verifiedStatus).badge.count, verify.json
 assert.equal(railModel("evolution", state.verifiedStatus).badge.count, 1);
 
 // The join is exact string equality on identity - all three strings are identical.
-assert.equal(planNode.source.identity, flagged[0].identity);
+assert.equal(planNode.node.identity, flagged[0].identity);
 assert.equal(flagged[0].identity, driftedIdentities[0]);
 
 // Fix the code and verify again: both views clear together.
@@ -77,7 +78,10 @@ fs.writeFileSync(source, 'export function verifyToken(token) {\n    if (!token) 
 assert.equal((await runCli(["verify", root, "--json"], options(false))).outcome, "ok");
 
 const fixed = await readViewState(root);
-assert.equal(buildFeatureGraph(fixed.plan, "auth", fixed.verifiedStatus).nodes[0].status, "implemented");
+assert.equal(
+    buildSpine(fixed.plan, "auth", { verifiedStatus: fixed.verifiedStatus }).items[0].status,
+    "implemented"
+);
 assert.deepEqual(flatten(buildEvolutionTree(fixed.evolution)).filter(item => item.status === "drifted"), []);
 assert.equal(railModel("planmap", fixed.verifiedStatus).badge, null);
 

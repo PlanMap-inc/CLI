@@ -288,84 +288,99 @@ const CX = 300;
 const CTOP_Y = 60;
 
 // --------------------------------------------------
-// HOW TALL A CARD IS
+// EVERY CARD IS THE SAME HEIGHT
 // --------------------------------------------------
-// It used to be one number, because every card held the same four lines. A
-// card now carries a preview of what it opens onto, or the nouns a merged
-// step reads across, so its height depends on its content - and a fixed
-// 144px pitch drew the next card straight through the bottom of it.
+// It used to depend on its content - a preview block, a backing line, two
+// evidence lines - so a column of cards had a ragged rhythm and every row
+// below one depended on the heights of all the rows above it.
 //
-// Measured rather than guessed: the values below are the card's own padding
-// and line-heights from styles.css. They only have to be close, because the
-// gap absorbs the rest.
+// A card now carries a fixed set of lines: the number and title, the code
+// line, one detail line, the lens dots and the status pill. So the pitch
+// is fixed too, the column reads as a column, and a card's position is
+// its index times the pitch.
+//
+// Measured against styles.css rather than guessed. The gap absorbs a
+// pixel either way.
 // --------------------------------------------------
 
-const CARD_BASE_H = NODE_H_EST;
-const PREVIEW_LINE_H = 19;
-const PREVIEW_BLOCK_PAD = 7;
-const BACKING_LINE_H = 20;
+export const STEP_H = 118;
 
-// .evidence-line is 9.5px at line-height 1.4 (13.3px) with a 2px gap between
-// lines, and .node-evidence has a 6px margin above the block. Rounded up, the
-// same way the preview values are: over-counting by a pixel is absorbed by the
-// gap, under-counting is the bug this whole function exists to stop.
-const EVIDENCE_LINE_H = 15;
-const EVIDENCE_BLOCK_PAD = 6;
+// A part row and a fold row: one line of text, a count and a chevron.
+export const ROW_H = 56;
 
-// Between one card and the next. Big enough that the connector between them
-// is visibly a connector rather than a seam.
+// Between one item and the next. Big enough that the line between them is
+// visibly a line rather than a seam.
 export const CARD_GAP = 44;
 
-export function cardHeight(card) {
-    const preview = card?.preview?.length ?? 0;
-    const evidence = card?.evidence?.length ?? 0;
-    const backing = (card?.backing ?? 1) > 1 ? BACKING_LINE_H : 0;
+// The Constellation's cards carry three preview lines, so they are taller
+// than a step - and all of them are the same height as each other.
+export const FEATURE_H = NODE_H_EST + 7 + 3 * 19;
 
-    return CARD_BASE_H
-        + (preview > 0 ? PREVIEW_BLOCK_PAD + preview * PREVIEW_LINE_H : 0)
-        + (evidence > 0 ? EVIDENCE_BLOCK_PAD + evidence * EVIDENCE_LINE_H : 0)
-        + backing;
+export function cardHeight() {
+    return STEP_H;
 }
 
 export function nodesInFeature(plan, featureId) {
     return (plan?.nodes ?? []).filter(node => node.feature === featureId);
 }
 
+// --------------------------------------------------
+// THE CONSTELLATION READS DOWNWARDS
+// --------------------------------------------------
+// It used to be stacked from the bottom up, so the journey climbed while
+// the feature you opened from it ran down the page. One map, two
+// directions, and a reader re-orienting at every click.
+//
+// Both read top to bottom now: the first thing a person meets is at the
+// top of the Constellation, and the first step of a feature is at the top
+// of the feature.
+// --------------------------------------------------
+
 export function buildConstellation(plan, verifiedStatus) {
-    const features = plan?.features ?? [];
     const order = (plan?.lenses ?? []).map(lens => lens.id);
 
-    const cards = features.map((feature, index) => {
+    const cards = [];
+
+    // Everything that is not a step of a feature that has steps. A feature
+    // with no behaviour at all is not a stage of the journey - drawing a
+    // card for it puts an empty box on the map - so its terms and
+    // preconditions go into one row at the bottom instead.
+    const setup = [];
+
+    (plan?.features ?? []).forEach((feature, index) => {
         const members = nodesInFeature(plan, feature.id);
+
         // The steps, which is the behaviours: the terms and preconditions
         // are part of the feature but they are not things it does, and a
         // count that includes them answers a question nobody asked.
         const spine = featureRegisters(plan, feature.id).spine;
+
+        if (spine.length === 0) {
+            setup.push(...members);
+            return;
+        }
+
         const count = spine.length;
+        const parts = spine.length > FLAT_LIMIT ? partsOf(spine) : [];
 
         // Which perspectives this capability is built from, in lens order.
         // Three dots say "this one is interface and server, no data" at a
         // glance, which "7 steps" alone never could.
         const present = new Set(members.flatMap(node => node.lensTags ?? []));
 
-        const bands = bandsOf(spine);
-
-        return {
+        cards.push({
             id: feature.id,
-            step: index + 1,
+            step: cards.length + 1,
             title: feature.name,
-            // Where a feature has a level inside it, the Constellation says
-            // so. It is the reader's first signal that this capability is
-            // something to explore rather than read straight through.
             count,
-            sub: bands.length > 0
-                ? `${count} steps · ${bands.length} parts`
+            sub: parts.length > 1
+                ? `${count} steps · ${parts.length} parts`
                 : `${count} ${count === 1 ? "step" : "steps"}`,
             // The first lines of what this feature opens onto. A card that
             // says only "27 steps" reports the size of a thing it is hiding;
             // these are three of the real steps, in order, so the view a
             // reader lands in starts with lines they have already read.
-            preview: CONSTELLATION_PREVIEW > 0 ? previewOf(spine, CONSTELLATION_PREVIEW) : [],
+            preview: previewOf(spine, CONSTELLATION_PREVIEW),
             lenses: order.filter(id => present.has(id)),
             status: featureStatus(members, verifiedStatus),
             // How many, not just that there is one: "2 of 83 drifted" and
@@ -376,26 +391,39 @@ export function buildConstellation(plan, verifiedStatus) {
                 .filter(status => status === "drifted" || status === "error").length,
             color: colorAt(FEATURE_PALETTE, index),
             x: snap(CX)
-        };
+        });
     });
 
-    // Stacked from the bottom up, each card clearing the one before it: the
-    // first thing a person does sits at the bottom and the journey climbs.
-    // Heights differ per card, so the position of one depends on all the
-    // cards below it and cannot be worked out from its index alone.
-    const heights = cards.map(cardHeight);
-    const total = heights.reduce((sum, h) => sum + h + CARD_GAP, -CARD_GAP);
+    // The top is snapped to the grid once, and the pitch is fixed. Snapping
+    // every card in turn instead made the gaps uneven - 192px, then 216px -
+    // which is exactly the ragged rhythm one card height was meant to end.
+    const top = snap(CTOP_Y);
+    const pitch = FEATURE_H + CARD_GAP;
 
-    let fromBottom = 0;
+    const placed = cards.map((card, index) => ({
+        ...card,
+        h: FEATURE_H,
+        y: top + index * pitch
+    }));
 
-    return cards.map((card, index) => {
-        const height = heights[index];
-        const y = CTOP_Y + total - fromBottom - height;
-
-        fromBottom += height + CARD_GAP;
-
-        return { ...card, h: height, y: snap(y) };
-    });
+    return {
+        cards: placed,
+        // One folded row under the journey, never a card in it.
+        setup: setup.length === 0 ? null : {
+            id: "setup",
+            title: "Project setup",
+            count: setup.length,
+            y: top + placed.length * pitch,
+            h: ROW_H,
+            x: snap(CX),
+            chips: setup.map(node => ({
+                id: node.id,
+                title: node.title,
+                role: roleOf(node),
+                status: effectiveStatus(node, verifiedStatus)
+            }))
+        }
+    };
 }
 
 // What connects two features: a node in one with an edgesOut into another.
@@ -443,17 +471,31 @@ export function constellationEdges(plan) {
 // --------------------------------------------------
 // FEATURE SPACE
 // --------------------------------------------------
-// Plan nodes carry no positions, so they are ordered by longest path over
-// edgesOut and stacked one per row, bottom-to-top: step 1 at the bottom, and
-// the feature climbs. A lens shows only the nodes tagged with it.
+// One straight column, in `step` order, top to bottom. Nothing else moves
+// a card: not the call graph, not a stored x/y, not the lens.
+//
+// It used to be laid out from edgesOut by longest path, which meant two
+// steps that did not call each other were drawn side by side and a step
+// with two callers fanned out. That drew the call graph and called it the
+// plan - and since `plan order` wrote edgesOut as an order chain while the
+// draft wrote it as calls, the same field decided the layout under two
+// different meanings depending on what had last touched the file.
+//
+// The two are separated now. `step` is the order a person reads; edgesOut
+// is what the code calls, shown as a chip on the card and as an arc when
+// the card is selected.
 // --------------------------------------------------
 
 const TOP_Y = 60;
-const STEP_Y = 144;
 const CENTER_X = 300;
-// Between two steps sharing a row. Wide enough that they read as two things
-// side by side rather than one wide card.
-const COLUMN_GAP = 28;
+
+// Everything in the column sits at one x, so a card's position is its
+// place in the order and nothing else.
+export const COLUMN_X = CENTER_X;
+
+// The floor on zoom. Below this the titles stop being readable, and a map
+// you cannot read is not a smaller map - it is a picture of one.
+export const MIN_SCALE = 0.6;
 
 // The grounding line under a title: the code the title is a claim about.
 // The title explains the behaviour and has to stand on its own; this says
@@ -488,15 +530,6 @@ export function declarationName(identity) {
 export function nodeSub(node) {
     const identity = node?.identity;
     if (!identity) return "greenfield";
-
-    // A summary step stands for other STEPS, not just other declarations.
-    // Saying "7 declarations" would be true and useless: the reader wants
-    // to know how much of the feature is behind this one card, and the
-    // panel is where the seven are listed.
-    if (isSummary(node)) {
-        const covers = coveredSteps(node).length;
-        return `covers ${covers} step${covers === 1 ? "" : "s"}`;
-    }
 
     // A step standing for several declarations says how many rather than
     // naming the first and quietly holding the rest. The panel lists them.
@@ -533,33 +566,73 @@ export function nodeSub(node) {
 // falling back to plan order. Shared, so the preview on a Level 2 card runs
 // the same way as the workflow that card opens - a preview in a different
 // order would be a different story about the same process.
-export function orderSteps(members) {
-    const ids = new Set(members.map(node => node.id));
+// --------------------------------------------------
+// THE ONE DETAIL LINE A CARD CARRIES
+// --------------------------------------------------
+// A card used to stack a preview block, a backing line and two evidence
+// lines under its title, which made it an inspector standing in a column
+// of inspectors. It carries one line now, and the panel carries the rest.
+//
+// First match wins. A lens reading comes first because a reader who has
+// turned a perspective on has asked to be told what it says here; a
+// summary step comes next because how much is behind the card changes
+// whether you open it; and a fact from the code is the floor.
+// --------------------------------------------------
 
-    const edges = [];
-    for (const node of members) {
-        for (const target of node.edgesOut ?? []) {
-            if (ids.has(target) && target !== node.id) edges.push({ from: node.id, to: target });
-        }
+export function detailLine(node, { lensId = null, facts = {} } = {}) {
+    const reading = lensId ? node?.readings?.[lensId] : null;
+
+    if (reading) {
+        return { kind: "reading", lens: lensId, text: reading };
     }
 
-    const layer = layerByLongestPath(members, edges);
+    if (isSummary(node)) {
+        const covers = coveredSteps(node).length;
+        return { kind: "covers", text: `covers ${covers} step${covers === 1 ? "" : "s"}` };
+    }
 
-    // Step first, longest path second. It used to be the other way round,
-    // which worked while every feature was one unbroken chain: the chain
-    // WAS the order. Now that an edge needs evidence most steps sit at
-    // layer 0 together, and ranking by layer puts whichever step happens to
-    // be called by another at the end of the feature.
-    //
-    // step is the order a person meets these, which is what a reader of the
-    // feature wants; the layer still breaks ties between steps that have
-    // none, so a step that leads to another never reads after it.
-    const rank = node =>
-        Number.isFinite(node.step) ? node.step : Number.MAX_SAFE_INTEGER;
+    const dimensions = Array.isArray(node?.dimensions) ? node.dimensions : [];
 
-    return [...members].sort((a, b) =>
-        rank(a) - rank(b) || layer.get(a.id) - layer.get(b.id));
+    if (dimensions.length > 0) {
+        return { kind: "dimensions", text: `across ${dimensions.join(" · ")}` };
+    }
+
+    const evidence = evidenceLines(facts?.[node?.identity])[0];
+
+    return evidence ? { kind: "evidence", text: evidence } : null;
 }
+
+
+// --------------------------------------------------
+// THE ORDER A PERSON READS
+// --------------------------------------------------
+// `step`, and nothing else. Steps the model never numbered come after the
+// numbered ones in the order the plan lists them, and two steps with the
+// same number are separated by id - so the order is total, and shuffling
+// the nodes cannot change it.
+//
+// It used to break ties by longest path over edgesOut, which put whichever
+// step happened to be called by another at the end of the feature.
+// --------------------------------------------------
+
+export function orderSteps(members) {
+    const numbered = members.filter(node => Number.isFinite(node.step));
+    const rest = members.filter(node => !Number.isFinite(node.step));
+
+    numbered.sort((left, right) =>
+        left.step - right.step ||
+        String(left.id).localeCompare(String(right.id)));
+
+    return [...numbered, ...rest];
+}
+
+
+// The feature's steps, in that order. Terms, preconditions and helpers are
+// not steps and are never in the column.
+export function orderedSteps(plan, featureId) {
+    return orderSteps(featureRegisters(plan, featureId).spine);
+}
+
 
 // How many steps a Level 2 card shows of the process it stands for. Enough to
 // tell the story, never enough to become the workflow: the whole point of the
@@ -612,47 +685,6 @@ export function previewOf(members, limit = PREVIEW_STEPS) {
 // and would make Level 2 look like Level 1 and Level 3 with a different node
 // count, which is the thing this redesign most needs to avoid. A reader
 // surveys here; they follow above and below.
-export const AREA_W = 268;
-export const AREA_H = 214;
-const AREA_GAP_X = 34;
-const AREA_GAP_Y = 30;
-
-export function layoutAreas(areas, canvasWidth = 900) {
-    const perRow = Math.max(1, Math.min(3, Math.floor(canvasWidth / (AREA_W + AREA_GAP_X)) || 1));
-
-    return areas.map((area, index) => {
-        const row = Math.floor(index / perRow);
-        const column = index % perRow;
-        const inRow = Math.min(perRow, areas.length - row * perRow);
-
-        // Each row is centred on itself, so a last row holding one card sits
-        // under the middle rather than hanging off to the left.
-        const rowWidth = inRow * AREA_W + (inRow - 1) * AREA_GAP_X;
-
-        return {
-            ...area,
-            x: snap(-rowWidth / 2 + column * (AREA_W + AREA_GAP_X) + AREA_W / 2 + 300),
-            y: snap(60 + row * (AREA_H + AREA_GAP_Y))
-        };
-    });
-}
-
-
-// --------------------------------------------------
-// LEVEL 2: BEHAVIOURAL AREAS
-// --------------------------------------------------
-// A feature with a hundred declarations does not become cluttered when it is
-// drawn flat - at one node per row it becomes 15,552px tall, which fits the
-// canvas at 6% zoom, and a node ten pixels high renders nothing a person can
-// read. The middle level exists to make that feature openable.
-//
-// It invents nothing. Every node carries the headings the outline already
-// worked out for it, under the same name Project Evolution uses, so both
-// views read one hierarchy rather than two that drift apart. What happens
-// here is presentation: which of those headings are worth drawing as a
-// level, and when there is no level worth drawing at all.
-// --------------------------------------------------
-
 // A feature a reader can take in flat. At the row pitch the canvas uses, ten
 // rows fit at 60% zoom and read comfortably; past a dozen the feature starts
 // costing zoom, and past that it costs legibility. The same number bounds an
@@ -669,193 +701,6 @@ export function areaOf(node) {
     const head = (node?.path ?? []).find(step => typeof step === "string" && step.trim());
     return head ? head.trim() : null;
 }
-
-// How a feature should open, and what its parts are.
-//
-// Returns mode "flat" when the feature is small enough to read whole, or
-// when its grouping is not good enough to help - a single heading holding
-// everything is not a level, it is a click. The reason is carried so the
-// interface can say which it was rather than silently flattening.
-export function buildAreas(plan, featureId, verifiedStatus) {
-    const members = nodesInFeature(plan, featureId);
-    const lensOrder = (plan?.lenses ?? []).map(lens => lens.id);
-
-    const byName = new Map();
-    const loose = [];
-
-    for (const node of members) {
-        const name = areaOf(node);
-        if (!name) { loose.push(node); continue; }
-        if (!byName.has(name)) byName.set(name, []);
-        byName.get(name).push(node);
-    }
-
-    // An area holding one declaration restates that declaration and costs a
-    // level to reach it, so it stops being a card of its own and joins the
-    // steps the outline never placed.
-    for (const [name, nodes] of [...byName]) {
-        if (nodes.length === 1) {
-            loose.push(nodes[0]);
-            byName.delete(name);
-        }
-    }
-
-    const areas = [...byName].map(([name, nodes], index) => {
-        const statuses = nodes.map(node => effectiveStatus(node, verifiedStatus));
-        const present = new Set(nodes.flatMap(node => node.lensTags ?? []));
-
-        return {
-            id: `area:${name}`,
-            name,
-            count: nodes.length,
-            // Worst-wins, as the Constellation already does for a feature: a
-            // problem must never be hidden by aggregation. The count comes
-            // with it, because one drifted step of twenty-one and fourteen of
-            // twenty-one are different situations.
-            status: featureStatus(nodes, verifiedStatus),
-            failing: statuses.filter(status => status === "drifted" || status === "error").length,
-            lenses: lensOrder.filter(id => present.has(id)),
-            // How much of each perspective's own work lands here. Counts, not
-            // a filter: a lens must never remove an area, or a reader
-            // concludes that part of the feature does not exist from that
-            // perspective.
-            lensCounts: Object.fromEntries(
-                lensOrder.map(id => [id, nodes.filter(node => (node.lensTags ?? []).includes(id)).length])
-            ),
-            // An area past the limit reproduces the problem the level exists
-            // to solve. It is shown at its real size and said to be large,
-            // never split on something arbitrary.
-            oversized: nodes.length > FLAT_LIMIT,
-            // What this process actually does, in four steps. A card that
-            // says only "28 steps" tells a reader the process is large and
-            // nothing about what it is for.
-            preview: previewOf(nodes),
-            index,
-            nodes
-        };
-    });
-
-    // A feature too big to read whole is never opened as a chain, whatever
-    // its grouping looks like. One named part is a thin structure and it
-    // still beats dropping eighty steps on the reader: they descend by
-    // choosing rather than by scrolling.
-    //
-    // The exception is a feature the outline placed nothing in. A single card
-    // holding every step is a click that reveals nothing, so there the
-    // feature opens flat - inventing parts would be worse than a long chain.
-    const large = members.length > FLAT_LIMIT;
-    const mode = large && areas.length > 0 ? "areas" : "flat";
-
-    const reason = mode === "areas"
-        ? null
-        : !large
-            ? "small"
-            : "ungrouped";
-
-    // Steps the outline never placed are a navigation point like any other,
-    // NOT a scattering of declarations beside the cards. Drawing them
-    // individually would answer "how is this feature organised?" and "what
-    // exactly happens here?" on one screen, which is the crowding this level
-    // exists to remove. The card says what it is rather than borrowing a
-    // behavioural name it has not earned.
-    if (mode === "areas" && loose.length > 0) {
-        areas.push({
-            id: "area:",
-            name: "Not yet grouped",
-            ungrouped: true,
-            count: loose.length,
-            status: featureStatus(loose, verifiedStatus),
-            failing: loose
-                .map(node => effectiveStatus(node, verifiedStatus))
-                .filter(status => status === "drifted" || status === "error").length,
-            lenses: lensOrder.filter(id => loose.some(node => (node.lensTags ?? []).includes(id))),
-            lensCounts: Object.fromEntries(
-                lensOrder.map(id => [id, loose.filter(node => (node.lensTags ?? []).includes(id)).length])
-            ),
-            oversized: loose.length > FLAT_LIMIT,
-            preview: previewOf(loose),
-            index: areas.length,
-            nodes: loose
-        });
-    }
-
-    return {
-        mode,
-        reason,
-        total: members.length,
-        areas: areas.sort((a, b) => (a.ungrouped ? 1 : b.ungrouped ? -1 : b.count - a.count)),
-        loose,
-        // Which areas feed which, from the steps' own links. The reader
-        // learns the parts of a feature and how they connect, rather than
-        // getting a menu.
-        edges: areaEdges(members)
-    };
-}
-
-// Links between areas, derived from the steps' own edgesOut - the rule the
-// Constellation already applies between features, one level down. A step
-// whose next step lives in another area is what joins them.
-function areaEdges(members) {
-    const areaById = new Map(members.map(node => [node.id, areaOf(node)]));
-
-    const seen = new Set();
-    const edges = [];
-
-    for (const node of members) {
-        const from = areaOf(node);
-        if (!from) continue;
-
-        for (const target of node.edgesOut ?? []) {
-            const to = areaById.get(target);
-            const key = `${from}->${to}`;
-
-            if (!to || to === from || seen.has(key)) continue;
-
-            seen.add(key);
-            edges.push({ from: `area:${from}`, to: `area:${to}` });
-        }
-    }
-
-    return edges;
-}
-
-// Which card each step of a feature ended up on, by step id. One lookup, so
-// every part of the view agrees about where a step lives.
-export function cardOf(plan, featureId, verifiedStatus) {
-    const byId = new Map();
-
-    for (const area of buildAreas(plan, featureId, verifiedStatus).areas) {
-        for (const node of area.nodes) byId.set(node.id, area.name);
-    }
-
-    return byId;
-}
-
-// Where a step's journey continues when the next step is on another card.
-// Hiding this would be the worst thing the hierarchy could do: following one
-// request the whole way through is what the Plan Graph is for, so a step
-// that leads out of the part says where it leads.
-export function exitsFrom(all, insideIds, cards) {
-    const titleById = new Map(all.map(node => [node.id, node.title]));
-
-    const exits = new Map();
-
-    for (const node of all) {
-        if (!insideIds.has(node.id)) continue;
-
-        for (const target of node.edgesOut ?? []) {
-            if (insideIds.has(target)) continue;
-
-            const to = cards.get(target);
-            if (!to) continue;
-
-            exits.set(node.id, { area: to, nodeId: target, title: titleById.get(target) });
-        }
-    }
-
-    return exits;
-}
-
 
 // --------------------------------------------------
 // THE THREE REGISTERS OF A FEATURE
@@ -975,369 +820,6 @@ export function evidenceLines(facts) {
 // says not to build.
 export const CARD_EVIDENCE_LINES = 2;
 
-// --------------------------------------------------
-// BANDS
-// --------------------------------------------------
-// A long spine is banded by the heading the outline already gave each step,
-// and the bands are drawn as lanes on the one canvas rather than as cards
-// you click into. That distinction is the whole reason this works where the
-// middle level did not: a lane is a label on something you can see, and a
-// card is a door in front of it. "Build · 31 steps" told the reader the size
-// of a thing it was hiding.
-//
-// One band is not a banding - it is the feature - so a spine whose steps all
-// share a heading, or share none, is drawn plain.
-//
-// GROUPING COSTS THE GLOBAL STEP ORDER, AND THAT IS THE RIGHT TRADE.
-// A heading is not always a phase of the journey. On a measured pipeline the
-// headings recur the whole way down - Fetch, Transform, Fetch, Transform -
-// so splitting the spine wherever the heading changes turned four headings
-// into thirty-four lanes, nearly all of them holding one step. Grouping is
-// what makes a 59-step feature readable, so grouping wins; what has to give
-// is the claim that reading down the canvas walks the steps in their plan
-// order. The view says so instead of implying otherwise, and the number on
-// each card counts the canvas rather than the plan.
-// --------------------------------------------------
-
-export function bandsOf(steps) {
-    // Banding exists to make a LONG spine manageable - the same reason
-    // FLAT_LIMIT gates the areas level one screen over. A spine short
-    // enough to read flat never needs lanes, however many headings the
-    // outline gave it: splitting five steps into two labeled lanes
-    // fragments something that would read as one flow on its own.
-    if (steps.length <= FLAT_LIMIT) return [];
-
-    const order = [];
-    const byName = new Map();
-
-    for (const node of steps) {
-        const name = areaOf(node) ?? "";
-
-        if (!byName.has(name)) {
-            byName.set(name, []);
-            order.push(name);
-        }
-
-        byName.get(name).push(node);
-    }
-
-    if (byName.size < 2) return [];
-
-    // By where each band starts in the journey, so the lanes read in the
-    // order a person meets them rather than the order the plan lists them.
-    const firstStep = nodes =>
-        Math.min(...nodes.map(node =>
-            Number.isFinite(node.step) ? node.step : Number.MAX_SAFE_INTEGER));
-
-    return order
-        .map(name => ({ name, nodes: byName.get(name) }))
-        .sort((left, right) => firstStep(left.nodes) - firstStep(right.nodes));
-}
-
-
-export function buildFeatureGraph(plan, featureId, verifiedStatus, lensId = null, areaName = null, factsByIdentity = {}) {
-    const registers = featureRegisters(plan, featureId);
-
-    // Only what the system DOES is a step. The terms, the preconditions and
-    // the helpers are still drawn - beside the spine, by the view - and a
-    // feature whose nodes predate roles has all of them on the spine, which
-    // is exactly what it had before.
-    const all = registers.spine;
-
-    // The parked middle level. Unreachable while a feature opens straight
-    // onto its steps; left working so that turning it back on is one call.
-    const members = areaName === null
-        ? all
-        : (buildAreas(plan, featureId, verifiedStatus).areas
-            .find(area => (area.ungrouped ? "" : area.name) === areaName)?.nodes ?? []);
-
-    const exits = areaName === null
-        ? new Map()
-        : exitsFrom(all, new Set(members.map(node => node.id)), cardOf(plan, featureId, verifiedStatus));
-
-    const ids = new Set(members.map(node => node.id));
-
-    const edges = [];
-
-    for (const node of members) {
-        for (const target of node.edgesOut ?? []) {
-            if (ids.has(target) && target !== node.id) {
-                edges.push({ from: node.id, to: target });
-            }
-        }
-    }
-
-    // --------------------------------------------------
-    // LAYOUT
-    // --------------------------------------------------
-    // The flow reads top to bottom, step 1 at the top, and bands follow one
-    // another in journey order. A band's own steps are layered by what calls
-    // what, so a step that leads to another sits below it.
-    //
-    // What shares a row depends on the shape of the links. Where any step
-    // leads to, or is reached from, more than one other, that is a real
-    // branch or merge, and steps with nothing between them share a row, side
-    // by side - stacking them would draw a sequence the code does not have.
-    // Where no step does, there is nothing to fan out: the flow is one
-    // column, and putting siblings beside each other would only make a plain
-    // sequence look like a branch. No links at all is a set, not a flow, and
-    // stays a row.
-    //
-    // Which one applies is decided by the links alone. Bands, headings and
-    // lenses group what is drawn; they never move a step off its column.
-    // --------------------------------------------------
-
-    const links = new Map();
-    for (const { from, to } of edges) {
-        links.set(`out ${from}`, (links.get(`out ${from}`) ?? 0) + 1);
-        links.set(`in ${to}`, (links.get(`in ${to}`) ?? 0) + 1);
-    }
-    const oneColumn = edges.length > 0 && Math.max(...links.values()) === 1;
-
-    const bands = bandsOf(members);
-    const groups = bands.length > 0 ? bands : [{ name: "", nodes: members }];
-
-    // The concrete facts behind each title - "calls jwt.verify", "answers
-    // 401" - capped to what a card can show without becoming the inspector.
-    // Empty, never invented, when nothing was extracted for this identity.
-    //
-    // Worked out here rather than where the node is built, because a card
-    // carrying evidence lines is taller and the rows below have to clear it.
-    const evidenceOf = new Map(members.map(node => [
-        node.id,
-        evidenceLines(factsByIdentity[node.identity]).slice(0, CARD_EVIDENCE_LINES)
-    ]));
-
-    const rows = [];
-    const bandRuns = [];
-
-    for (const band of groups) {
-        const inBand = new Set(band.nodes.map(node => node.id));
-        const bandEdges = edges.filter(edge => inBand.has(edge.from) && inBand.has(edge.to));
-        const layer = layerByLongestPath(band.nodes, bandEdges);
-
-        const byLayer = new Map();
-
-        for (const node of band.nodes) {
-            const depth = layer.get(node.id) ?? 0;
-            if (!byLayer.has(depth)) byLayer.set(depth, []);
-            byLayer.get(depth).push(node);
-        }
-
-        const start = rows.length;
-
-        for (const depth of [...byLayer.keys()].sort((a, b) => a - b)) {
-            // Within one row, the order a person meets them.
-            const row = byLayer.get(depth).sort((left, right) =>
-                (Number.isFinite(left.step) ? left.step : Number.MAX_SAFE_INTEGER) -
-                (Number.isFinite(right.step) ? right.step : Number.MAX_SAFE_INTEGER));
-
-            if (oneColumn) row.forEach(node => rows.push([node]));
-            else rows.push(row);
-        }
-
-        bandRuns.push({ name: band.name, from: start, to: rows.length - 1, count: band.nodes.length });
-    }
-
-    const reading = node => (lensId && node.readings?.[lensId]) || node.title;
-    const placed = node => Number.isFinite(node.x) && Number.isFinite(node.y);
-
-    // A row is as tall as its tallest card, and the next row clears it. A
-    // merged step carries an extra line for the nouns it reads across, and a
-    // step with evidence carries a line per fact, so rows are no longer
-    // interchangeable in height.
-    const rowHeights = rows.map(row =>
-        Math.max(...row.map(node => cardHeight({
-            backing: Array.isArray(node.identities) ? node.identities.length : 1,
-            evidence: evidenceOf.get(node.id)
-        }))));
-
-    // Each row starts a fixed gap below the last one ends. Rows are not
-    // snapped to the grid one by one: that rounds every gap differently, and
-    // a column whose spacing wanders looks arranged by accident.
-    const rowTop = [];
-    let nextTop = snap(TOP_Y);
-
-    for (let index = 0; index < rows.length; index += 1) {
-        rowTop.push(nextTop);
-        nextTop += rowHeights[index] + CARD_GAP;
-    }
-
-    const rowY = index => rowTop[index];
-
-    const nodes = [];
-
-    // Rows run top to bottom, so this counts down the canvas: the number on
-    // a card is its place in what the reader is looking at. It used to be
-    // the plan's own step, which jumps about once the spine is grouped - a
-    // measured feature read 1, 2, 4, 3 down the page.
-    let position = 0;
-
-    const rowMinX = [];
-
-    rows.forEach((row, rowIndex) => {
-        row.forEach((node, column) => {
-            // Rows of one stay on the centre line, so an ordinary feature
-            // looks exactly as it did; a row of several spreads about it.
-            const offset = (column - (row.length - 1) / 2) * (NODE_W + COLUMN_GAP);
-
-            position += 1;
-
-            const x = placed(node) ? node.x : snap(CENTER_X + offset);
-            rowMinX[rowIndex] = Math.min(rowMinX[rowIndex] ?? x, x);
-
-            nodes.push({
-                id: node.id,
-                step: position,
-                // What the plan calls this step. Kept because it is the
-                // order the model actually assigned, and the two differ.
-                planStep: Number.isFinite(node.step) ? node.step : null,
-                title: reading(node),
-                plainTitle: node.title,
-                sub: nodeSub(node),
-                status: effectiveStatus(node, verifiedStatus),
-                lensTags: node.lensTags ?? [],
-                role: roleOf(node),
-                // What the node stands for, when it stands for more than one
-                // declaration. The view says so rather than showing the
-                // first and quietly holding the rest.
-                backing: Array.isArray(node.identities) ? node.identities.length : 1,
-                // The same lines the row was measured against, above.
-                evidence: evidenceOf.get(node.id) ?? [],
-                h: rowHeights[rowIndex],
-                dimensions: Array.isArray(node.dimensions) ? node.dimensions : [],
-                renamed: Boolean(lensId && node.readings?.[lensId]),
-                owns: Boolean(lensId && (node.lensTags ?? []).includes(lensId)),
-                x,
-                y: placed(node) ? node.y : rowY(rowIndex),
-                moved: placed(node),
-                exit: exits.get(node.id) ?? null,
-                source: node
-            });
-        });
-    });
-
-    // --------------------------------------------------
-    // EDGES
-    // --------------------------------------------------
-    // Only what the code shows. The fallback that chained every step to the
-    // next one in plan order is gone: it drew a line between siblings and
-    // called it a sequence, and a reader cannot tell an invented arrow from
-    // an earned one. Where nothing calls anything, nothing is drawn, and the
-    // rows say what is true - these are things this feature does.
-    // --------------------------------------------------
-
-    return {
-        nodes,
-        edges,
-        // Where each lane starts and ends on the canvas, so the view can
-        // label it. Empty when the spine is not worth banding.
-        bands: bands.length > 0
-            ? bandRuns.map(run => ({
-                name: run.name,
-                count: run.count,
-                top: rowY(run.from),
-                bottom: rowY(run.to),
-                height: rowY(run.to) + rowHeights[run.to] - rowY(run.from),
-                // Where THIS band's cards start, not where the widest row in
-                // the feature starts. A label placed from the latter is
-                // dragged left by whichever row happens to be widest, and
-                // ends up hundreds of pixels from the steps it names.
-                minX: Math.min(...rowMinX.slice(run.from, run.to + 1))
-            }))
-            : [],
-        // For the bands above and below the spine, which sit against the
-        // rows they are next to rather than against the whole feature.
-        topRowX: rowMinX.length ? rowMinX[0] : CENTER_X,
-        bottomRowX: rowMinX.length ? rowMinX[rowMinX.length - 1] : CENTER_X
-    };
-}
-
-// How far a connector that has to go round a card sits from the column.
-const SKIP_LANE = 28;
-
-// The line for one link in the Feature Flow, which runs top to bottom.
-//
-// Neighbours in one column get a straight line from the bottom of one card
-// to the top of the next: a sequence should read without decoding the
-// geometry. A link that would cross another card in the same column - it
-// skips ahead, or loops back - runs down the right of the column instead. A
-// straight line there would pass behind the cards between and read as an
-// edge into each of them.
-//
-// Cards in different columns are an ordinary branch or merge, joined by an
-// elbow.
-export function flowEdgePath(from, to, nodes, cardW) {
-    const height = node => node.h ?? NODE_H_EST;
-    const centre = node => node.x + cardW / 2;
-
-    if (from.x !== to.x) {
-        const midY = (from.y + height(from) + to.y) / 2;
-        return `M ${centre(from)} ${from.y + height(from)} L ${centre(from)} ${midY} L ${centre(to)} ${midY} L ${centre(to)} ${to.y}`;
-    }
-
-    const between = nodes.some(node =>
-        node !== from && node !== to && node.x === from.x &&
-        node.y > Math.min(from.y, to.y) && node.y < Math.max(from.y, to.y));
-
-    if (to.y > from.y && !between) {
-        return `M ${centre(from)} ${from.y + height(from)} L ${centre(to)} ${to.y}`;
-    }
-
-    const lane = from.x + cardW + SKIP_LANE;
-    const out = from.y + height(from) / 2;
-    const back = to.y + height(to) / 2;
-
-    return `M ${from.x + cardW} ${out} L ${lane} ${out} L ${lane} ${back} L ${to.x + cardW} ${back}`;
-}
-
-
-function layerByLongestPath(members, edges) {
-    const outgoing = new Map(members.map(node => [node.id, []]));
-    for (const edge of edges) outgoing.get(edge.from).push(edge.to);
-
-    // Depth-first order, skipping back edges, gives a topological order of
-    // the graph with cycles broken - each node is visited exactly once.
-    const state = new Map();
-    const order = [];
-    const backEdges = new Set();
-
-    const visit = id => {
-        state.set(id, "open");
-        for (const next of outgoing.get(id)) {
-            if (state.get(next) === "open") {
-                backEdges.add(`${id}->${next}`);
-            } else if (!state.has(next)) {
-                visit(next);
-            }
-        }
-        state.set(id, "done");
-        order.push(id);
-    };
-
-    for (const node of members) {
-        if (!state.has(node.id)) visit(node.id);
-    }
-
-    order.reverse();
-
-    const layer = new Map(members.map(node => [node.id, 0]));
-
-    for (const id of order) {
-        for (const next of outgoing.get(id)) {
-            if (backEdges.has(`${id}->${next}`)) continue;
-            layer.set(next, Math.max(layer.get(next), layer.get(id) + 1));
-        }
-    }
-
-    return layer;
-}
-
-
-// --------------------------------------------------
-// LENSES
-// --------------------------------------------------
-
 // A lens keeps its colour from its position in the vocabulary, so the same
 // perspective is the same colour here and in Project Evolution. A lens a
 // project defined for itself takes a colour after the vocabulary's.
@@ -1359,7 +841,11 @@ export function lensColors(plan) {
 // perspective re-describes, and a zero says the feature has nothing to tell
 // you from there.
 export function lensCoverage(plan, featureId) {
-    const members = nodesInFeature(plan, featureId);
+    // The feature's STEPS. It used to count every node, so a feature whose
+    // terms and preconditions carried a lens showed "5" on the pill while
+    // the line under it said "4 of 7 steps" - two numbers for one thing,
+    // neither of them wrong on its own.
+    const members = featureRegisters(plan, featureId).spine;
 
     // Every step now carries a reading in every lens, so counting readings
     // would print the step count four times over. The useful number is how
@@ -1377,6 +863,659 @@ export function lensCoverage(plan, featureId) {
             empty: count === 0
         };
     });
+}
+
+
+// --------------------------------------------------
+// PARTS
+// --------------------------------------------------
+// A long feature opens folded, one row per part, rather than dropping
+// eighty cards on the reader. A part is the first heading the outline
+// already gave each step, so the fold follows a grouping somebody made
+// rather than one the view invented.
+//
+// This replaces the lanes, which labelled a banded column off to one side
+// and left every card on screen at once: a label on something you cannot
+// read is not a way through it.
+// --------------------------------------------------
+
+// How many steps a feature can show flat before it folds.
+export const RANGE_SIZE = 10;
+
+export function partsOf(steps) {
+    const order = [];
+    const byName = new Map();
+
+    for (const node of steps) {
+        const name = areaOf(node) ?? "";
+
+        if (!byName.has(name)) {
+            byName.set(name, []);
+            order.push(name);
+        }
+
+        byName.get(name).push(node);
+    }
+
+    // Insertion order is step order, so the parts already read in the
+    // order a person meets them. Steps the outline never placed come last
+    // whenever they came up, because "Other steps" is not a stage of
+    // anything - it is what is left.
+    const parts = order
+        .filter(name => name !== "")
+        .map(name => ({ id: `part:${name}`, name, nodes: byName.get(name) }));
+
+    if (byName.has("")) {
+        parts.push({ id: "part:", name: "Other steps", other: true, nodes: byName.get("") });
+    }
+
+    // One part is not a grouping - it is the feature. A feature the
+    // outline put under one heading folds into ranges instead, which at
+    // least tells the reader where they are.
+    if (parts.length === 1) {
+        return rangesOf(parts[0].nodes);
+    }
+
+    return parts;
+}
+
+
+function rangesOf(steps) {
+    const ranges = [];
+
+    for (let at = 0; at < steps.length; at += RANGE_SIZE) {
+        const slice = steps.slice(at, at + RANGE_SIZE);
+
+        ranges.push({
+            id: `part:range:${at}`,
+            name: `Steps ${at + 1}–${at + slice.length}`,
+            range: true,
+            nodes: slice
+        });
+    }
+
+    return ranges;
+}
+
+
+// --------------------------------------------------
+// LENSES FOLD; THEY NEVER RENAME
+// --------------------------------------------------
+// A lens used to replace each card's title with that perspective's own
+// reading of it, so the same step appeared under four different names
+// depending on which pill was lit, and entering a feature switched the
+// first lens on - so the titles a reader saw first were never the plan's.
+//
+// A perspective is a way of reading one journey, not a second journey. So
+// the titles, the numbers and the positions hold still, the steps the
+// lens speaks to are outlined in its colour, and the runs in between fold
+// into a row that says how many are there.
+//
+// Folding rather than hiding, because a reader has to be able to see that
+// something was left out, and open it.
+// --------------------------------------------------
+
+function inLens(node, lensId) {
+    return !lensId || (node?.lensTags ?? []).includes(lensId);
+}
+
+
+// One row per run of consecutive entries the lens has nothing to say
+// about. An open row keeps its members, drawn muted.
+function foldRuns(entries, speaks, label, openFolds, hiddenIn) {
+    const out = [];
+
+    let run = [];
+
+    const flush = () => {
+        if (run.length === 0) return;
+
+        const id = `fold:${run[0].id}`;
+        const open = openFolds.includes(id);
+        const count = run.length;
+
+        out.push({
+            kind: "fold",
+            id,
+            open,
+            count,
+            label: open ? `Fold ${label(count)}` : label(count)
+        });
+
+        for (const entry of run) {
+            if (open) {
+                out.push({ ...entry, muted: true });
+            } else {
+                for (const node of entry.nodes ?? []) {
+                    hiddenIn.set(node.id, id);
+                }
+            }
+        }
+
+        run = [];
+    };
+
+    for (const entry of entries) {
+        if (speaks(entry)) {
+            flush();
+            out.push(entry);
+        } else {
+            run.push(entry);
+        }
+    }
+
+    flush();
+
+    return out;
+}
+
+
+// --------------------------------------------------
+// THE SPINE
+// --------------------------------------------------
+// Everything the feature view draws, as one ordered list of items at one
+// x. Step cards, part rows and fold rows are the same kind of thing to
+// the layout: something with a fixed height that sits on the line.
+//
+// Terms, preconditions and helpers are not on the line. They sit above
+// and below it as folded rows, because they are what the steps are
+// written in rather than things the system does.
+// --------------------------------------------------
+
+const REGISTERS = [
+    { key: "vocabulary", title: "Terms", where: "above" },
+    { key: "machinery", title: "Runs on", where: "below" },
+    { key: "tools", title: "Helpers", where: "below" }
+];
+
+export function buildSpine(plan, featureId, {
+    verifiedStatus = {},
+    lensId = null,
+    facts = {},
+    openPart = null,
+    openFolds = [],
+    openRegisters = []
+} = {}) {
+    const registers = featureRegisters(plan, featureId);
+    const steps = orderSteps(registers.spine);
+
+    const folded = steps.length > FLAT_LIMIT;
+    const parts = folded ? partsOf(steps) : [];
+
+    // --------------------------------------------------
+    // NUMBERS
+    // --------------------------------------------------
+    // What the reader is looking at, not what the plan calls it. `step` is
+    // the sort key; these are positions in the column, so they never skip
+    // and never repeat.
+    const numberById = new Map();
+    const partIdByNode = new Map();
+
+    if (folded) {
+        parts.forEach((part, index) => {
+            for (const node of part.nodes) partIdByNode.set(node.id, part.id);
+
+            if (part.nodes.length === 1) {
+                // A part holding one step is that step's card, so it takes
+                // the part's own number rather than inventing a "3.1".
+                numberById.set(part.nodes[0].id, String(index + 1));
+                return;
+            }
+
+            part.nodes.forEach((node, at) => {
+                numberById.set(node.id, `${index + 1}.${at + 1}`);
+            });
+        });
+    } else {
+        steps.forEach((node, index) => numberById.set(node.id, String(index + 1)));
+    }
+
+    const stepItem = node => ({
+        kind: "step",
+        id: node.id,
+        nodes: [node],
+        number: numberById.get(node.id) ?? "",
+        node,
+        status: effectiveStatus(node, verifiedStatus),
+        detail: detailLine(node, { lensId, facts }),
+        owns: Boolean(lensId && (node.lensTags ?? []).includes(lensId))
+    });
+
+    const hiddenIn = new Map();
+
+    const label = (what, count) =>
+        `${count} ${count === 1 ? what : `${what}s`} outside ${lensName(plan, lensId)}`;
+
+    let body;
+
+    if (!folded) {
+        body = foldRuns(
+            steps.map(stepItem),
+            entry => inLens(entry.node, lensId),
+            count => label("step", count),
+            openFolds,
+            hiddenIn
+        );
+    } else {
+        const rows = parts.map((part, index) => {
+            if (part.nodes.length === 1) {
+                return { ...stepItem(part.nodes[0]), partId: part.id };
+            }
+
+            const lensCount = part.nodes.filter(node => inLens(node, lensId)).length;
+            const statuses = part.nodes.map(node => effectiveStatus(node, verifiedStatus));
+
+            return {
+                kind: "part",
+                id: part.id,
+                nodes: part.nodes,
+                number: String(index + 1),
+                name: part.name,
+                count: part.nodes.length,
+                open: openPart === part.id,
+                status: featureStatus(part.nodes, verifiedStatus),
+                // Drift is never hidden behind a fold. A part row that
+                // holds a problem says so, and says how many.
+                failing: statuses.filter(status => status === "drifted" || status === "error").length,
+                lenses: (plan?.lenses ?? [])
+                    .map(lens => lens.id)
+                    .filter(id => part.nodes.some(node => (node.lensTags ?? []).includes(id))),
+                lensCount: lensId ? lensCount : null,
+                lensLabel: lensId ? `${lensCount} of ${part.nodes.length} ${lensName(plan, lensId)}` : null
+            };
+        });
+
+        // At the top level of a folded feature every row is a part, even
+        // the ones drawn as a single step's card. So a run the lens has
+        // nothing to say about folds as parts, and the reader is told how
+        // many parts they are not being shown - not how many steps, which
+        // would be a number about something they cannot see yet.
+        const top = lensId
+            ? foldRuns(
+                rows,
+                entry => entry.nodes.some(node => inLens(node, lensId)),
+                count => `${count} ${count === 1 ? "part" : "parts"} outside ${lensName(plan, lensId)}`,
+                openFolds,
+                hiddenIn
+            )
+            : rows;
+
+        body = [];
+
+        for (const entry of top) {
+            body.push(entry);
+
+            if (entry.kind !== "part" || !entry.open) continue;
+
+            // Inside an open part, the same step-folding rule applies.
+            const inside = entry.nodes.map(node => ({ ...stepItem(node), partId: entry.id }));
+
+            body.push(...(lensId
+                ? foldRuns(
+                    inside,
+                    item => inLens(item.node, lensId),
+                    count => label("step", count),
+                    openFolds,
+                    hiddenIn
+                )
+                : inside));
+        }
+    }
+
+    // --------------------------------------------------
+    // BESIDE THE LINE
+    // --------------------------------------------------
+    const registerRow = ({ key, title }) => {
+        const nodes = registers[key];
+
+        if (nodes.length === 0) return null;
+
+        const id = `register:${key}`;
+
+        return {
+            kind: "register",
+            id,
+            title,
+            count: nodes.length,
+            open: openRegisters.includes(id),
+            offLine: true,
+            chips: nodes.map(node => ({
+                id: node.id,
+                title: node.title,
+                status: effectiveStatus(node, verifiedStatus)
+            }))
+        };
+    };
+
+    const above = REGISTERS.filter(entry => entry.where === "above").map(registerRow).filter(Boolean);
+    const below = REGISTERS.filter(entry => entry.where === "below").map(registerRow).filter(Boolean);
+
+    const items = [...above, ...body, ...below];
+
+    // --------------------------------------------------
+    // ONE COLUMN
+    // --------------------------------------------------
+    let y = snap(TOP_Y);
+
+    for (const item of items) {
+        item.x = snap(COLUMN_X);
+        item.h = item.kind === "step" ? STEP_H : ROW_H;
+        item.y = y;
+
+        y += item.h + CARD_GAP;
+    }
+
+    // The line joins neighbouring items on it, and means one thing: next
+    // in this feature. Never an arrowhead, because it is not a claim about
+    // cause - that is what a call arc is for.
+    const onLine = items.filter(item => !item.offLine);
+
+    const links = onLine
+        .slice(0, -1)
+        .map((item, index) => ({ from: item.id, to: onLine[index + 1].id }));
+
+    return {
+        items,
+        links,
+        folded,
+        parts,
+        numberById,
+        partIdByNode,
+        hiddenIn,
+        // Every drifted step in the feature, in order, whether it is on
+        // screen or folded away. Next drift walks this.
+        drifts: steps
+            .filter(node => {
+                const status = effectiveStatus(node, verifiedStatus);
+                return status === "drifted" || status === "error";
+            })
+            .map(node => node.id),
+        flowLabel: folded ? "in step order · folded by part" : "in step order"
+    };
+}
+
+
+export function lensName(plan, lensId) {
+    if (!lensId) return "";
+
+    const lens = (plan?.lenses ?? []).find(entry => entry.id === lensId);
+
+    return lens?.label ?? lensId;
+}
+
+
+// The next drifted step after the one in hand, wrapping round. Returns null
+// when the feature has none.
+export function nextDrift(drifts, currentId) {
+    if (!Array.isArray(drifts) || drifts.length === 0) return null;
+
+    const at = drifts.indexOf(currentId);
+
+    return drifts[(at + 1) % drifts.length];
+}
+
+
+// --------------------------------------------------
+// CALLS
+// --------------------------------------------------
+// edgesOut means one thing now: this step's code calls that step's code.
+// It is never the layout, because a call is not an order - four risk
+// lookups that all call the same helper are siblings, not a sequence.
+//
+// It shows as a chip that names where the call goes, and as an arc in the
+// gutter when the card is selected. A step folded away still gets named on
+// the chip; it just has no arc to draw to.
+// --------------------------------------------------
+
+export const CHIP_TARGETS = 2;
+
+export function callsChips(node, { numberById = new Map(), featureOfNode = new Map(), featureNames = new Map() } = {}) {
+    const inside = [];
+    const outside = [];
+
+    for (const target of node?.edgesOut ?? []) {
+        if (target === node.id) continue;
+
+        if (numberById.has(target)) {
+            inside.push(target);
+            continue;
+        }
+
+        const feature = featureOfNode.get(target);
+
+        if (feature) outside.push(feature);
+    }
+
+    const chips = [];
+
+    if (inside.length > 0) {
+        const shown = inside.slice(0, CHIP_TARGETS).map(id => numberById.get(id));
+        const rest = inside.length - shown.length;
+
+        chips.push({
+            kind: "calls",
+            targets: inside,
+            text: `→ calls ${shown.join(", ")}${rest > 0 ? ` +${rest}` : ""}`
+        });
+    }
+
+    for (const feature of [...new Set(outside)]) {
+        chips.push({
+            kind: "exit",
+            feature,
+            text: `↗ ${featureNames.get(feature) ?? feature}`
+        });
+    }
+
+    return chips;
+}
+
+
+// Arcs for the selected card only: out to each visible step it calls, and
+// in from each visible step that calls it.
+export function callArcs(selectedId, items, plan) {
+    if (!selectedId) return [];
+
+    const visible = new Set(items.filter(item => item.kind === "step").map(item => item.id));
+
+    if (!visible.has(selectedId)) return [];
+
+    const byId = new Map((plan?.nodes ?? []).map(node => [node.id, node]));
+    const selected = byId.get(selectedId);
+
+    const arcs = [];
+
+    for (const target of selected?.edgesOut ?? []) {
+        if (target !== selectedId && visible.has(target)) {
+            arcs.push({ from: selectedId, to: target, direction: "out" });
+        }
+    }
+
+    for (const node of plan?.nodes ?? []) {
+        if (node.id === selectedId || !visible.has(node.id)) continue;
+
+        if ((node.edgesOut ?? []).includes(selectedId)) {
+            arcs.push({ from: node.id, to: selectedId, direction: "in" });
+        }
+    }
+
+    return arcs;
+}
+
+
+// --------------------------------------------------
+// FIND A STEP
+// --------------------------------------------------
+// Across the whole plan, and into what a summary step covers - otherwise
+// folding a feature would make the steps inside it unfindable, which is
+// the one thing the cap must never cost.
+// --------------------------------------------------
+
+export const FIND_RESULTS = 8;
+
+function fileOf(identity) {
+    const file = String(identity ?? "").split("::")[0];
+    return file.split("/").pop() ?? "";
+}
+
+export function findSteps(plan, query, limit = FIND_RESULTS) {
+    const text = String(query ?? "").trim().toLowerCase();
+
+    if (!text) return [];
+
+    const results = [];
+
+    for (const feature of plan?.features ?? []) {
+        const steps = orderedSteps(plan, feature.id);
+        const parts = steps.length > FLAT_LIMIT ? partsOf(steps) : [];
+
+        const partOf = new Map();
+
+        for (const part of parts) {
+            for (const node of part.nodes) partOf.set(node.id, part.id);
+        }
+
+        for (const node of steps) {
+            const identities = Array.isArray(node.identities) && node.identities.length > 0
+                ? node.identities
+                : node.identity ? [node.identity] : [];
+
+            const haystack = [
+                node.title,
+                ...identities.map(declarationName),
+                ...identities.map(fileOf),
+                ...coveredSteps(node).map(entry => entry.title)
+            ];
+
+            if (!haystack.some(value => String(value ?? "").toLowerCase().includes(text))) continue;
+
+            results.push({
+                id: node.id,
+                title: node.title,
+                feature: feature.id,
+                featureName: feature.name,
+                part: partOf.get(node.id) ?? null,
+                label: `${node.title} · ${feature.name}`
+            });
+
+            if (results.length === limit) return results;
+        }
+    }
+
+    return results;
+}
+
+
+// --------------------------------------------------
+// WHAT A WHEEL MEANS
+// --------------------------------------------------
+// Plain wheel and two-finger trackpad scrolling pan. A pinch arrives as
+// ctrl+wheel, and Ctrl/Cmd+wheel is the deliberate zoom - so zooming is
+// something you ask for, and scrolling is what a wheel does everywhere
+// else on the machine.
+// --------------------------------------------------
+
+export function wheelAction({
+    deltaX = 0,
+    deltaY = 0,
+    deltaMode = 0,
+    ctrlKey = false,
+    metaKey = false,
+    shiftKey = false
+} = {}) {
+    if (ctrlKey || metaKey) {
+        return {
+            kind: "zoom",
+            factor: zoomFactorFor({ deltaY, deltaMode, ctrlKey, metaKey })
+        };
+    }
+
+    const unit = DELTA_UNIT[deltaMode] ?? 1;
+
+    // Shift turns a vertical wheel sideways, which is what a mouse with one
+    // wheel has. A trackpad already sends deltaX and needs no help.
+    const sideways = shiftKey && deltaX === 0;
+
+    return {
+        kind: "pan",
+        dx: (sideways ? deltaY : deltaX) * unit,
+        dy: (sideways ? 0 : deltaY) * unit
+    };
+}
+
+
+export function clampScale(scale, max = 2.2) {
+    return Math.max(MIN_SCALE, Math.min(max, scale));
+}
+
+
+// --------------------------------------------------
+// WHAT THE APPROVE BUTTON APPROVES
+// --------------------------------------------------
+// The label has to be exactly what the click does. Inside a feature with a
+// lens on it said "Approve Security" and ran a plan-wide --lens, so it
+// approved security steps in every other feature too - steps the reader
+// had never opened, under a label that said they had.
+//
+// The count is intended NODES, every role, because that is what the CLI
+// call will approve. A button that counts steps and approves terms as well
+// is the same lie one size smaller.
+// --------------------------------------------------
+
+export function approveScope(plan, { featureId = null, lensId = null } = {}) {
+    const nodes = (plan?.nodes ?? []).filter(node => node.status === "intended");
+
+    const feature = (plan?.features ?? []).find(entry => entry.id === featureId);
+
+    const count = matched => matched.length;
+
+    const breakdown = matched => {
+        const roles = [
+            ["behaviour", "step", "steps"],
+            ["vocabulary", "term", "terms"],
+            ["machinery", "precondition", "preconditions"],
+            ["tool", "helper", "helpers"]
+        ];
+
+        return roles
+            .map(([role, one, many]) => {
+                const total = matched.filter(node => roleOf(node) === role).length;
+                return total === 0 ? null : `${total} ${total === 1 ? one : many}`;
+            })
+            .filter(Boolean);
+    };
+
+    if (!featureId) {
+        return {
+            scope: "plan",
+            label: `Approve plan (${count(nodes)})`,
+            count: count(nodes),
+            breakdown: breakdown(nodes),
+            message: { type: "approveAll" }
+        };
+    }
+
+    const inFeature = nodes.filter(node => node.feature === featureId);
+
+    if (!lensId) {
+        return {
+            scope: "feature",
+            label: `Approve ${feature?.name ?? featureId} (${count(inFeature)})`,
+            count: count(inFeature),
+            breakdown: breakdown(inFeature),
+            message: { type: "approveFeature", featureId }
+        };
+    }
+
+    const scoped = inFeature.filter(node => (node.lensTags ?? []).includes(lensId));
+
+    return {
+        scope: "feature-lens",
+        label: `Approve ${lensName(plan, lensId)} (${count(scoped)})`,
+        count: count(scoped),
+        breakdown: breakdown(scoped),
+        message: { type: "approveLens", lensId, featureId }
+    };
 }
 
 

@@ -8,6 +8,7 @@ import {
 } from "../llm/behaviour.js";
 
 import {
+    DEFAULT_ROLE,
     declarationName
 } from "../llm/roles.js";
 
@@ -47,6 +48,27 @@ import {
 
 export const FEATURE_STEP_CAP = 20;
 
+// --------------------------------------------------
+// AND NO SUMMARY STEP MAY COVER MORE THAN THIS
+// --------------------------------------------------
+// The cap keeps a feature readable; this keeps each card reviewable, and
+// it is the harder of the two constraints.
+//
+// Measured on expressjs/express 4.21.2: a feature with 25 approved steps
+// already fills the cap, so its budget falls to one group, and every one
+// of the 136 new steps folded into a single card. Nobody reviews a card
+// that covers 136 steps - and the honest failure is a feature that stays
+// over twenty and says why, not one card standing in for half the repo.
+//
+// So the cap gives way first. A feature that cannot reach its budget
+// without breaking this limit stops folding and reports the overflow.
+//
+// Counted in COVERED STEPS - summaryOf entries, flattened - not in
+// declarations, because covered steps are what a reader has to read.
+// --------------------------------------------------
+
+export const MAX_SUMMARY_SIZE = 12;
+
 // How many summary steps go in one titling request. Small enough that the
 // answer stays inside a reply, large enough that a capped draft is a
 // handful of calls rather than one per group.
@@ -57,11 +79,23 @@ export const TITLE_CHUNK = 15;
 // WHAT MAY BE FOLDED
 // --------------------------------------------------
 
+// A node with no role is a step. That is what DEFAULT_ROLE says, what
+// roleOf() in the webview draws, and what the draft falls back to - but
+// the cap used to require the field to be present, so a step added with
+// `plan add` (which writes no role) did not count towards the cap, and a
+// plan drafted before roles existed was never summarised at all.
+function roleOf(
+    node
+) {
+    return node?.role || DEFAULT_ROLE;
+}
+
+
 function isEligible(
     node
 ) {
     return (
-        node?.role === "behaviour" &&
+        roleOf(node) === "behaviour" &&
         node?.origin === "ai_drafted" &&
         node?.status === "intended" &&
         !(
@@ -77,7 +111,28 @@ function isEligible(
 function isBehaviour(
     node
 ) {
-    return node?.role === "behaviour";
+    return roleOf(node) === "behaviour";
+}
+
+
+// What one group would cost a reader: the steps it covers, not the
+// declarations it holds. A member that is already a summary contributes
+// everything IT covers, so folding twice cannot smuggle a group past the
+// limit one level down.
+function coveredSize(
+    group
+) {
+    return group.members.reduce(
+        (total, member) =>
+            total +
+            (
+                Array.isArray(member.summaryOf) &&
+                member.summaryOf.length > 0
+                    ? member.summaryOf.length
+                    : 1
+            ),
+        0
+    );
 }
 
 
@@ -258,7 +313,8 @@ function soleCallerGroup(
 function foldCallTree(
     groups,
     budget,
-    callers
+    callers,
+    limit
 ) {
     // ponytail: one merge per sweep, candidates recomputed. O(groups^3) at
     // worst; batch a whole sweep if a single feature ever holds thousands.
@@ -299,14 +355,26 @@ function foldCallTree(
                     );
 
                 if (
-                    into !== -1 &&
-                    into !== index
+                    into === -1 ||
+                    into === index
                 ) {
-                    candidates.push({
-                        into,
-                        from: index
-                    });
+                    return;
                 }
+
+                // A call is the best reason there is to fold two steps
+                // together, and it is still not a reason to build a card
+                // nobody can read.
+                if (
+                    coveredSize(groups[into]) +
+                        coveredSize(group) > limit
+                ) {
+                    return;
+                }
+
+                candidates.push({
+                    into,
+                    from: index
+                });
             }
         );
 
@@ -334,9 +402,14 @@ function foldCallTree(
 
 // The smallest pair of neighbours, where "neighbours" means adjacent in
 // the list of positions handed in. Ties go to the earliest.
+//
+// Measured in covered steps, and a pair whose combined size would break
+// the limit is not a candidate at all - so the fold stops rather than
+// growing one unreadable card. Returns null when nothing may merge.
 function smallestPair(
     groups,
-    positions
+    positions,
+    limit
 ) {
     let best = null;
 
@@ -352,8 +425,14 @@ function smallestPair(
             positions[at + 1];
 
         const size =
-            groups[left].members.length +
-            groups[right].members.length;
+            coveredSize(groups[left]) +
+            coveredSize(groups[right]);
+
+        if (
+            size > limit
+        ) {
+            continue;
+        }
 
         if (
             !best ||
@@ -377,7 +456,8 @@ function smallestPair(
 
 function foldSamePart(
     groups,
-    budget
+    budget,
+    limit
 ) {
     while (
         groups.length > budget
@@ -421,7 +501,8 @@ function foldSamePart(
             const pair =
                 smallestPair(
                     groups,
-                    positions
+                    positions,
+                    limit
                 );
 
             if (
@@ -456,7 +537,8 @@ function foldSamePart(
 
 function foldNeighbours(
     groups,
-    budget
+    budget,
+    limit
 ) {
     while (
         groups.length > budget
@@ -466,7 +548,8 @@ function foldNeighbours(
                 groups,
                 groups.map(
                     (_, index) => index
-                )
+                ),
+                limit
             );
 
         if (
@@ -681,16 +764,22 @@ function buildSummary(
                     ]
         );
 
-    const headings =
-        ordered.map(headingOf);
-
-    const sharedHeading =
-        headings[0] &&
-        headings.every(
-            heading => heading === headings[0]
-        )
-            ? headings[0]
-            : null;
+    // --------------------------------------------------
+    // THE FALLBACK TITLE
+    // --------------------------------------------------
+    // The lead step's own title, and how many others came with it.
+    //
+    // This used to be the shared part heading, which reads well once and
+    // is useless in bulk: on expressjs/express one feature came out with
+    // seven cards called "response" and four called "Router", and the
+    // reader cannot tell any of them apart. A part name belongs in `path`,
+    // where the interface already draws it - not in seven titles.
+    //
+    // The lead is the way into the group, so its title is the one line
+    // that is certainly true of where the group starts.
+    // --------------------------------------------------
+    const covers =
+        summaryOf.length;
 
     return {
         id,
@@ -712,13 +801,13 @@ function buildSummary(
         // something that holds up. This is the fallback, written here so
         // that the plan this function returns is always valid on its own.
         title:
-            sharedHeading || lead.title,
+            `${lead.title} +${covers - 1} more`,
 
         intent:
-            `Covers ${summaryOf.length} steps: ${summaryOf
+            `Covers ${covers} steps: ${summaryOf
                 .slice(0, 3)
                 .map(entry => entry.title)
-                .join(", ")}…`,
+                .join(", ")}${covers > 3 ? "…" : ""}`,
 
         ...(lensTags.length > 0
             ? { lensTags }
@@ -760,6 +849,7 @@ export function summariseFeatures(
     plan,
     {
         cap = FEATURE_STEP_CAP,
+        maxSummary = MAX_SUMMARY_SIZE,
         callGraph = null
     } = {}
 ) {
@@ -852,8 +942,14 @@ export function summariseFeatures(
                 cap - fixed.length
             );
 
+        const before =
+            fixed.length + eligible.length;
+
+        // A feature that already fits, and is not over the cap for any
+        // other reason, has nothing to say.
         if (
-            eligible.length <= budget
+            eligible.length <= budget &&
+            before <= cap
         ) {
             continue;
         }
@@ -867,21 +963,34 @@ export function summariseFeatures(
                     })
                 );
 
-        foldCallTree(
-            groups,
-            budget,
-            callers
-        );
+        if (
+            eligible.length > budget
+        ) {
+            foldCallTree(
+                groups,
+                budget,
+                callers,
+                maxSummary
+            );
 
-        foldSamePart(
-            groups,
-            budget
-        );
+            foldSamePart(
+                groups,
+                budget,
+                maxSummary
+            );
 
-        foldNeighbours(
-            groups,
-            budget
-        );
+            foldNeighbours(
+                groups,
+                budget,
+                maxSummary
+            );
+        }
+
+        // Every pass stops when no pair may merge without breaking the
+        // summary limit, so still being over budget here means the limit
+        // is what stopped it.
+        const limited =
+            groups.length > budget;
 
         let folded =
             0;
@@ -912,7 +1021,13 @@ export function summariseFeatures(
 
             summaries.push({
                 node,
-                members: group.members
+                members: group.members,
+
+                // The feature's NAME, for the titling prompt. It used to
+                // send node.feature, which is the id: a model asked to
+                // name a step in "feat_0003" has been told nothing.
+                featureName:
+                    nameOf(featureId)
             });
 
             for (
@@ -929,9 +1044,6 @@ export function summariseFeatures(
             );
         }
 
-        const before =
-            fixed.length + eligible.length;
-
         const after =
             fixed.length + groups.length;
 
@@ -940,6 +1052,19 @@ export function summariseFeatures(
                 0,
                 after - cap
             );
+
+        // A feature left over the cap says WHY, in the words of whichever
+        // constraint actually stopped it. Both can be true at once.
+        const because =
+            [
+                fixed.length > 0
+                    ? `${fixed.length} settled steps`
+                    : null,
+
+                limited
+                    ? `no summary step may cover more than ${maxSummary}`
+                    : null
+            ].filter(Boolean);
 
         report.push({
             feature:
@@ -960,11 +1085,13 @@ export function summariseFeatures(
 
             overflow,
 
+            limited,
+
             line:
                 `${nameOf(featureId)}: ${before} steps → ${after} (${folded} summary steps)` +
                 (
-                    overflow > 0
-                        ? ` — still ${overflow} over the cap of ${cap}: ${fixed.length} settled steps cannot be folded`
+                    overflow > 0 && because.length > 0
+                        ? ` — still ${overflow} over the cap of ${cap}: ${because.join(", and ")}`
                         : ""
                 )
         });
@@ -1018,20 +1145,85 @@ export function summariseFeatures(
 // reporting; it is not worth failing a draft over.
 // --------------------------------------------------
 
+// --------------------------------------------------
+// A TITLE MUST NOT NAME A FUNCTION
+// --------------------------------------------------
+// But only a name that READS as a function. This was a case-insensitive
+// substring match over every declaration name, which meant a group
+// holding functions called save, get, score or submit rejected every
+// ordinary title written about them: "Save all answers together" was
+// refused because one of its members is called save, and the group fell
+// back to a worse title than the model had offered.
+//
+// A name earns the check by being code-shaped - it carries an underscore,
+// a dot, parentheses, or an internal capital - and then it is matched as a
+// whole word. A plain English word is always allowed in a title, whatever
+// the code happens to call a function.
+// --------------------------------------------------
+
+function isCodeShaped(
+    name
+) {
+    return (
+        /[_.()]/.test(name) ||
+        /[a-z][A-Z]/.test(name)
+    );
+}
+
+
 function memberNames(
     summary
 ) {
-    return [
-        ...new Set(
-            (summary.node.identities || [])
-                .map(declarationName)
-                .filter(
-                    name =>
-                        typeof name === "string" &&
-                        name.length >= 3
-                )
-        )
-    ];
+    const names =
+        new Set();
+
+    for (
+        const identity of summary.node.identities || []
+    ) {
+        const name =
+            declarationName(identity);
+
+        if (
+            typeof name !== "string" ||
+            !name
+        ) {
+            continue;
+        }
+
+        // The whole name, and each dotted segment on its own, so
+        // Store.agency_risk_for_scope is caught by either half.
+        for (
+            const part of [name, ...name.split(".")]
+        ) {
+            if (
+                part.length >= 3 &&
+                isCodeShaped(part)
+            ) {
+                names.add(part);
+            }
+        }
+    }
+
+    return [...names];
+}
+
+
+function namesFunction(
+    title,
+    name
+) {
+    const escaped =
+        name.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+        );
+
+    // A word boundary written out, because \b is defined over word
+    // characters and a name may end in a bracket.
+    return new RegExp(
+        `(^|[^A-Za-z0-9_])${escaped}([^A-Za-z0-9_]|$)`,
+        "i"
+    ).test(title);
 }
 
 
@@ -1059,7 +1251,7 @@ function buildTitlePrompt(
 
                     return (
                         `key: ${summary.node.id}\n` +
-                        `feature: ${summary.node.feature}\n` +
+                        `feature: ${summary.featureName || summary.node.feature}\n` +
                         `part: ${headingOf(summary.node) || "(none)"}\n` +
                         `covers:\n${covers}`
                     );
@@ -1133,11 +1325,10 @@ function titleProblem(
     const named =
         memberNames(summary).find(
             name =>
-                title
-                    .toLowerCase()
-                    .includes(
-                        name.toLowerCase()
-                    )
+                namesFunction(
+                    title,
+                    name
+                )
         );
 
     if (
@@ -1166,6 +1357,10 @@ export async function titleSummaries(
         chunk = TITLE_CHUNK
     } = {}
 ) {
+    // { id, reason } rather than one sentence, so a run where every
+    // summary step failed for the SAME reason - the model was unreachable,
+    // typically - can say it once with a count instead of printing 36
+    // identical lines.
     const fallbacks =
         [];
 
@@ -1186,9 +1381,10 @@ export async function titleSummaries(
         for (
             const summary of list
         ) {
-            fallbacks.push(
-                `${summary.node.id}: no model configured, so the fallback title was used`
-            );
+            fallbacks.push({
+                id: summary.node.id,
+                reason: "no model configured"
+            });
         }
 
         return { fallbacks };
@@ -1216,9 +1412,10 @@ export async function titleSummaries(
             for (
                 const summary of batch
             ) {
-                fallbacks.push(
-                    `${summary.node.id}: ${error.message}, so the fallback title was used`
-                );
+                fallbacks.push({
+                    id: summary.node.id,
+                    reason: error.message
+                });
             }
 
             continue;
@@ -1257,9 +1454,10 @@ export async function titleSummaries(
             if (
                 problem
             ) {
-                fallbacks.push(
-                    `${summary.node.id}: ${problem}, so the fallback title was used`
-                );
+                fallbacks.push({
+                    id: summary.node.id,
+                    reason: problem
+                });
 
                 continue;
             }

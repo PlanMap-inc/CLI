@@ -275,11 +275,41 @@ export function selectNodes(
         };
     }
 
+    // --------------------------------------------------
+    // ONE LENS, INSIDE ONE FEATURE
+    // --------------------------------------------------
+    // The only pair that means anything: "approve this feature's security
+    // steps". Everything else is still one selector at a time, because
+    // "an identity in this feature" narrows nothing and "--all --lens"
+    // is just --lens.
+    //
+    // Without this the interface could only offer to approve a lens
+    // across the WHOLE plan from inside one feature, which is not what
+    // the button appears to say.
+    // --------------------------------------------------
+    if (
+        selectors === 2 &&
+        hasFeature &&
+        hasLens
+    ) {
+        return {
+            matched:
+                nodes.filter(
+                    node =>
+                        node?.feature === feature &&
+                        Array.isArray(node?.lensTags) &&
+                        node.lensTags.includes(lens)
+                ),
+
+            errors: []
+        };
+    }
+
     if (selectors > 1) {
         return {
             matched: [],
             errors: [
-                "Use only one target selector."
+                "Use only one target selector, or --feature with --lens."
             ]
         };
     }

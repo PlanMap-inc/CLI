@@ -4,6 +4,7 @@ import {
     coversBlocks,
     coveredStepTitle,
     describeViolation,
+    detailLine,
     effectiveStatus,
     isSummary,
     nodeSub
@@ -72,13 +73,60 @@ const facts = {
 // steps, and two is the number a reader can act on.
 
 assert.equal(isSummary(summary), true);
-assert.equal(nodeSub(summary), "covers 2 steps");
+
+// The CODE line reads like any other node standing for several
+// declarations: it says where to go and check, which is what that line is
+// for on every card. How much is behind the card is a different question,
+// and it is answered on the detail line below.
+assert.equal(nodeSub(summary), "3 declarations · store.js");
+
+assert.deepEqual(
+    detailLine(summary),
+    { kind: "covers", text: "covers 2 steps" },
+    "the detail line says how many steps are behind the card"
+);
 
 assert.equal(
-    nodeSub({ ...summary, summaryOf: [summary.summaryOf[0]] }),
+    detailLine({ ...summary, summaryOf: [summary.summaryOf[0]] }).text,
     "covers 1 step",
     "one covered step reads as one step, not '1 steps'"
 );
+
+// --------------------------------------------------
+// THE DETAIL LINE, IN ORDER
+// --------------------------------------------------
+// A lens reading wins, then a summary's count, then the nouns a family
+// merge reads across, then a fact from the code.
+
+const withReading = { ...summary, readings: { security: "Refuse a read the caller may not make" } };
+
+assert.deepEqual(
+    detailLine(withReading, { lensId: "security" }),
+    { kind: "reading", lens: "security", text: "Refuse a read the caller may not make" },
+    "a lens reading outranks the covers line"
+);
+
+assert.equal(
+    detailLine(withReading, { lensId: "backend" }).kind,
+    "covers",
+    "a lens with nothing to say here falls through"
+);
+
+assert.equal(detailLine(withReading).kind, "covers", "and so does no lens at all");
+
+assert.deepEqual(
+    detailLine({ identity: ORDERS, identities: [ORDERS, INVOICES], dimensions: ["order", "invoice"] }),
+    { kind: "dimensions", text: "across order · invoice" },
+    "a family merge names what it reads across"
+);
+
+assert.deepEqual(
+    detailLine({ identity: ORDERS }, { facts }),
+    { kind: "evidence", text: "calls fetchRows" },
+    "otherwise, one fact from the code"
+);
+
+assert.equal(detailLine({ identity: ORDERS }), null, "and nothing when there is nothing true to say");
 
 // An ordinary node, and a family merge, are untouched.
 assert.equal(

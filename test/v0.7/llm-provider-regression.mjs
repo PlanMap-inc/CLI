@@ -146,4 +146,68 @@ import { parseOpenRouterJson } from "../../src/llm/response.js";
     fs.rmSync(root, { recursive: true, force: true });
 }
 
+/*
+ * 4. A key is itself an answer.
+ *
+ *    Setting up an OpenRouter key is how a person says which provider they
+ *    use. Pointing them at a local Ollama anyway means the key does nothing
+ *    until they also find PLANMAP_LLM_ENDPOINT, and every run until then
+ *    fails against a server they never started.
+ *
+ *    Tested through chooseProvider, which is the whole decision.
+ *    LLM_ENDPOINT is read once when config.js is first imported, and this
+ *    asks it five questions.
+ */
+{
+    const { chooseProvider } =
+        await import("../../src/llm/config.js?case=provider");
+
+    const OLLAMA = "http://localhost:11434/v1/chat/completions";
+    const OPENROUTER = "https://openrouter.ai/api/v1/chat/completions";
+
+    // A key, and nothing else said: OpenRouter.
+    assert.deepEqual(
+        chooseProvider({ apiKey: "sk-or-v1-whatever" }),
+        { endpoint: OPENROUTER, model: "nvidia/nemotron-3-ultra-550b-a55b:free" },
+        "a key with no endpoint means the provider that key is for"
+    );
+
+    // No key: the local default, free and needing none.
+    assert.deepEqual(
+        chooseProvider({}),
+        { endpoint: OLLAMA, model: "qwen2.5-coder:7b" },
+        "no key at all still means a local model"
+    );
+
+    // An explicitly empty key is how you say "stay offline" out loud. It
+    // is not a key, so it never selects a hosted provider.
+    assert.deepEqual(
+        chooseProvider({ apiKey: "" }),
+        { endpoint: OLLAMA, model: "qwen2.5-coder:7b" },
+        "an empty key is not a key"
+    );
+
+    // An endpoint set on purpose wins over both, whatever key is around.
+    assert.equal(
+        chooseProvider({
+            endpoint: "https://example.invalid/v1/chat/completions",
+            apiKey: "sk-or-v1-whatever"
+        }).endpoint,
+        "https://example.invalid/v1/chat/completions",
+        "an endpoint set on purpose is never second-guessed"
+    );
+
+    assert.equal(
+        chooseProvider({ endpoint: OLLAMA, apiKey: "sk-or-v1-whatever" }).endpoint,
+        OLLAMA,
+        "including when it points back at the local default"
+    );
+
+    // An explicit model wins over whichever default would apply.
+    assert.equal(
+        chooseProvider({ apiKey: "sk-or-v1-whatever", model: "my/model" }).model,
+        "my/model"
+    );
+}
+
 console.log("llm provider regression passed");

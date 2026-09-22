@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 
 import {
     FEATURE_STEP_CAP,
+    MAX_SUMMARY_SIZE,
     summariseFeatures
 } from "../../src/plan/summarise.js";
 
@@ -366,6 +367,141 @@ assert.deepEqual(
 
 for (const entry of summary.summaryOf) {
     assert.ok(entry.title, "every covered step keeps its own title");
+}
+
+// --------------------------------------------------
+// NO SUMMARY STEP COVERS MORE THAN TWELVE
+// --------------------------------------------------
+// The cap keeps a feature readable; this keeps a card reviewable. Where
+// the two conflict the cap gives way, because a feature over twenty that
+// says so is honest, and one card standing for 136 steps is not.
+
+const coversOf = node =>
+    Array.isArray(node.summaryOf) ? node.summaryOf.length : 1;
+
+for (const result of [capped, mixed, split, overfull, roomy]) {
+    for (const node of result.nodes.filter(node => node.merge === "summary")) {
+        assert.ok(
+            coversOf(node) <= MAX_SUMMARY_SIZE,
+            `${node.id} covers ${coversOf(node)} steps, over the limit of ${MAX_SUMMARY_SIZE}`
+        );
+    }
+}
+
+
+// --------------------------------------------------
+// THE EXPRESS CASE: 25 SETTLED, 136 ELIGIBLE
+// --------------------------------------------------
+// Budget 1. Before the limit this produced one card covering 136 steps.
+
+{
+    const many = Array.from({ length: 136 }, (_, at) =>
+        drafted(500 + at, { id: `plan_${String(500 + at).padStart(4, "0")}` }));
+
+    const result = summariseFeatures(planOf([...settled(25), ...many]));
+
+    const summaries = result.nodes.filter(node => node.merge === "summary");
+
+    for (const node of summaries) {
+        assert.ok(
+            coversOf(node) <= MAX_SUMMARY_SIZE,
+            `${node.id} covers ${coversOf(node)} steps`
+        );
+    }
+
+    // Nothing is lost to the limit.
+    const held = result.nodes.flatMap(nodeIdentities);
+
+    assert.equal(new Set(held).size, held.length, "no declaration appears twice");
+
+    assert.deepEqual(
+        [...held].sort(),
+        [...settled(25), ...many].map(node => node.identity).sort(),
+        "every declaration survives a fold that had to stop early"
+    );
+
+    // The feature stays over the cap, and says why.
+    const entry = result.report[0];
+
+    assert.ok(entry.overflow > 0, "the feature is still over the cap");
+    assert.equal(entry.limited, true, "and the summary limit is what stopped it");
+
+    assert.match(
+        entry.line,
+        /still \d+ over the cap of 20: 25 settled steps, and no summary step may cover more than 12/,
+        `the line must name both reasons:\n${entry.line}`
+    );
+
+    assert.deepEqual(validatePlan(planOf(result.nodes)), [], "the plan still validates");
+}
+
+
+// --------------------------------------------------
+// AN ORDINARY FEATURE IS UNAFFECTED
+// --------------------------------------------------
+// 45 steps and a full budget still land on exactly 20, because nothing
+// there needs a group of more than twelve.
+
+assert.equal(behaviours.length, FEATURE_STEP_CAP);
+
+assert.ok(
+    behaviours.every(node => coversOf(node) <= MAX_SUMMARY_SIZE),
+    "no group in a normal feature comes near the limit"
+);
+
+
+// --------------------------------------------------
+// A NODE WITH NO ROLE IS A STEP
+// --------------------------------------------------
+// DEFAULT_ROLE says so, the webview draws it so, and the draft falls back
+// to it - but the cap used to need the field present, so a step added
+// with `plan add` never counted, and a plan drafted before roles existed
+// was never folded at all.
+
+{
+    const roleless = Array.from({ length: 30 }, (_, at) => {
+        const node = drafted(800 + at, { id: `plan_${String(800 + at).padStart(4, "0")}` });
+        delete node.role;
+        return node;
+    });
+
+    const result = summariseFeatures(planOf(roleless));
+
+    assert.equal(
+        result.nodes.length,
+        FEATURE_STEP_CAP,
+        "role-less intended steps are folded like any other"
+    );
+
+    assert.ok(result.summaries.length > 0);
+}
+
+{
+    // Role-less and approved: settled, so it is never folded and it still
+    // spends the feature's budget.
+    const settledRoleless = Array.from({ length: 18 }, (_, at) => {
+        const node = drafted(900 + at, {
+            id: `plan_${String(900 + at).padStart(4, "0")}`,
+            status: "approved",
+            approvedBy: "sam"
+        });
+        delete node.role;
+        return node;
+    });
+
+    const openTen = open(10, 950);
+
+    const result = summariseFeatures(planOf([...settledRoleless, ...openTen]));
+
+    for (const node of settledRoleless) {
+        assert.ok(result.nodes.includes(node), `${node.id} must come out untouched`);
+    }
+
+    assert.equal(
+        result.nodes.length,
+        20,
+        "18 role-less settled steps plus 10 open ones come out at the cap"
+    );
 }
 
 console.log("PASS: summarise-grouping");

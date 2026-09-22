@@ -237,11 +237,29 @@ export function loadLlmApiKey() {
 //   ollama pull qwen2.5-coder:7b
 //
 // PLANMAP_LLM_ENDPOINT and PLANMAP_LLM_MODEL point PlanMap at any other
-// OpenAI-compatible server, such as OpenRouter:
+// OpenAI-compatible server:
 //
 //   PLANMAP_LLM_ENDPOINT=https://openrouter.ai/api/v1/chat/completions
 //   PLANMAP_LLM_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
 //   OPENROUTER_API_KEY=...   (hosted providers need a key; local ones do not)
+//
+// --------------------------------------------------
+// AND A KEY IS ITSELF AN ANSWER
+// --------------------------------------------------
+// Setting up a key is how a person says which provider they use. Pointing
+// them at Ollama anyway means a key that does nothing until they also find
+// PLANMAP_LLM_ENDPOINT, and every run until then fails against a server
+// they never started.
+//
+// So the endpoint is chosen in three steps:
+//
+//   1. an explicit PLANMAP_LLM_ENDPOINT - or the VS Code setting, which
+//      reaches this as the same variable - always wins
+//   2. otherwise, a key that is actually available means OpenRouter
+//   3. otherwise, the local Ollama default
+//
+// A key set to an EMPTY string is not a key. It is how you say "stay
+// offline" out loud, and it still means no model.
 // --------------------------------------------------
 
 const DEFAULT_ENDPOINT =
@@ -250,15 +268,67 @@ const DEFAULT_ENDPOINT =
 const DEFAULT_MODEL =
     "qwen2.5-coder:7b";
 
+const OPENROUTER_ENDPOINT =
+    "https://openrouter.ai/api/v1/chat/completions";
+
+const OPENROUTER_MODEL =
+    "nvidia/nemotron-3-ultra-550b-a55b:free";
+
+
+// Exported so the choice can be tested on its own. LLM_ENDPOINT and
+// LLM_MODEL are read once when this module is first imported, so a test
+// that varied the environment would otherwise have to re-import it.
+export function chooseProvider(
+    {
+        endpoint = null,
+        model = null,
+        apiKey = null
+    } = {}
+) {
+    if (
+        endpoint
+    ) {
+        return {
+            endpoint,
+            model: model || DEFAULT_MODEL
+        };
+    }
+
+    if (
+        apiKey
+    ) {
+        return {
+            endpoint: OPENROUTER_ENDPOINT,
+            model: model || OPENROUTER_MODEL
+        };
+    }
+
+    return {
+        endpoint: DEFAULT_ENDPOINT,
+        model: model || DEFAULT_MODEL
+    };
+}
+
+
+const PROVIDER =
+    chooseProvider({
+        endpoint:
+            setting("PLANMAP_LLM_ENDPOINT"),
+
+        model:
+            setting("PLANMAP_LLM_MODEL"),
+
+        apiKey:
+            loadLlmApiKey()
+    });
+
 
 export const LLM_ENDPOINT =
-    setting("PLANMAP_LLM_ENDPOINT") ||
-    DEFAULT_ENDPOINT;
+    PROVIDER.endpoint;
 
 
 export const LLM_MODEL =
-    setting("PLANMAP_LLM_MODEL") ||
-    DEFAULT_MODEL;
+    PROVIDER.model;
 
 
 // A model served on this machine needs no API key.

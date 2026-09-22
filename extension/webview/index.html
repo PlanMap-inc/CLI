@@ -64,6 +64,15 @@
                its command follow where you are - the whole plan on the
                Constellation, the active lens inside a feature. -->
           <div class="view-controls">
+            <!-- Finding a step has to work whether or not it is folded away,
+                 so it searches the plan rather than the canvas. -->
+            <div class="find-box">
+              <input class="find-input" id="findInput" type="search" placeholder="Find step" aria-label="Find step" />
+              <div class="find-results" id="findResults" hidden></div>
+            </div>
+            <!-- Only while the view actually holds one: a button that is
+                 always there stops being a signal. -->
+            <button class="icon-btn" id="nextDriftBtn" hidden title="Go to the next drifted step, opening whatever is folded in front of it">Next drift</button>
             <button class="icon-btn" id="approveBtn">Approve plan</button>
             <button class="icon-btn" id="verifyBtn" title="Check every approved plan node against the code">Verify against code</button>
           </div>
@@ -74,20 +83,12 @@
             <div class="graph-canvas" id="constellationCanvas">
               <div class="grid-layer" id="constellationGrid"></div>
               <div class="canvas-content" id="constellationContent"><svg class="edges" id="constellationEdges"></svg></div>
-              <div class="flow-tag" id="constellationFlowTag" hidden><span class="arrow-up">↑</span> <span id="constellationFlowLabel">the order a person meets them</span></div>
-            </div>
-            <!-- Level 2. A set, not a journey: behavioural areas are parts of
-                 a capability, not stages of it, so they are laid out to be
-                 surveyed at a glance rather than followed in order. -->
-            <div class="graph-canvas hidden" id="areasCanvas">
-              <div class="grid-layer" id="areasGrid"></div>
-              <div class="canvas-content" id="areasContent"><svg class="edges" id="areasEdges"></svg></div>
-              <div class="flow-tag areas-tag" id="areasTag" hidden><span id="areasTagText"></span></div>
+              <div class="flow-tag" id="constellationFlowTag" hidden><span class="arrow-down">↓</span> <span id="constellationFlowLabel">in the order a person meets them</span></div>
             </div>
             <div class="graph-canvas hidden" id="featureCanvas">
               <div class="grid-layer" id="featureGrid"></div>
               <div class="canvas-content" id="featureContent"><svg class="edges" id="featureEdges"></svg></div>
-              <div class="flow-tag"><span class="arrow-down">↓</span> <span id="featureFlowLabel">the order the steps happen</span></div>
+              <div class="flow-tag"><span class="arrow-down">↓</span> <span id="featureFlowLabel">in step order</span></div>
             </div>
             <div class="empty-state" id="emptyState" hidden><div class="empty-card" id="emptyCard"></div></div>
             <!-- Tools that act on the canvas live on the canvas, at the edge

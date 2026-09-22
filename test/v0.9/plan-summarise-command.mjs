@@ -133,11 +133,18 @@ assert.deepEqual(
 // The features list is not disturbed.
 assert.deepEqual(capped.features, before.features);
 
-// With no key, every summary step kept its deterministic fallback title.
+// With no key, every summary step kept its deterministic fallback title -
+// said once with a count, not once per step.
 assert.match(
     first.stdout,
-    /Summary steps named from their own parts, not the model/,
-    "the run says the titles came from the fallback"
+    /^\d+ summary steps use fallback titles: .+$/m,
+    `one grouped line, not one per step:\n${first.stdout}`
+);
+
+assert.equal(
+    first.stdout.split("\n").filter(line => /fallback title/.test(line)).length,
+    1,
+    `every fallback shares one reason, so it is printed once:\n${first.stdout}`
 );
 
 for (const summary of capped.nodes.filter(node => node.merge === "summary")) {
@@ -150,21 +157,36 @@ for (const summary of capped.nodes.filter(node => node.merge === "summary")) {
 // SECOND RUN CHANGES NOTHING
 // --------------------------------------------------
 
+const planPath = path.join(root, ".planmap", "plan.json");
+const beforeSecond = fs.readFileSync(planPath, "utf8");
+const beforeStat = fs.statSync(planPath).mtimeMs;
+
 const second = runCli(["plan", "summarise", root], root, { apiKey: "" });
 
 assert.equal(second.code, 0, `the second run failed:\n${second.stdout}\n${second.stderr}`);
 
 assert.match(
     second.stdout,
-    /already inside the step cap/,
-    `a plan that already fits must say so:\n${second.stdout}`
+    /^Nothing to fold\.$/m,
+    `a plan with nothing to fold must say so:\n${second.stdout}`
 );
 
-assert.deepEqual(
-    readPlanFile(root),
-    capped,
+// Byte-identical, and untouched. Rewriting it relinks every edge, which
+// is how a hand-made order chain was being replaced by call edges on a
+// run that reported it had changed nothing.
+assert.equal(
+    fs.readFileSync(planPath, "utf8"),
+    beforeSecond,
     "running the cap twice must leave the plan byte-for-byte the same"
 );
+
+assert.equal(
+    fs.statSync(planPath).mtimeMs,
+    beforeStat,
+    "a run with nothing to fold must not write the file at all"
+);
+
+assert.deepEqual(readPlanFile(root), capped);
 
 
 // --------------------------------------------------
@@ -183,11 +205,55 @@ assert.deepEqual(
 
     const kept = readPlanFile(small);
 
+    const path_ = path.join(small, ".planmap", "plan.json");
+    const stat = fs.statSync(path_).mtimeMs;
+
     const result = runCli(["plan", "summarise", small], small, { apiKey: "" });
 
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stdout, /already inside the step cap/);
+    assert.match(result.stdout, /^Nothing to fold\.$/m);
     assert.deepEqual(readPlanFile(small), kept, "a feature under the cap is left alone");
+    assert.equal(fs.statSync(path_).mtimeMs, stat, "and is not rewritten");
+}
+
+
+// --------------------------------------------------
+// OVER THE CAP WITH NOTHING TO FOLD IS STILL SAID
+// --------------------------------------------------
+// A feature whose settled steps alone fill the cap cannot be folded, and
+// "Nothing to fold." on its own would read as "everything is fine".
+
+{
+    const settled = project();
+
+    const plan = readPlanFile(settled);
+
+    fs.writeFileSync(
+        path.join(settled, ".planmap", "plan.json"),
+        JSON.stringify({
+            ...plan,
+            nodes: plan.nodes.slice(0, 25).map(node => ({
+                ...node,
+                status: "approved",
+                approvedBy: "sam"
+            }))
+        }, null, 2)
+    );
+
+    const kept = readPlanFile(settled);
+
+    const result = runCli(["plan", "summarise", settled], settled, { apiKey: "" });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /^Nothing to fold\.$/m);
+
+    assert.match(
+        result.stdout,
+        /Data Store: 25 steps → 25 \(0 summary steps\) — still 5 over the cap of 20: 25 settled steps/,
+        `a feature left over the cap must say why:\n${result.stdout}`
+    );
+
+    assert.deepEqual(readPlanFile(settled), kept, "and nothing is touched");
 }
 
 console.log("PASS: plan-summarise-command");
