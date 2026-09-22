@@ -573,8 +573,15 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 /* display:flex beat the hidden attribute, so the list stayed over the
    canvas after a result was chosen - and left a 280x2px line when empty. */
 .find-results[hidden] { display: none; }
+/* Under the Find box, hanging to the RIGHT of it. It used to hang left
+   - right:0 on a 150px box with a 280px list - so wherever the bar wrapped
+   and put Find near the left edge, 130px of every result was drawn off
+   the window: at 800px the list started at x = -58. The actions sit at
+   the right end of their row, so there is always room to the right, and
+   the width is capped for a window narrower than the list. */
 .find-results {
-    position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: 280px;
+    position: absolute; left: 0; right: auto; top: calc(100% + 6px); z-index: 20;
+    width: 280px; max-width: calc(100vw - 32px);
     display: flex; flex-direction: column;
     background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
 }
