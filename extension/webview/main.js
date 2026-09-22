@@ -5,6 +5,8 @@ import {
     buildSpine,
     callArcs,
     callsChips,
+    CARD_METRICS,
+    CARD_W,
     clampScale,
     colorAt,
     constellationEdges,
@@ -17,6 +19,9 @@ import {
     evidenceLines,
     featureRegisters,
     findSteps,
+    followDetail,
+    hasToolbar,
+    isSelectable,
     isSummary,
     lensColors,
     lensCoverage,
@@ -37,6 +42,8 @@ import {
     PAN_SPEED,
     parseScanProgress,
     railModel,
+    ROW_H,
+    STEP_H,
     statusClass,
     statusDotStyle,
     STATUSES,
@@ -50,11 +57,23 @@ import { paint } from "./paint.js";
 // posts, and asks the host for anything that has to touch .planmap/.
 const vscode = acquireVsCodeApi();
 
-// The card the column is built from. One width, one height - see STEP_H
-// in model.js for why every card is the same size now.
-const CARD_W = 172;
-const STEP_H = 118;
-const ROW_H = 56;
+// --------------------------------------------------
+// THE CARD'S OWN NUMBERS, HANDED TO THE STYLESHEET
+// --------------------------------------------------
+// They used to be written twice - once here for the layout and once in
+// styles.css for the rendering - and the two disagreed, so the rows
+// inside a 118px card were squeezed to 11px and 4px and their text was
+// drawn on top of each other.
+//
+// model.js owns them now. They are set on the document as custom
+// properties, and styles.css reads them from there, so there is one set
+// of numbers and nothing to keep in step by hand. CSP governs markup, not
+// the CSSOM, so this lands where a style attribute would not.
+// --------------------------------------------------
+
+for (const [name, value] of Object.entries(CARD_METRICS)) {
+    document.documentElement.style.setProperty(name, `${value}px`);
+}
 
 // How far right of the column a call arc bows. Far enough that it reads as
 // a detour rather than a line through the cards.
@@ -139,14 +158,13 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         const colors = lensColors(plan());
 
         const detail = n.detail
-            ? `<div class="node-detail${n.detail.kind === "reading" ? " reading" : ""}">`
-                + (n.detail.kind === "reading"
-                    ? `<span class="node-lens" data-style="background:${colors[n.detail.lens] ?? "var(--text-low)"}"></span>`
-                    : "")
-                + escapeHtml(n.detail.text)
-                + "</div>"
+            ? (n.detail.kind === "reading"
+                ? `<span class="node-lens" data-style="background:${colors[n.detail.lens] ?? "var(--text-low)"}"></span>`
+                : "") + escapeHtml(n.detail.text)
             : "";
 
+        // The lens dots, the calls chip and the status pill share one row.
+        // Stacking them is what pushed the rows above into each other.
         const chips = (n.chips ?? [])
             .map(chip => `<span class="calls-chip ${chip.kind}">${escapeHtml(chip.text)}</span>`)
             .join("");
@@ -156,11 +174,13 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             <div class="bar" data-style="background:${n.color || dotColor}"></div>
             ${n.number ? `<div class="step">${escapeHtml(n.number)}</div>` : ""}
             <div class="title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</div>
-            ${n.sub ? `<div class="sub" title="${escapeHtml(n.identity ?? n.sub)}">${escapeHtml(n.sub)}</div>` : ""}
-            ${detail}
-            ${chips ? `<div class="node-calls">${chips}</div>` : ""}
-            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
-            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${escapeHtml(n.status)}</div>
+            <div class="sub" title="${escapeHtml(n.identity ?? n.sub ?? "")}">${escapeHtml(n.sub ?? "")}</div>
+            <div class="node-detail${n.detail?.kind === "reading" ? " reading" : ""}" title="${escapeHtml(n.detail?.text ?? "")}">${detail}</div>
+            <div class="node-foot">
+                ${n.lenses?.length ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>` : ""}
+                ${chips}
+                <span class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${escapeHtml(n.status ?? "")}</span>
+            </div>
             <div class="handle bottom"></div>`;
     }
 
@@ -171,16 +191,23 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             ? `${n.failing} of ${n.count} ${n.status}`
             : n.status;
 
+        // Always three preview rows: a feature with fewer steps keeps the
+        // same card, with the spare rows empty rather than collapsed.
+        const preview = Array.from({ length: 3 }, (_, at) => n.preview?.[at])
+            .map(entry => `<div class="preview-step">${entry ? escapeHtml(entry.title) : ""}</div>`)
+            .join("");
+
         return `
             <div class="bar" data-style="background:${n.color || dotColor}"></div>
             ${n.step ? `<div class="step">${n.step}</div>` : ""}
-            <div class="title">${escapeHtml(n.title)}</div>
+            <div class="title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</div>
             <div class="sub">${escapeHtml(n.sub)}</div>
-            ${n.preview?.length ? `<div class="node-preview">${n.preview.map(step => `<div class="preview-step">${escapeHtml(step.title)}</div>`).join("")}</div>` : ""}
-            ${n.lenses?.length ? `<div class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</div>` : ""}
-            <div class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${escapeHtml(state)}</div>`;
+            <div class="node-preview">${preview}</div>
+            <div class="node-foot">
+                ${n.lenses?.length ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>` : ""}
+                <span class="status-pill"><span class="dot" data-style="${statusDotStyle(n.status, n.color || dotColor)}"></span>${escapeHtml(state ?? "")}</span>
+            </div>`;
     }
-
     // A part row, a lens fold row, a register row and the Constellation's
     // setup row are the same object on the canvas: one line that opens.
     function rowCard(n) {
@@ -194,10 +221,17 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
                 : ""
         ].join("");
 
+        // A fold row's label already says how many steps it holds, so it
+        // never gets a second count beside it - that read as
+        // "2 steps out… 2 steps", truncated and repeated.
+        const count = n.kind === "part" && n.count != null
+            ? `<span class="row-count">${n.count} ${n.count === 1 ? "step" : "steps"}</span>`
+            : "";
+
         return `
             ${n.number ? `<div class="step">${escapeHtml(n.number)}</div>` : ""}
-            <div class="row-title">${escapeHtml(n.title)}</div>
-            ${n.count != null ? `<span class="row-count">${n.count} ${n.count === 1 ? "step" : "steps"}</span>` : ""}
+            <div class="row-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</div>
+            ${count}
             ${right}
             <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>`;
     }
@@ -259,7 +293,11 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
 
             if (chip && opts.onChip) { opts.onChip(chip.dataset.chip); return; }
 
-            select(n.id);
+            // A part row, a fold row, a register row and the setup row
+            // only fold and unfold. Selecting one gave it the step
+            // toolbar, and pressing its bin sent `reject` with a part id.
+            if (isSelectable(n)) select(n.id); else deselect();
+
             if (onOpen) onOpen(n);
         });
 
@@ -272,6 +310,8 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     }
 
     function select(id) {
+        if (!isSelectable(nodes.find(entry => entry.id === id))) { deselect(); return; }
+
         selectedId = id;
         contentEl.querySelectorAll(".gnode").forEach(el => el.classList.toggle("selected", el.dataset.id === id));
         renderToolbar();
@@ -289,7 +329,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
         contentEl.querySelector(".node-toolbar")?.remove();
         if (!opts.showToolbar) return;
         const n = nodes.find(x => x.id === selectedId);
-        if (!n) return;
+        if (!hasToolbar(n)) return;
         const tb = document.createElement("div");
         tb.className = "node-toolbar";
         tb.style.left = (n.x + CARD_W - 70) + "px";
@@ -649,7 +689,7 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             dotColor = next.dotColor ?? dotColor;
             edgeColor = next.edgeColor ?? edgeColor;
             onOpen = next.onOpen ?? onOpen;
-            if (selectedId && !nodes.some(n => n.id === selectedId)) selectedId = null;
+            if (!isSelectable(nodes.find(n => n.id === selectedId))) selectedId = null;
             render();
         },
         clearSelection: deselect,
@@ -2052,7 +2092,7 @@ function applyState(next) {
     // An approve, revise or reject re-reads the plan: follow the node (a revise
     // gives it a new id that supersedes the old one), or close if it is gone.
     if (detailNodeId && impactPanel.classList.contains("open")) {
-        const same = inFeature() && featureGraph.nodes.find(n => n.id === detailNodeId || n.source.supersedes === detailNodeId);
+        const same = inFeature() && followDetail(featureGraph.nodes, detailNodeId);
         if (same) openDetail(same); else closeDetail();
     }
 

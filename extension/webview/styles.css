@@ -179,32 +179,54 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
    Rows sit on a fixed pitch, and a node that grew a second line used to eat
    into the space below it - the chain read as though some steps were closer
    together than others, which meant nothing. */
-.gnode{position:absolute;width:172px;min-height:104px;padding:12px 13px 11px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s, box-shadow .15s, transform .12s, opacity .2s;text-align:left;color:inherit;font:inherit;display:flex;flex-direction:column;}
+.gnode{position:absolute;width:var(--card-w);padding:var(--card-pad-top) 14px var(--card-pad-bottom);background:var(--surface-2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:border-color .15s, box-shadow .15s, transform .12s, opacity .2s;text-align:left;color:inherit;font:inherit;display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;}
+/* Nothing inside a card shrinks. It used to: the rows were a flex column
+   that gave way under a two-line title, so a 36px title box became 11px
+   and the two lines under it were drawn over each other. */
+.gnode>*{flex:0 0 auto;}
 .gnode:hover{border-color:var(--text-low);transform:translateY(-2px);box-shadow:0 14px 30px -14px rgba(0,0,0,1);}
 /* Steps are draggable now, so the cursor says so and the one in hand lifts. */
 .gnode{cursor:grab;}
 .gnode.dragging{cursor:grabbing;transform:none;opacity:.9;box-shadow:0 20px 40px -16px rgba(0,0,0,1);z-index:4;transition:none;}
 .gnode .title.editing{-webkit-line-clamp:unset;overflow:visible;outline:none;border-bottom:1px dashed var(--text-low);cursor:text;}
 .gnode.selected{border-color:var(--text-hi); box-shadow:0 0 0 3px rgba(255,255,255,.10), 0 16px 32px -16px rgba(0,0,0,1);}
-.gnode .bar{width:22px;height:3px;border-radius:2px;margin-bottom:8px;}
+/* The colour bar and the gap under it are one row of the grid, so its
+   margin is whatever is left of that row after the bar itself. */
+.gnode .bar{width:22px;height:3px;border-radius:2px;margin-bottom:calc(var(--card-bar-h) - 3px);box-sizing:content-box;}
 /* Two lines, and the full wording is in the node's tooltip. A third line
    would push the step off its row. */
-.gnode .title{font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600;line-height:1.3;letter-spacing:-.01em;outline:none;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.gnode .title{font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:600;line-height:18px;letter-spacing:-.01em;outline:none;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;height:var(--card-title-h);}
 /* The status line sits on the floor of the node, so every node's floor is
    level however long its title ran. */
-.gnode .status-pill{margin-top:auto;}
 /* One line, always. The grounding line names the symbol AND its file now,
    which is long enough to wrap - and a wrapped sub pushes the node past the
    fixed height the row pitch and the edge anchors both measure from. The
    full identity is in the detail panel. */
-.gnode .sub{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--text-low);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.gnode .status-pill{margin-top:8px;display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-mid);}
-.gnode .status-pill .dot{width:5px;height:5px;border-radius:50%;}
+.gnode .sub{font-family:'JetBrains Mono',monospace;font-size:9.5px;line-height:var(--card-sub-h);height:var(--card-sub-h);color:var(--text-low);margin-top:var(--card-row-gap);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* The one detail line. Always drawn, even when there is nothing to say:
+   an empty row keeps every card the same height, and a collapsed one is
+   what made the pitch a lie. */
+.gnode .node-detail{font-family:'Inter',sans-serif;font-size:10.5px;line-height:var(--card-detail-h);height:var(--card-detail-h);color:var(--text-mid);margin-top:var(--card-row-gap);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.gnode .node-detail .node-lens{display:inline-block;vertical-align:middle;margin-right:4px;}
+
+/* The floor of the card: lens dots, the calls chip and the status, side
+   by side on one line. Stacking them is what squeezed the rows above. */
+.gnode .node-foot{display:flex;align-items:center;gap:6px;height:var(--card-foot-h);margin-top:var(--card-foot-gap);overflow:hidden;}
+.gnode .node-foot .node-lenses{margin:0;flex:0 0 auto;}
+.gnode .node-foot .calls-chip{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.gnode .status-pill{display:flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text-mid);margin-left:auto;flex:0 0 auto;white-space:nowrap;}
+.gnode .status-pill .dot{width:5px;height:5px;border-radius:50%;flex:0 0 auto;}
 
 
 /* A step number, because the graph really is a sequence: this happens, then
    this. The lens dots say which perspectives a feature is built from. */
-.gnode .step{position:absolute;top:11px;right:12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);}
+.gnode .step{position:absolute;top:11px;right:12px;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--text-low);z-index:1;}
+/* The number sits in the card's top-right corner, so the title's BOX stops
+   short of it. Padding would have left the box underneath the number and
+   only moved the text, which is a difference nobody can see until a long
+   title runs right up to it. */
+.gnode.step>.title, .gnode.feature>.title{width:calc(100% - 20px);}
 
 /* --- LEVEL 2: BEHAVIOURAL AREAS -----------------------------------------
    Deliberately a different kind of object from a step. Wider, shorter, and
@@ -606,3 +628,87 @@ svg.edges{position:absolute;inset:0;width:6000px;height:6000px;pointer-events:no
 /* "All" sits before the lens pills and carries no swatch: it is the
    absence of a perspective, not another one. */
 .lens-btn.all { font-family: 'Inter', sans-serif; }
+
+
+/* --------------------------------------------------
+   THE CARD GRID, THE ROWS, AND THE TOP BAR
+   --------------------------------------------------
+   Every number here comes from CARD_METRICS in model.js, written onto the
+   document as a custom property. Nothing below invents a size.
+   -------------------------------------------------- */
+
+/* A step card and a Constellation card differ only in which rows they
+   hold, so both take their height from the same place. */
+.gnode.step { height: var(--card-step-h); }
+.gnode.feature { height: var(--card-feature-h); }
+
+.gnode.feature .title {
+    font-size: 15px; line-height: var(--card-feature-title-h);
+    height: var(--card-feature-title-h);
+    -webkit-line-clamp: 1; white-space: nowrap;
+}
+.gnode.feature .sub {
+    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    line-height: var(--card-feature-sub-h); height: var(--card-feature-sub-h);
+    margin-top: var(--card-row-gap);
+}
+
+/* Three preview rows, always three: a feature with fewer steps keeps the
+   same card, with the spare rows empty. */
+.gnode.feature .node-preview {
+    margin-top: var(--card-foot-gap);
+    display: flex; flex-direction: column; gap: var(--card-preview-gap);
+    height: calc(3 * var(--card-preview-line-h) + 2 * var(--card-preview-gap));
+}
+.gnode.feature .preview-step {
+    line-height: var(--card-preview-line-h); height: var(--card-preview-line-h);
+    font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* A part row and a fold row are as wide as a card, so their labels have
+   the room a card's title has. They used to be 172px, which cut
+   "application" to "applicat…" and repeated the fold's own count. */
+.gnode.row { width: var(--card-w); height: var(--card-row-h); }
+.gnode.row .row-title { flex: 0 1 auto; min-width: 0; }
+.gnode.row .row-count, .gnode.row .row-lens, .gnode.row .row-failing { flex: 0 0 auto; }
+.gnode.row .step { position: static; flex: 0 0 auto; }
+
+/* --------------------------------------------------
+   THREE ZONES ACROSS THE TOP, AND THEY NEVER OVERLAP
+   --------------------------------------------------
+   The lens bar was allowed to take whatever width it wanted and slid left
+   over the breadcrumb, so the feature name read "Surve…". The breadcrumb
+   shrinks with an ellipsis, the lens bar scrolls inside its own zone, and
+   the actions keep their size.
+   -------------------------------------------------- */
+
+.toolbar { grid-template-columns: minmax(0, auto) minmax(0, 1fr) max-content; }
+.toolbar > .lens-switch { grid-column: 2; justify-self: start; min-width: 0; max-width: 100%; overflow-x: auto; flex-shrink: 1; scrollbar-width: none; }
+.toolbar > .lens-switch::-webkit-scrollbar { display: none; }
+.lens-switch .lens-btn { flex: 0 0 auto; }
+.view-controls { grid-column: 3; justify-self: end; flex-shrink: 0; }
+.toolbar-left { min-width: 0; }
+.breadcrumb { min-width: 0; overflow: hidden; }
+.breadcrumb .crumb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.breadcrumb .crumb-sep { flex: 0 0 auto; }
+
+/* --------------------------------------------------
+   THE FLOW LABEL STAYS IN ITS CORNER
+   --------------------------------------------------
+   It is a caption on the canvas, not on the content, so it is pinned to
+   the canvas box and takes no part in anything that scrolls or scales.
+   -------------------------------------------------- */
+
+.graph-canvas > .flow-tag { position: absolute; left: 22px; right: auto; top: auto; bottom: 18px; margin: 0; z-index: 3; }
+
+/* --------------------------------------------------
+   EVIDENCE READS LIKE A RULE CLAUSE
+   --------------------------------------------------
+   It had no rule of its own, so it fell back to the panel's body size and
+   rendered noticeably larger than the clauses beside it.
+   -------------------------------------------------- */
+
+.impact-section > .clause {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px;
+    color: var(--text-hi); line-height: 1.6; overflow-wrap: anywhere;
+}

@@ -8,10 +8,6 @@
 // --------------------------------------------------
 
 export const GRID = 24;
-export const NODE_W = 172;
-// Every node is this tall - styles.css pins a min-height so the rows sit
-// on an even pitch. fitView and the edge anchors both measure from it.
-export const NODE_H_EST = 104;
 
 // The demo's feature colours, in the demo's order. Assigned by index.
 export const FEATURE_PALETTE = [
@@ -288,22 +284,58 @@ const CX = 300;
 const CTOP_Y = 60;
 
 // --------------------------------------------------
-// EVERY CARD IS THE SAME HEIGHT
+// A CARD IS A FIXED GRID, AND NO ROW MAY SHRINK
 // --------------------------------------------------
-// It used to depend on its content - a preview block, a backing line, two
-// evidence lines - so a column of cards had a ragged rhythm and every row
-// below one depended on the heights of all the rows above it.
+// Every card is the same height. That much was already true - but the
+// rows inside it were a flex column that was allowed to shrink, so a card
+// holding a two-line title, a code line, a detail line and a calls chip
+// squeezed all of them and drew their text on top of each other. Measured
+// in a browser inside one 118px card: the title box was 11px tall for two
+// lines of 17.55px type, the code line 4px and the detail line 5px. The
+// title was cut mid-letter and the two lines under it were shredded.
 //
-// A card now carries a fixed set of lines: the number and title, the code
-// line, one detail line, the lens dots and the status pill. So the pitch
-// is fixed too, the column reads as a column, and a card's position is
-// its index times the pitch.
+// So the rows are fixed here, in pixels, and nothing is left to the
+// content. Every height below is also written into styles.css as a custom
+// property - see CARD_METRICS - so the layout maths and the stylesheet
+// read the same numbers and cannot drift apart.
 //
-// Measured against styles.css rather than guessed. The gap absorbs a
-// pixel either way.
+// A card with no detail line and no chip is the same height as one with
+// both: the row is empty, never collapsed. That is what keeps the pitch a
+// pitch.
 // --------------------------------------------------
 
-export const STEP_H = 118;
+// 172px could not hold a real title. Measured against the plans this runs
+// on, 240 fits two lines of most of them without an ellipsis.
+export const CARD_W = 240;
+
+const CARD_PAD_TOP = 12;
+const CARD_PAD_BOTTOM = 11;
+
+// The colour bar and the gap under it.
+const BAR_ROW_H = 11;
+
+// Two lines of 13.5px type at line-height 1.3, rounded up.
+const TITLE_H = 36;
+
+// One line each, with an ellipsis. Never two: a second line would push the
+// card past the pitch the whole column is measured on.
+const SUB_H = 14;
+const DETAIL_H = 15;
+
+// The lens dots, the calls chip and the status pill, side by side.
+const FOOT_H = 20;
+
+const ROW_GAP = 4;
+const FOOT_GAP = 8;
+
+export const STEP_H =
+    CARD_PAD_TOP +
+    BAR_ROW_H +
+    TITLE_H + ROW_GAP +
+    SUB_H + ROW_GAP +
+    DETAIL_H + FOOT_GAP +
+    FOOT_H +
+    CARD_PAD_BOTTOM;
 
 // A part row and a fold row: one line of text, a count and a chevron.
 export const ROW_H = 56;
@@ -312,12 +344,94 @@ export const ROW_H = 56;
 // visibly a line rather than a seam.
 export const CARD_GAP = 44;
 
-// The Constellation's cards carry three preview lines, so they are taller
-// than a step - and all of them are the same height as each other.
-export const FEATURE_H = NODE_H_EST + 7 + 3 * 19;
+// The Constellation's card, by the same rule: a title, the "N steps · P
+// parts" line, three preview lines and a footer, none of which shrink.
+const FEATURE_TITLE_H = 21;
+const FEATURE_SUB_H = 14;
+const PREVIEW_LINE_H = 15;
+const PREVIEW_LINES = 3;
+const PREVIEW_GAP = 3;
+
+export const FEATURE_H =
+    CARD_PAD_TOP +
+    BAR_ROW_H +
+    FEATURE_TITLE_H + ROW_GAP +
+    FEATURE_SUB_H + FOOT_GAP +
+    PREVIEW_LINES * PREVIEW_LINE_H + (PREVIEW_LINES - 1) * PREVIEW_GAP + FOOT_GAP +
+    FOOT_H +
+    CARD_PAD_BOTTOM;
+
+// --------------------------------------------------
+// ONE SET OF NUMBERS, TWO READERS
+// --------------------------------------------------
+// The layout maths above and the stylesheet both need these. Hard-coding
+// them twice is how a row ends up 11px tall inside a 118px card, so the
+// view writes them onto the document as custom properties and styles.css
+// reads them from there. CSP governs markup, not the CSSOM, so setting
+// them through style.setProperty is safe.
+// --------------------------------------------------
+
+export const CARD_METRICS = {
+    "--card-w": CARD_W,
+    "--card-pad-top": CARD_PAD_TOP,
+    "--card-pad-bottom": CARD_PAD_BOTTOM,
+    "--card-bar-h": BAR_ROW_H,
+    "--card-title-h": TITLE_H,
+    "--card-sub-h": SUB_H,
+    "--card-detail-h": DETAIL_H,
+    "--card-foot-h": FOOT_H,
+    "--card-row-gap": ROW_GAP,
+    "--card-foot-gap": FOOT_GAP,
+    "--card-step-h": STEP_H,
+    "--card-feature-h": FEATURE_H,
+    "--card-feature-title-h": FEATURE_TITLE_H,
+    "--card-feature-sub-h": FEATURE_SUB_H,
+    "--card-preview-line-h": PREVIEW_LINE_H,
+    "--card-preview-gap": PREVIEW_GAP,
+    "--card-row-h": ROW_H
+};
+
+// What a step card is made of, top to bottom. Exported so a test can add
+// it up rather than trusting that STEP_H was recomputed by hand.
+export const STEP_CARD_ROWS = [
+    CARD_PAD_TOP,
+    BAR_ROW_H,
+    TITLE_H, ROW_GAP,
+    SUB_H, ROW_GAP,
+    DETAIL_H, FOOT_GAP,
+    FOOT_H,
+    CARD_PAD_BOTTOM
+];
+
+export const FEATURE_CARD_ROWS = [
+    CARD_PAD_TOP,
+    BAR_ROW_H,
+    FEATURE_TITLE_H, ROW_GAP,
+    FEATURE_SUB_H, FOOT_GAP,
+    ...Array.from({ length: PREVIEW_LINES }, () => PREVIEW_LINE_H),
+    ...Array.from({ length: PREVIEW_LINES - 1 }, () => PREVIEW_GAP),
+    FOOT_GAP,
+    FOOT_H,
+    CARD_PAD_BOTTOM
+];
 
 export function cardHeight() {
     return STEP_H;
+}
+
+// The step toolbar - rename, detail, remove - belongs to a step and to
+// nothing else. A part row, a fold row, a register row and the setup row
+// only fold and unfold; offering to rename or delete one meant sending
+// `reject` with a part id as its target.
+export function hasToolbar(item) {
+    return item?.kind === "step";
+}
+
+// What may be selected at all. A step, and a feature card on the
+// Constellation - selecting one is how its cross-feature call arcs are
+// drawn. A row is not a node: it only folds and unfolds.
+export function isSelectable(item) {
+    return item?.kind === "step" || item?.kind === "feature";
 }
 
 export function nodesInFeature(plan, featureId) {
@@ -814,11 +928,6 @@ export function evidenceLines(facts) {
     return lines;
 }
 
-// How many of evidenceLines()'s lines a Feature Flow card shows. The detail
-// panel always shows the whole list - this is only how much fits beside a
-// title without turning the card into the inspector the task explicitly
-// says not to build.
-export const CARD_EVIDENCE_LINES = 2;
 
 // A lens keeps its colour from its position in the vocabulary, so the same
 // perspective is the same colour here and in Project Evolution. A lens a
@@ -1580,6 +1689,31 @@ export function coveredStepTitle(node, target) {
 
     return entry ? entry.title : null;
 }
+
+// --------------------------------------------------
+// FOLLOWING THE OPEN PANEL THROUGH A REFRESH
+// --------------------------------------------------
+// An approve, a verify or a rescan re-reads the plan while the detail
+// panel may still be open. The panel follows its node - a revise gives it
+// a new id that supersedes the old one - or closes if it is gone.
+//
+// The view used to do this inline over every item on the canvas, and a
+// part row or a fold row has no `source`, so any refresh in a folded
+// feature threw on `item.source.supersedes` and took the rest of the
+// refresh with it: breadcrumb, lens bar, hint and approve button all
+// stopped updating.
+//
+// Only a step has a source, and only a step can be in the panel.
+// --------------------------------------------------
+
+export function followDetail(items, detailNodeId) {
+    if (!detailNodeId) return null;
+
+    return (Array.isArray(items) ? items : []).find(item =>
+        item?.source &&
+        (item.id === detailNodeId || item.source.supersedes === detailNodeId)) ?? null;
+}
+
 
 export function describeHistory(history) {
     return (history ?? []).map(entry => ({

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 
-import { evidenceLines, CARD_EVIDENCE_LINES } from "../webview/model.js";
+import { evidenceLines } from "../webview/model.js";
 
 // --------------------------------------------------
 // THE REAL AI_CODING_SURVEY verifyJWT DECLARATION
@@ -28,7 +28,10 @@ assert.deepEqual(lines, [
     "calls res.status"
 ]);
 
-assert.deepEqual(lines.slice(0, CARD_EVIDENCE_LINES), ["calls authHeader.split", "answers 401"], "the card shows the first two - one per category before falling back to the rest of the calls");
+// The card shows the FIRST line only - see detailLine() - so what matters
+// here is that the most telling fact comes first: one per category before
+// falling back to the rest of the calls.
+assert.equal(lines[0], "calls authHeader.split");
 
 // --------------------------------------------------
 // NO FACTS, NO LINES - NEVER INVENT ONE
