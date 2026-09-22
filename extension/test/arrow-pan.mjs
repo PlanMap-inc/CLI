@@ -176,9 +176,10 @@ assert.match(main, /panBy\(dx, dy\) \{ panX \+= dx; panY \+= dy; clampPan\(\);/)
 assert.match(main, /if \(panning\) \{[\s\S]{0,200}clampPan\(\);/);
 assert.equal(
     (main.match(/clampPan\(\);/g) ?? []).length,
-    7,
+    8,
     "keys, drag, the wheel and zoom move the map; so do holding a row in "
-    + "place, focusing a step, and a canvas resize"
+    + "place, bringing a keyboard-focused card into view, focusing a step, "
+    + "and a canvas resize"
 );
 
 // What gets centred is the steps. Lane labels are margin furniture: they

@@ -42,6 +42,8 @@ import {
     PAN_SPEED,
     parseScanProgress,
     railModel,
+    rowHeight,
+    toolbarLayout,
     ROW_H,
     STEP_H,
     statusClass,
@@ -209,41 +211,60 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             </div>`;
     }
     // A part row, a lens fold row, a register row and the Constellation's
-    // setup row are the same object on the canvas: one line that opens.
+    // setup row are the same object on the canvas: a head that opens, and
+    // - for the rows that hold chips - one line per chip beneath it.
+    function rowHead(inner) {
+        return `<div class="row-head">${inner}</div>`;
+    }
+
+    // One chip to a line, as wide as the row, with its status and an
+    // ellipsis. They used to be laid out below the row in a wrapping
+    // block, which the card's own overflow then clipped away entirely -
+    // so opening Terms flipped its chevron and showed nothing.
+    function rowChips(n) {
+        if (!n.open) return "";
+
+        return `<div class="row-chips">${(n.chips ?? []).map(chip => `
+            <button type="button" class="row-chip ${statusClass(chip.status)}" data-chip="${escapeHtml(chip.id)}" title="${escapeHtml(chip.title)}">
+                <span class="dot" data-style="${statusDotStyle(chip.status, n.color || dotColor)}"></span>
+                <span class="row-chip-label">${escapeHtml(chip.title)}</span>
+            </button>`).join("")}</div>`;
+    }
+
     function rowCard(n) {
         const colors = lensColors(plan());
 
-        const right = [
-            n.lensLabel ? `<span class="row-lens">${escapeHtml(n.lensLabel)}</span>` : "",
-            n.failing > 0 ? `<span class="row-failing">${n.failing} ${escapeHtml(n.status)}</span>` : "",
-            (n.lenses ?? []).length
-                ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>`
-                : ""
-        ].join("");
-
-        // A fold row's label already says how many steps it holds, so it
-        // never gets a second count beside it - that read as
-        // "2 steps out… 2 steps", truncated and repeated.
+        // The name wins. A part row with a failing count used to cut even
+        // a short name - "app.request" became "app.reque…" beside
+        // "7 steps 1 drifted" - so what stands beside it gets shorter
+        // rather than the name.
         const count = n.kind === "part" && n.count != null
-            ? `<span class="row-count">${n.count} ${n.count === 1 ? "step" : "steps"}</span>`
+            ? n.failing > 0
+                ? `<span class="row-count">${n.count} ·</span><span class="row-failing">${n.failing} ${escapeHtml(n.status ?? "")}</span>`
+                : `<span class="row-count">${n.count} ${n.count === 1 ? "step" : "steps"}</span>`
             : "";
 
-        return `
+        const right = (n.lenses ?? []).length
+            ? `<span class="node-lenses">${n.lenses.map(id => `<span class="node-lens" data-style="background:${colors[id] ?? "var(--text-low)"}"></span>`).join("")}</span>`
+            : "";
+
+        return rowHead(`
             ${n.number ? `<div class="step">${escapeHtml(n.number)}</div>` : ""}
             <div class="row-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</div>
             ${count}
+            ${n.lensLabel ? `<span class="row-lens">${escapeHtml(n.lensLabel)}</span>` : ""}
             ${right}
-            <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>`;
+            <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>`);
     }
 
     function chipRow(n) {
-        return `
-            <div class="row-title">${escapeHtml(n.title)}</div>
+        return rowHead(`
+            <div class="row-title" title="${escapeHtml(n.title)}">${escapeHtml(n.title)}</div>
             <span class="row-count">${n.count}</span>
-            <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>
-            ${n.open ? `<div class="row-chips">${(n.chips ?? []).map(chip =>
-                `<button type="button" class="row-chip ${statusClass(chip.status)}" data-chip="${escapeHtml(chip.id)}">${escapeHtml(chip.title)}</button>`).join("")}</div>` : ""}`;
+            <span class="row-chevron" aria-hidden="true">${n.open ? "\u2303" : "\u2304"}</span>`)
+            + rowChips(n);
     }
+
 
     function renderNode(n) {
         const kind = n.kind ?? "step";
@@ -663,6 +684,58 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
     // lag behind the thing it is supposed to be following.
     // --------------------------------------------------
 
+    // --------------------------------------------------
+    // THE BROWSER MAY NOT SCROLL THE CANVAS
+    // --------------------------------------------------
+    // overflow:hidden still makes a scroll container, and the browser
+    // scrolls one whenever something inside it takes focus. Tabbing
+    // through the steps did exactly that - scrollTop went 0, 39, 554,
+    // 1091 - so the cards moved without the pan state knowing, and the
+    // flow label went with them. styles.css uses overflow:clip now, and
+    // this pans to a focused card instead, the way the view moves for
+    // everything else.
+    //
+    // No selection: focus is where the keyboard is, not what the reader
+    // has chosen.
+    // --------------------------------------------------
+
+    function bringIntoView(node) {
+        if (!node) return;
+
+        const rect = canvasEl.getBoundingClientRect();
+        const top = node.y * scale + panY;
+        const bottom = (node.y + heightOf(node)) * scale + panY;
+        const margin = 24;
+
+        if (top >= margin && bottom <= rect.height - margin) return;
+
+        panY = rect.height / 2 - (node.y + heightOf(node) / 2) * scale;
+        clampPan();
+        applyTransform();
+    }
+
+    contentEl.addEventListener("focusin", event => {
+        const card = event.target.closest(".gnode");
+        if (!card) return;
+
+        // Keyboard focus only. A mouse press focuses too, and panning
+        // between the press and the release moves the card out from under
+        // the pointer - the release then lands somewhere else, and a
+        // click on a chip near the edge of the canvas did nothing at all.
+        if (!event.target.matches(":focus-visible")) return;
+
+        bringIntoView(nodes.find(entry => entry.id === card.dataset.id));
+    });
+
+    // A canvas that is only hidden by opacity still takes the Tab key and
+    // still answers a click, so the reader could land on a Constellation
+    // card while standing inside a feature. Mirrored from the class, so
+    // no call site can forget it.
+    const mirrorInert = () => { canvasEl.inert = canvasEl.classList.contains("hidden"); };
+
+    new MutationObserver(mirrorInert).observe(canvasEl, { attributes: true, attributeFilter: ["class"] });
+    mirrorInert();
+
     const canvasResize = new ResizeObserver(() => {
         // A flight owns the transform while it runs, and sets its own
         // destination from the size the canvas will have settled at.
@@ -716,6 +789,9 @@ function createGraph(canvasEl, gridEl, contentEl, opts) {
             clampPan();
             applyTransform();
         },
+
+        // Bring an item into view without touching the selection.
+        reveal(id) { bringIntoView(nodes.find(entry => entry.id === id)); },
 
         // Bring an item into view and select it.
         focus(id) {
@@ -870,17 +946,12 @@ function lensById(id) { return plan()?.lenses.find(l => l.id === id); }
 
 // ================= RENDER FROM STATE =================
 function mountConstellation() {
-    const built = buildConstellation(plan(), state.verifiedStatus);
+    const built = buildConstellation(plan(), state.verifiedStatus, { openRegisters });
 
     const cards = built.cards.map(card => ({ ...card, kind: "feature" }));
 
     const setup = built.setup
-        ? [{
-            ...built.setup,
-            kind: "setup",
-            open: openRegisters.includes("setup"),
-            offLine: true
-        }]
+        ? [{ ...built.setup, kind: "setup", offLine: true }]
         : [];
 
     // Only the order line by default. A real link between two features -
@@ -1126,6 +1197,55 @@ window.addEventListener("keydown", e => {
 
 
 
+// --------------------------------------------------
+// THE TOP BAR LAYS ITSELF OUT BY MEASURING
+// --------------------------------------------------
+// Never by a fixed width: the three zones move with the feature name, the
+// number of lenses and the approve label, and a media query that guessed
+// at 820px made a narrow window work better than a normal one.
+//
+// The widths measured are the NATURAL ones - the lens bar is the sum of
+// its pills, not whatever width the current layout gave it - so choosing
+// a layout can never change the measurement that chose it.
+// --------------------------------------------------
+
+const toolbarEl = document.querySelector("#viewPlanmap .toolbar");
+const LAYOUTS = ["one-row", "lens-row", "stacked"];
+
+function naturalWidths() {
+    const style = getComputedStyle(lensSwitch);
+
+    const pills = [...lensSwitch.querySelectorAll(".lens-btn")];
+
+    const lens = pills.length === 0 || !lensSwitch.classList.contains("show")
+        ? 0
+        : pills.reduce((total, pill) => total + pill.offsetWidth, 0)
+            + Math.max(0, pills.length - 1) * (parseFloat(style.gap) || 0)
+            + (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0)
+            + 2;
+
+    return {
+        available: toolbarEl.clientWidth
+            - (parseFloat(getComputedStyle(toolbarEl).paddingLeft) || 0)
+            - (parseFloat(getComputedStyle(toolbarEl).paddingRight) || 0),
+        crumb: breadcrumb.scrollWidth + (document.getElementById("scanChip").hidden ? 0 : document.getElementById("scanChip").offsetWidth + 14),
+        lens,
+        actions: [...document.querySelectorAll(".view-controls > *")]
+            .reduce((total, el) => total + el.offsetWidth, 0) + 20
+    };
+}
+
+function layOutToolbar() {
+    if (!toolbarEl) return;
+
+    const want = toolbarLayout(naturalWidths());
+
+    for (const name of LAYOUTS) toolbarEl.classList.toggle(`layout-${name}`, name === want);
+}
+
+new ResizeObserver(() => layOutToolbar()).observe(toolbarEl);
+
+
 function coveredLenses() {
     return lensCoverage(plan(), currentFeatureId).filter(lens => !lens.empty);
 }
@@ -1150,6 +1270,7 @@ function renderLensSwitch() {
     paint(lensSwitch);
     lensSwitch.classList.toggle("show", inFeature() && lenses.length > 0);
     renderApprove();
+    layOutToolbar();
 
     lensSwitch.querySelectorAll(".lens-btn").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -1684,9 +1805,17 @@ function renderApprove() {
     approveBtn.hidden = !target;
     if (!target) return;
 
-    approveBtn.textContent = busy.has("action") ? "Approving…" : target.label;
+    // The name ellipsises; the count never does. On a feature called
+    // "Results and the admin export for every agency, state and MP" the
+    // button took the whole bar and left the lens pills 0px.
+    approveBtn.innerHTML = busy.has("action")
+        ? "Approving…"
+        : `<span class="approve-name">${escapeHtml(target.name ?? target.label)}</span>`
+            + `<span class="approve-count">(${target.count})</span>`;
+
     approveBtn.classList.toggle("inert", target.pending === 0);
-    approveBtn.title = target.pending === 0 ? target.reason : target.hint;
+    approveBtn.title = `${target.label} — ${target.pending === 0 ? target.reason : target.hint}`;
+    layOutToolbar();
 }
 
 function runVerify() {
@@ -2092,8 +2221,14 @@ function applyState(next) {
     // An approve, revise or reject re-reads the plan: follow the node (a revise
     // gives it a new id that supersedes the old one), or close if it is gone.
     if (detailNodeId && impactPanel.classList.contains("open")) {
-        const same = inFeature() && followDetail(featureGraph.nodes, detailNodeId);
-        if (same) openDetail(same); else closeDetail();
+        // The steps on the canvas, and the chips in the rows beside them:
+        // a term opened from a chip is not a card, and looking only at
+        // cards closed its panel on every approve, verify or rescan.
+        const same = followDetail(activeGraph().nodes, detailNodeId);
+
+        if (same?.chip) openDetailById(same.id);
+        else if (same) openDetail(same);
+        else closeDetail();
     }
 
     renderBreadcrumb(); renderLensSwitch(); updateHint(); renderApprove(); renderAddNode(); syncZoomLabel();

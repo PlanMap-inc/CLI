@@ -308,6 +308,11 @@ const CTOP_Y = 60;
 // on, 240 fits two lines of most of them without an ellipsis.
 export const CARD_W = 240;
 
+// The card's own border. It was left out of the height, so every row sat
+// a pixel low and the last one ended 4px past the content box - the same
+// "two sets of numbers" the metrics exist to stop.
+const CARD_BORDER = 1;
+
 const CARD_PAD_TOP = 12;
 const CARD_PAD_BOTTOM = 11;
 
@@ -329,16 +334,39 @@ const ROW_GAP = 4;
 const FOOT_GAP = 8;
 
 export const STEP_H =
+    CARD_BORDER +
     CARD_PAD_TOP +
     BAR_ROW_H +
     TITLE_H + ROW_GAP +
     SUB_H + ROW_GAP +
     DETAIL_H + FOOT_GAP +
     FOOT_H +
-    CARD_PAD_BOTTOM;
+    CARD_PAD_BOTTOM +
+    CARD_BORDER;
 
 // A part row and a fold row: one line of text, a count and a chevron.
 export const ROW_H = 56;
+
+// --------------------------------------------------
+// AN OPEN ROW IS AS TALL AS WHAT IT HOLDS
+// --------------------------------------------------
+// Terms, Runs on, Helpers and Project setup open into chips. Every item
+// on the canvas was 56px tall whether it was open or shut, and the card
+// clips what overflows - so opening one flipped its chevron and showed
+// nothing, and no vocabulary, machinery or tool node could be reached
+// from the graph at all.
+//
+// One chip to a line, so the height is the chip count and nothing has to
+// be measured: the line is as wide as the row and its label ellipsises.
+// --------------------------------------------------
+
+const CHIP_LINE_H = 24;
+
+export function rowHeight(item) {
+    const chips = item?.open ? (item.chips?.length ?? 0) : 0;
+
+    return ROW_H + chips * CHIP_LINE_H;
+}
 
 // Between one item and the next. Big enough that the line between them is
 // visibly a line rather than a seam.
@@ -353,13 +381,15 @@ const PREVIEW_LINES = 3;
 const PREVIEW_GAP = 3;
 
 export const FEATURE_H =
+    CARD_BORDER +
     CARD_PAD_TOP +
     BAR_ROW_H +
     FEATURE_TITLE_H + ROW_GAP +
     FEATURE_SUB_H + FOOT_GAP +
     PREVIEW_LINES * PREVIEW_LINE_H + (PREVIEW_LINES - 1) * PREVIEW_GAP + FOOT_GAP +
     FOOT_H +
-    CARD_PAD_BOTTOM;
+    CARD_PAD_BOTTOM +
+    CARD_BORDER;
 
 // --------------------------------------------------
 // ONE SET OF NUMBERS, TWO READERS
@@ -373,6 +403,8 @@ export const FEATURE_H =
 
 export const CARD_METRICS = {
     "--card-w": CARD_W,
+    "--card-border": CARD_BORDER,
+    "--card-chip-line-h": CHIP_LINE_H,
     "--card-pad-top": CARD_PAD_TOP,
     "--card-pad-bottom": CARD_PAD_BOTTOM,
     "--card-bar-h": BAR_ROW_H,
@@ -394,16 +426,19 @@ export const CARD_METRICS = {
 // What a step card is made of, top to bottom. Exported so a test can add
 // it up rather than trusting that STEP_H was recomputed by hand.
 export const STEP_CARD_ROWS = [
+    CARD_BORDER,
     CARD_PAD_TOP,
     BAR_ROW_H,
     TITLE_H, ROW_GAP,
     SUB_H, ROW_GAP,
     DETAIL_H, FOOT_GAP,
     FOOT_H,
-    CARD_PAD_BOTTOM
+    CARD_PAD_BOTTOM,
+    CARD_BORDER
 ];
 
 export const FEATURE_CARD_ROWS = [
+    CARD_BORDER,
     CARD_PAD_TOP,
     BAR_ROW_H,
     FEATURE_TITLE_H, ROW_GAP,
@@ -412,7 +447,8 @@ export const FEATURE_CARD_ROWS = [
     ...Array.from({ length: PREVIEW_LINES - 1 }, () => PREVIEW_GAP),
     FOOT_GAP,
     FOOT_H,
-    CARD_PAD_BOTTOM
+    CARD_PAD_BOTTOM,
+    CARD_BORDER
 ];
 
 export function cardHeight() {
@@ -450,7 +486,7 @@ export function nodesInFeature(plan, featureId) {
 // of the feature.
 // --------------------------------------------------
 
-export function buildConstellation(plan, verifiedStatus) {
+export function buildConstellation(plan, verifiedStatus, { openRegisters = [] } = {}) {
     const order = (plan?.lenses ?? []).map(lens => lens.id);
 
     const cards = [];
@@ -520,23 +556,30 @@ export function buildConstellation(plan, verifiedStatus) {
         y: top + index * pitch
     }));
 
+    if (setup.length === 0) {
+        return { cards: placed, setup: null };
+    }
+
+    // One folded row under the journey, never a card in it - and as tall
+    // as the chips it holds once it is open.
+    const setupRow = {
+        id: "setup",
+        title: "Project setup",
+        count: setup.length,
+        open: openRegisters.includes("setup"),
+        y: top + placed.length * pitch,
+        x: snap(CX),
+        chips: setup.map(node => ({
+            id: node.id,
+            title: node.title,
+            role: roleOf(node),
+            status: effectiveStatus(node, verifiedStatus)
+        }))
+    };
+
     return {
         cards: placed,
-        // One folded row under the journey, never a card in it.
-        setup: setup.length === 0 ? null : {
-            id: "setup",
-            title: "Project setup",
-            count: setup.length,
-            y: top + placed.length * pitch,
-            h: ROW_H,
-            x: snap(CX),
-            chips: setup.map(node => ({
-                id: node.id,
-                title: node.title,
-                role: roleOf(node),
-                status: effectiveStatus(node, verifiedStatus)
-            }))
-        }
+        setup: { ...setupRow, h: rowHeight(setupRow) }
     };
 }
 
@@ -1308,7 +1351,7 @@ export function buildSpine(plan, featureId, {
 
     for (const item of items) {
         item.x = snap(COLUMN_X);
-        item.h = item.kind === "step" ? STEP_H : ROW_H;
+        item.h = item.kind === "step" ? STEP_H : rowHeight(item);
         item.y = y;
 
         y += item.h + CARD_GAP;
@@ -1559,6 +1602,36 @@ export function clampScale(scale, max = 2.2) {
 
 
 // --------------------------------------------------
+// THREE ZONES, AND NEVER A HIDDEN LENS
+// --------------------------------------------------
+// The lens bar used to scroll inside its own column with the scrollbar
+// hidden, so a lens that did not fit was simply gone - and with a lens
+// on, the bar scrolled far enough that "All", the only way to turn it
+// off, went with it. A perspective you cannot see is a perspective you
+// cannot choose.
+//
+// So nothing scrolls and nothing is hidden. When the three zones do not
+// fit on one line the lens bar takes a row of its own, and when even the
+// breadcrumb and the actions do not fit, all three stack.
+//
+// Decided by measuring, because the widths move with the feature name,
+// the lens count and the approve label - and measured at NATURAL widths,
+// never at the widths the current layout produced, or the bar would flip
+// between two layouts for ever.
+// --------------------------------------------------
+
+export function toolbarLayout({ available = 0, crumb = 0, lens = 0, actions = 0, gap = 14 } = {}) {
+    if (lens > 0 && crumb + lens + actions + 2 * gap <= available) return "one-row";
+
+    if (lens === 0 && crumb + actions + gap <= available) return "one-row";
+
+    if (crumb + actions + gap <= available) return "lens-row";
+
+    return "stacked";
+}
+
+
+// --------------------------------------------------
 // WHAT THE APPROVE BUTTON APPROVES
 // --------------------------------------------------
 // The label has to be exactly what the click does. Inside a feature with a
@@ -1597,6 +1670,7 @@ export function approveScope(plan, { featureId = null, lensId = null } = {}) {
     if (!featureId) {
         return {
             scope: "plan",
+            name: "Approve plan",
             label: `Approve plan (${count(nodes)})`,
             count: count(nodes),
             breakdown: breakdown(nodes),
@@ -1609,6 +1683,7 @@ export function approveScope(plan, { featureId = null, lensId = null } = {}) {
     if (!lensId) {
         return {
             scope: "feature",
+            name: `Approve ${feature?.name ?? featureId}`,
             label: `Approve ${feature?.name ?? featureId} (${count(inFeature)})`,
             count: count(inFeature),
             breakdown: breakdown(inFeature),
@@ -1620,6 +1695,7 @@ export function approveScope(plan, { featureId = null, lensId = null } = {}) {
 
     return {
         scope: "feature-lens",
+        name: `Approve ${lensName(plan, lensId)}`,
         label: `Approve ${lensName(plan, lensId)} (${count(scoped)})`,
         count: count(scoped),
         breakdown: breakdown(scoped),
@@ -1709,9 +1785,24 @@ export function coveredStepTitle(node, target) {
 export function followDetail(items, detailNodeId) {
     if (!detailNodeId) return null;
 
-    return (Array.isArray(items) ? items : []).find(item =>
+    const list = Array.isArray(items) ? items : [];
+
+    const step = list.find(item =>
         item?.source &&
-        (item.id === detailNodeId || item.source.supersedes === detailNodeId)) ?? null;
+        (item.id === detailNodeId || item.source.supersedes === detailNodeId));
+
+    if (step) return step;
+
+    // A term, a precondition or a helper is not on the canvas - it is a
+    // chip in one of the rows beside it. Without this the panel closed on
+    // every approve, verify or rescan for anything opened from a chip.
+    for (const item of list) {
+        if ((item?.chips ?? []).some(chip => chip.id === detailNodeId)) {
+            return { chip: true, id: detailNodeId };
+        }
+    }
+
+    return null;
 }
 
 
