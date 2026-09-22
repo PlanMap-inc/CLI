@@ -7,6 +7,10 @@ import {
     reviseNode
 } from "../../plan/approval.js";
 
+import {
+    nodeIdentities
+} from "../../plan/nodes.js";
+
 
 // --------------------------------------------------
 // PLAN REVISE COMMAND
@@ -55,9 +59,14 @@ export function runPlanRevise(
         nodeIndex < plan.nodes.length;
         nodeIndex += 1
     ) {
+        // Its id, or any declaration it stands for - the same match
+        // approve makes, so a merged step is revisable by whichever of
+        // its declarations the reader was looking at.
         if (
-            plan.nodes[nodeIndex]?.identity ===
-            identity
+            plan.nodes[nodeIndex]?.id === identity ||
+            nodeIdentities(
+                plan.nodes[nodeIndex]
+            ).includes(identity)
         ) {
             index = nodeIndex;
         }

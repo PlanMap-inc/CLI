@@ -8,6 +8,11 @@
  * --------------------------------------------------
  */
 
+import {
+    nodeIdentities
+} from "./nodes.js";
+
+
 const VALID_LENS_SOURCES = [
     "derived",
     "human_added"
@@ -440,6 +445,105 @@ function validateNode(
         }
     }
 
+    // HOW this node came to stand for several declarations.
+    //
+    //   "family"   one behaviour written once per thing it applies to,
+    //              proved by a single assert holding for all of them
+    //   "summary"  several behaviours folded together so that a feature
+    //              stays inside the step cap
+    //
+    // Only meaningful on a node that holds more than one declaration: a
+    // merge of one is not a merge.
+    if (
+        node.merge !== undefined
+    ) {
+        if (
+            node.merge !== "family" &&
+            node.merge !== "summary"
+        ) {
+            errors.push(
+                `${prefix}.merge must be family or summary`
+            );
+        }
+
+        if (
+            !Array.isArray(node.identities) ||
+            node.identities.length < 2
+        ) {
+            errors.push(
+                `${prefix}.merge requires more than one identity`
+            );
+        }
+    }
+
+    // What a summary step covers, one entry per step folded into it. The
+    // panel lists these, and a violation is traced back to the covered
+    // step it belongs to through them - so every identity named here has
+    // to be one the node actually stands for.
+    if (
+        node.summaryOf !== undefined
+    ) {
+        if (
+            !Array.isArray(node.summaryOf)
+        ) {
+            errors.push(
+                `${prefix}.summaryOf must be an array`
+            );
+        } else {
+            const held =
+                new Set(
+                    nodeIdentities(node)
+                );
+
+            node.summaryOf.forEach(
+                (entry, entryIndex) => {
+                    const where =
+                        `${prefix}.summaryOf[${entryIndex}]`;
+
+                    if (
+                        !entry ||
+                        typeof entry !== "object" ||
+                        Array.isArray(entry)
+                    ) {
+                        errors.push(
+                            `${where} must be an object`
+                        );
+
+                        return;
+                    }
+
+                    if (
+                        !isStringArray(
+                            entry.identities
+                        )
+                    ) {
+                        errors.push(
+                            `${where}.identities must be an array of strings`
+                        );
+                    } else {
+                        for (
+                            const identity of entry.identities
+                        ) {
+                            if (
+                                !held.has(identity)
+                            ) {
+                                errors.push(
+                                    `${where}.identities includes ${identity}, which the node does not stand for`
+                                );
+                            }
+                        }
+                    }
+
+                    requireString(
+                        entry.title,
+                        `${where}.title`,
+                        errors
+                    );
+                }
+            );
+        }
+    }
+
     // What varies across a merged node's declarations, in the product's own
     // words - "agency, MP, district, state" rather than the function names.
     if (
@@ -588,6 +692,55 @@ function validateNode(
         errors.push(
             `${prefix}.approvedFacts must be an object`
         );
+    }
+
+    // One approved snapshot per declaration, on a node that stands for
+    // several. Keyed by a declaration the node holds; anything else is a
+    // snapshot verify would never look up.
+    if (
+        node.approvedFactsByIdentity !== undefined
+    ) {
+        if (
+            !node.approvedFactsByIdentity ||
+            typeof node.approvedFactsByIdentity !== "object" ||
+            Array.isArray(node.approvedFactsByIdentity)
+        ) {
+            errors.push(
+                `${prefix}.approvedFactsByIdentity must be an object`
+            );
+        } else {
+            const held =
+                new Set(
+                    nodeIdentities(node)
+                );
+
+            for (
+                const [
+                    identity,
+                    facts
+                ] of Object.entries(
+                    node.approvedFactsByIdentity
+                )
+            ) {
+                if (
+                    !held.has(identity)
+                ) {
+                    errors.push(
+                        `${prefix}.approvedFactsByIdentity has ${identity}, which the node does not stand for`
+                    );
+                }
+
+                if (
+                    !facts ||
+                    typeof facts !== "object" ||
+                    Array.isArray(facts)
+                ) {
+                    errors.push(
+                        `${prefix}.approvedFactsByIdentity.${identity} must be an object`
+                    );
+                }
+            }
+        }
     }
 
     if (

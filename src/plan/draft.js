@@ -58,7 +58,8 @@ import {
 } from "../llm/lenses.js";
 
 import {
-    BEHAVIOUR_LINE
+    BEHAVIOUR_LINE,
+    PLACEHOLDER_VERBS
 } from "../llm/behaviour.js";
 
 import {
@@ -77,6 +78,17 @@ import {
     siblingFamilies
 } from "../baseline/families.js";
 
+import {
+    createId,
+    getNextNodeNumber,
+    nodeIdentities
+} from "./nodes.js";
+
+import {
+    summariseFeatures,
+    titleSummaries
+} from "./summarise.js";
+
 
 // --------------------------------------------------
 // PLAN DRAFT HELPERS
@@ -85,52 +97,6 @@ import {
 // 2-Keeps generated identifiers stable within one draft.
 // 3-Provides small helpers shared by both draft modes.
 // --------------------------------------------------
-
-function createId(
-    prefix,
-    number
-) {
-    return (
-        `${prefix}_${String(
-            number
-        ).padStart(
-            4,
-            "0"
-        )}`
-    );
-}
-
-
-function getNextNodeNumber(
-    plan
-) {
-    let maximum =
-        0;
-
-    for (
-        const node of plan.nodes || []
-    ) {
-        const match =
-            /^plan_(\d+)$/.exec(
-                node?.id || ""
-            );
-
-        if (
-            match
-        ) {
-            maximum =
-                Math.max(
-                    maximum,
-                    Number(
-                        match[1]
-                    )
-                );
-        }
-    }
-
-    return maximum + 1;
-}
-
 
 function getNextFeatureNumber(
     plan
@@ -228,7 +194,7 @@ function requireOpenRouterApiKey() {
 // 3-Rejects malformed model output.
 // --------------------------------------------------
 
-async function callOpenRouter(
+export async function callOpenRouter(
     prompt
 ) {
     const apiKey =
@@ -1238,11 +1204,6 @@ function mergeGroups(
 // perspective had something of its own to say.
 // --------------------------------------------------
 
-// Words that stand in for a verb nobody chose. The prompt bans them in
-// three places; roughly one line in twenty still opens with one.
-const PLACEHOLDER_VERBS =
-    /^(handle|process|manage|execute|perform|run|do|support|implement|ensure|deal with|take care of)\b/i;
-
 // A reading that opens by saying what is NOT true. Always grammatically
 // valid, always sounds like an answer, and is true of most steps in most
 // features - which is exactly why it teaches a reader nothing. The correct
@@ -1394,10 +1355,7 @@ export function normalizeBrownfieldNodes(
                                 "ai_edited_by_human"
                         )
                 )
-                .map(
-                    node =>
-                        node.identity
-                )
+                .flatMap(nodeIdentities)
         );
 
     const nodes = [];
@@ -1984,24 +1942,6 @@ export function linkFeatureSteps(
 }
 
 
-// Every declaration a node stands for. One for an ordinary node, several
-// for a merged one.
-function nodeIdentities(
-    node
-) {
-    if (
-        Array.isArray(node?.identities) &&
-        node.identities.length > 0
-    ) {
-        return node.identities;
-    }
-
-    return typeof node?.identity === "string"
-        ? [node.identity]
-        : [];
-}
-
-
 
 // --------------------------------------------------
 // BROWNFIELD FEATURE SEEDING
@@ -2305,10 +2245,12 @@ export async function draftBrownfield(
                         (Array.isArray(node?.history) &&
                             node.history.length > 0)
                 )
-                .map(
-                    node => node.identity
-                )
-                .filter(Boolean)
+                // Every declaration the node stands for. Reading
+                // node.identity alone left a merged node's other
+                // declarations unsettled, so the next draft sent them to
+                // the model again and got a second node for code a person
+                // had already ruled on.
+                .flatMap(nodeIdentities)
         );
 
     const open =
@@ -2648,9 +2590,14 @@ export async function draftBrownfield(
             (plan.nodes || [])
                 .filter(
                     node => {
+                        // Any of its declarations, not just the first. A
+                        // merged node whose SECOND declaration is in this
+                        // batch is the node that batch is about to redraw;
+                        // keeping it kept a duplicate.
                         if (
-                            !batchIdentities.has(
-                                node?.identity
+                            !nodeIdentities(node).some(
+                                identity =>
+                                    batchIdentities.has(identity)
                             )
                         ) {
                             return true;
@@ -2814,11 +2761,89 @@ export async function draftBrownfield(
         }
     }
 
+    // --------------------------------------------------
+    // THE CAP
+    // --------------------------------------------------
+    // Once, after the last batch, and never inside the loop. A batch is
+    // twenty declarations packed across directories, so it holds a slice
+    // of several features; folding a feature that is only half drafted
+    // would group its first steps against each other and then be handed
+    // the rest with nowhere left to put them.
+    //
+    // The whole plan is written once at the end of this, rather than per
+    // batch, because every summary step has to exist before
+    // linkFeatureSteps can work out what leads to what.
+    // --------------------------------------------------
+
+    const {
+        nodes: capped,
+        summaries,
+        report
+    } =
+        summariseFeatures(
+            plan,
+            { callGraph }
+        );
+
+    let titleFallbacks =
+        [];
+
+    if (
+        summaries.length > 0
+    ) {
+        ({ fallbacks: titleFallbacks } =
+            await titleSummaries(
+                summaries,
+                { call: callOpenRouter }
+            ));
+
+        const linked =
+            linkFeatureSteps(
+                capped,
+                callGraph
+            );
+
+        const nextPlan = {
+            ...plan,
+
+            nodes:
+                linked
+        };
+
+        const errors =
+            validatePlan(
+                nextPlan
+            );
+
+        if (
+            errors.length > 0
+        ) {
+            throw new Error(
+                `Summarised plan validation failed:\n${errors
+                    .map(
+                        error =>
+                            `- ${error}`
+                    )
+                    .join("\n")}`
+            );
+        }
+
+        writePlan(
+            projectRoot,
+            nextPlan
+        );
+
+        plan.nodes =
+            nextPlan.nodes;
+    }
+
     return {
         drafted,
         batches,
         dropped,
-        skipped
+        skipped,
+        summarised: report,
+        titleFallbacks
     };
 }
 

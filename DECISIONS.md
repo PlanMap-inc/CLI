@@ -592,6 +592,42 @@ Results:
 ---
 
 *Updated when reality changes — the same discipline the product enforces.*
+
+---
+
+
+## 13. Plan size
+
+**Decision:** a feature holds at most **20 behaviour steps** (`FEATURE_STEP_CAP`). A brownfield draft that produces more folds related steps into **summary steps**. Nothing is ever dropped.
+
+**Why:** a brownfield draft writes one step per significant declaration, and a real feature has a hundred of them. A hundred cards is not a plan anyone reads; it is the file listing again, with prose. The cap is what keeps the Plan Graph a plan.
+
+**Decision:** a summary step carries every declaration of every step it folded, in `identities`, and every one of their rules **with its original `target`**.
+
+**Why:** verify evaluates each rule against its own target's facts (`evaluateBehaviourRules()`). Re-targeting a folded rule onto the summary's lead would check one declaration and report the whole group as proven — which would make the cap a way to stop looking at code. `summaryOf` records what was folded, so the panel can show the covered steps and a violation can be traced back to the one it belongs to.
+
+**Decision:** a step a person has ruled on is never folded or changed — approved, human-authored, edited by a human, or carrying history. Terms, preconditions and helpers (`role` vocabulary, machinery, tool) are not steps: they do not count against the cap and are never summarised. Greenfield drafts are unaffected.
+
+**Why:** their decision is about the step they read. Moving it onto a claim they never read is a lie about what they approved. A feature whose settled steps alone exceed the cap folds the rest as tightly as it can and reports the overflow rather than touching them.
+
+**Decision:** `budget = max(1, cap − settled behaviour steps)`, and groups merge in three passes, stopping as soon as the feature fits:
+
+1. **Call tree** — a step folds into the step that calls it, when every caller of all its declarations sits inside that one other group. Repeated, so a chain A → B → C ends up together.
+2. **Same part** — within one `path[0]` heading, the two neighbouring groups with the smallest combined size.
+3. **Neighbours** — the same, ignoring headings.
+
+**Why:** the order is how much each claim asserts. A call is something the code shows: a step only ever reached through one other was never a separate entry point, so folding it in loses nothing a reader could have used. A shared heading is a judgement the outline already made, and it is the same judgement the interface bands the spine by, so a summary step never straddles a lane label. Neighbours claim only "these were next to each other", which is why it runs last. Smallest-first in the last two spreads the folding instead of growing one step that swallows the feature.
+
+**Decision:** the grouping is deterministic — the same plan and baseline give the same groups, the same ids and the same contents whatever order the nodes arrive in.
+
+**Why:** a cap that folds differently on each run would make `plan summarise` unrunnable: the plan would drift under whoever ran it last. Running it twice changes nothing.
+
+**Decision:** summary step titles come from one model request per 15 steps, holding only titles, intents and qualified names — never file contents. Every answer is checked to the `BEHAVIOUR_LINE` standard, and a rejected, missing or unfetchable title falls back to the shared part heading (or the lead's title) with an intent of `Covers N steps: …`. Every fallback is reported and the run still succeeds.
+
+**Verified in:** `src/plan/summarise.js`, `src/plan/draft.js`, `src/cli/commands/plan.js`, `test/v0.9/summarise-grouping.mjs`, `test/v0.9/summarise-titles.mjs`, `test/v0.9/draft-cap-end-to-end.mjs`, `test/v0.9/plan-summarise-command.mjs`.
+
+---
+
 ## Layer 7 report contract
 
 **Decision:** CLI reports use a versioned JSON envelope. `verify --json` and `check --json` expose `schema: 1`, `generatedAt`, `project`, and a nested `summary`. Verification payloads use `results`; check payloads use `changes`.

@@ -223,19 +223,27 @@ export function colorAt(palette, index) {
 export function effectiveStatus(node, verifiedStatus) {
     const own = STATUSES.includes(node?.status) ? node.status : "intended";
 
-    const verified = node?.identity ? verifiedStatus?.[node.identity] : null;
+    const identities = Array.isArray(node?.identities) && node.identities.length > 0
+        ? node.identities
+        : node?.identity ? [node.identity] : [];
 
     // A verify result only speaks for the exact plan node version it checked.
     // After a revise the node has a new id, so an old drift no longer applies.
-    if (
-        verified &&
-        STATUSES.includes(verified.status) &&
-        verified.verifiedAgainst === `${node.id}@${node.version ?? 1}`
-    ) {
-        return verified.status;
-    }
+    const rows = identities
+        .map(identity => verifiedStatus?.[identity])
+        .filter(row => row
+            && STATUSES.includes(row.status)
+            && row.verifiedAgainst === `${node.id}@${node.version ?? 1}`);
 
-    return own;
+    if (rows.length === 0) return own;
+
+    // EVERY declaration, worst first. Each one now carries a status of its
+    // own, so a summary step whose second covered step drifted would read
+    // as implemented if only the first were looked at - green card, red
+    // code, which is the one thing this view exists to prevent.
+    const worst = ["error", "drifted"].find(status => rows.some(row => row.status === status));
+
+    return worst ?? rows[0].status;
 }
 
 export function featureStatus(nodes, verifiedStatus) {
@@ -456,9 +464,39 @@ const COLUMN_GAP = 28;
 // Identity is "path/to/file.js::name:kind". Only the file's basename is
 // shown - the full path is in the detail panel, and a graph node has no room
 // for "Backend/src/database/survey.controller.js".
+// Every declaration a node stands for, and what a summary step covers.
+// One node can hold several of each: identities are the functions, and
+// summaryOf is the steps those functions came from.
+export function coveredSteps(node) {
+    return Array.isArray(node?.summaryOf) ? node.summaryOf : [];
+}
+
+export function isSummary(node) {
+    return node?.merge === "summary" && coveredSteps(node).length > 0;
+}
+
+// The function name inside a declaration: "api.js::getAgencies:function"
+// reads as getAgencies.
+export function declarationName(identity) {
+    const symbol = String(identity ?? "").split("::")[1];
+    if (!symbol) return String(identity ?? "");
+
+    const parts = symbol.split(":");
+    return parts.length > 1 ? parts.slice(0, -1).join(":") : symbol;
+}
+
 export function nodeSub(node) {
     const identity = node?.identity;
     if (!identity) return "greenfield";
+
+    // A summary step stands for other STEPS, not just other declarations.
+    // Saying "7 declarations" would be true and useless: the reader wants
+    // to know how much of the feature is behind this one card, and the
+    // panel is where the seven are listed.
+    if (isSummary(node)) {
+        const covers = coveredSteps(node).length;
+        return `covers ${covers} step${covers === 1 ? "" : "s"}`;
+    }
 
     // A step standing for several declarations says how many rather than
     // naming the first and quietly holding the rest. The panel lists them.
@@ -1364,6 +1402,46 @@ export function describeRules(rules) {
     }));
 }
 
+// --------------------------------------------------
+// WHAT A SUMMARY STEP COVERS
+// --------------------------------------------------
+// The panel's replacement for "What implements this". A summary step's
+// declarations are not a list of things that implement ONE claim - they
+// are several steps that were folded together - so listing the identities
+// flat would lose which rule and which evidence belongs to which step.
+//
+// One block per covered step, in the order they were folded, each holding
+// its own functions, its own rules and its own evidence. Nothing here is
+// derived from anything but the node and the facts already loaded: a
+// covered step the plan does not name cannot appear.
+// --------------------------------------------------
+
+export function coversBlocks(node, facts = {}) {
+    const rules = Array.isArray(node?.rules) ? node.rules : [];
+
+    return coveredSteps(node).map(entry => {
+        const identities = Array.isArray(entry.identities) ? entry.identities : [];
+
+        return {
+            title: entry.title ?? "",
+            identities,
+            names: identities.map(declarationName),
+            rules: describeRules(rules.filter(rule => identities.includes(rule.target))),
+            evidence: identities.flatMap(identity => evidenceLines(facts?.[identity]))
+        };
+    });
+}
+
+// Which covered step a verify violation belongs to. Without this a drifted
+// summary step says a field changed and leaves the reader to work out
+// which of the seven steps behind the card it happened in.
+export function coveredStepTitle(node, target) {
+    const entry = coveredSteps(node).find(
+        step => (Array.isArray(step.identities) ? step.identities : []).includes(target));
+
+    return entry ? entry.title : null;
+}
+
 export function describeHistory(history) {
     return (history ?? []).map(entry => ({
         version: `v${entry.version ?? 1}`,
@@ -1472,12 +1550,18 @@ function showValue(value) {
     return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-export function describeViolation(violation) {
+export function describeViolation(violation, node = null) {
+    // The covered step this violation happened in, on a summary step.
+    // Absent everywhere else: every other node stands for one step and has
+    // nothing to disambiguate, and its shape is unchanged.
+    const covers = node ? coveredStepTitle(node, violation?.target) : null;
+
     return {
         field: violation?.field ?? violation?.target ?? "rule",
         expected: showValue(violation?.expected),
         actual: showValue(violation?.actual),
-        reason: violation?.reason ?? violation?.message ?? ""
+        reason: violation?.reason ?? violation?.message ?? "",
+        ...(covers ? { covers } : {})
     };
 }
 

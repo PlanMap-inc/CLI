@@ -12,6 +12,10 @@ import {
     selectNodes
 } from "../../plan/approval.js";
 
+import {
+    nodeIdentities
+} from "../../plan/nodes.js";
+
 import { execFileSync } from "node:child_process";
 import { userInfo } from "node:os";
 
@@ -173,23 +177,46 @@ export function runPlanApprove(
 
                 let facts;
 
+                let factsByIdentity;
+
                 if (
                     node.status ===
                     "intended" &&
                     node.identity
                 ) {
-                    const declaration =
-                        baseline?.declarations?.find(
-                            candidate =>
-                                candidate.identity ===
-                                node.identity
+                    const identities =
+                        nodeIdentities(node);
+
+                    const found =
+                        identities.map(
+                            identity => [
+                                identity,
+                                baseline?.declarations?.find(
+                                    candidate =>
+                                        candidate.identity ===
+                                        identity
+                                )
+                            ]
                         );
 
+                    const missing =
+                        found
+                            .filter(
+                                ([, declaration]) => !declaration
+                            )
+                            .map(
+                                ([identity]) => identity
+                            );
+
+                    // Every declaration, not just the first. Approving a
+                    // step is approving what all of its code does, and a
+                    // snapshot with a declaration missing from it cannot
+                    // later say whether that declaration changed.
                     if (
-                        !declaration
+                        missing.length > 0
                     ) {
                         console.error(
-                            `Cannot approve "${node.identity}": identity is not present in the baseline.`
+                            `Cannot approve "${node.identity}": not present in the baseline: ${missing.join(", ")}.`
                         );
 
                         errors += 1;
@@ -197,28 +224,27 @@ export function runPlanApprove(
                         return node;
                     }
 
-                    facts = {
-                        throws:
-                            declaration.properties?.throws,
-                        throwTypes:
-                            declaration.properties?.throwTypes,
-                        returns:
-                            declaration.properties?.returns,
-                        returnsNullish:
-                            declaration.properties?.returnsNullish,
-                        calls:
-                            declaration.properties?.calls,
-                        numbers:
-                            declaration.properties?.numbers,
-                        awaits:
-                            declaration.properties?.awaits,
-                        catches:
-                            declaration.properties?.catches,
-                        emptyCatches:
-                            declaration.properties?.emptyCatches,
-                        params:
-                            declaration.properties?.params
-                    };
+                    // The declaration's WHOLE properties object. It used
+                    // to be ten named fields, which quietly left
+                    // entryCount, entries and callbacks out of every
+                    // snapshot - so an "unchanged" rule on any of them
+                    // could never be evaluated.
+                    facts =
+                        found[0][1].properties;
+
+                    if (
+                        identities.length > 1
+                    ) {
+                        factsByIdentity =
+                            Object.fromEntries(
+                                found.map(
+                                    ([identity, declaration]) => [
+                                        identity,
+                                        declaration.properties
+                                    ]
+                                )
+                            );
+                    }
                 }
 
                 const result =
@@ -227,7 +253,8 @@ export function runPlanApprove(
                         {
                             approvedBy,
                             approvedAt,
-                            facts
+                            facts,
+                            factsByIdentity
                         }
                     );
 

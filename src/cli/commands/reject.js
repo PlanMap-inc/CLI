@@ -7,6 +7,10 @@ import {
     rejectNode
 } from "../../plan/approval.js";
 
+import {
+    nodeIdentities
+} from "../../plan/nodes.js";
+
 
 // --------------------------------------------------
 // PLAN REJECT COMMAND
@@ -52,10 +56,10 @@ export function runPlanReject(
     const index =
         plan.nodes.findIndex(
             node =>
-                node.identity ===
-                target ||
-                node.id ===
-                target
+                node.id === target ||
+                nodeIdentities(node).includes(
+                    target
+                )
         );
 
     if (

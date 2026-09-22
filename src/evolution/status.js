@@ -153,6 +153,87 @@ export function buildEvolutionIdentityIndex(
 
 /*
  * ------------------------------------------------------------
+ * THE STATUS OF ONE DECLARATION
+ * ------------------------------------------------------------
+ *
+ * A plan node may stand for several declarations, and Project
+ * Evolution draws a row per declaration. The node's own result
+ * is one verdict over all of them, so painting it onto every
+ * row marks functions that did not change, and leaves the one
+ * that did looking the same as its neighbours.
+ *
+ * A violation or an error names the declaration it is about.
+ * That is what a row gets.
+ *
+ * Once a failure has been pinned to particular declarations,
+ * a declaration nobody pinned it on is not the one that failed,
+ * so it reads as implemented rather than inheriting the node's
+ * verdict. Anything the node failed for that names no
+ * declaration - a rule with no target, a missing approved
+ * declaration - is not attributable, and then every row keeps
+ * the node's own verdict, which is what an unmerged node has
+ * always had.
+ * ------------------------------------------------------------
+ */
+
+function rowStatus(
+    result,
+    identity
+) {
+    const named =
+        list =>
+            (Array.isArray(list) ? list : []).filter(
+                entry => typeof entry?.target === "string"
+            );
+
+    const errors =
+        named(result?.errors);
+
+    const violations =
+        named(result?.violations);
+
+    // Errors before violations, the same order the engine ranks
+    // them in when it decides the node's own status.
+    if (
+        errors.some(
+            entry => entry.target === identity
+        )
+    ) {
+        return "error";
+    }
+
+    if (
+        violations.some(
+            entry => entry.target === identity
+        )
+    ) {
+        return "drifted";
+    }
+
+    const unattributed =
+        [
+            ...(Array.isArray(result?.errors) ? result.errors : []),
+            ...(Array.isArray(result?.violations) ? result.violations : [])
+        ].some(
+            entry => typeof entry?.target !== "string"
+        );
+
+    if (
+        !unattributed &&
+        (
+            errors.length > 0 ||
+            violations.length > 0
+        )
+    ) {
+        return "implemented";
+    }
+
+    return result?.status;
+}
+
+
+/*
+ * ------------------------------------------------------------
  * APPLY DERIVED STATUS
  * ------------------------------------------------------------
  *
@@ -172,17 +253,26 @@ export function applyVerificationStatus(
         new Map();
 
     for (const result of Array.isArray(results) ? results : []) {
-        if (
-            typeof result?.identity !== "string" ||
-            result.identity.length === 0
-        ) {
-            continue;
-        }
+        // Every declaration the result covers, not only the first.
+        const identities =
+            Array.isArray(result?.identities) &&
+            result.identities.length > 0
+                ? result.identities
+                : [result?.identity];
 
-        resultByIdentity.set(
-            result.identity,
-            result
-        );
+        for (const identity of identities) {
+            if (
+                typeof identity !== "string" ||
+                identity.length === 0
+            ) {
+                continue;
+            }
+
+            resultByIdentity.set(
+                identity,
+                result
+            );
+        }
     }
 
     const index =
@@ -249,7 +339,10 @@ export function applyVerificationStatus(
         }
 
         copy.status =
-            result.status;
+            rowStatus(
+                result,
+                latest.identity
+            );
 
         copy.statusSource =
             "verified";

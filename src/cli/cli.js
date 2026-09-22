@@ -42,6 +42,7 @@ import {
     runPlanList,
     runPlanShow,
     runPlanDraft,
+    runPlanSummarise,
     runPlanValidate
 } from "./commands/plan.js";
 
@@ -145,6 +146,10 @@ if (
 
     console.error(
         "  node src/cli/cli.js plan draft <project-folder> --from \"<description>\""
+    );
+
+    console.error(
+        "  node src/cli/cli.js plan summarise <project-folder>"
     );
 
     console.error(
@@ -534,6 +539,14 @@ else if (
     }
 
     else if (
+        subcommand === "summarise"
+    ) {
+        await runPlanSummarise(
+            args[2]
+        );
+    }
+
+    else if (
         subcommand === "list"
     ) {
         runPlanList(
@@ -581,6 +594,10 @@ else if (
     }
 
     else {
+        console.error(
+            "Usage: planmap plan summarise <project>"
+        );
+
         console.error(
             "Usage: planmap plan list <project>"
         );

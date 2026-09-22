@@ -19,9 +19,24 @@ import {
 } from "../../plan/model.js";
 
 import {
+    callOpenRouter,
     draftBrownfield,
-    draftGreenfield
+    draftGreenfield,
+    linkFeatureSteps
 } from "../../plan/draft.js";
+
+import {
+    summariseFeatures,
+    titleSummaries
+} from "../../plan/summarise.js";
+
+import {
+    readBaseline
+} from "../../changes/check.js";
+
+import {
+    buildCallGraph
+} from "../../baseline/callgraph.js";
 
 
 // --------------------------------------------------
@@ -202,6 +217,11 @@ export async function runPlanDraft(
             `Batches: ${result.batches}`
         );
 
+        reportSummaries(
+            result.summarised,
+            result.titleFallbacks
+        );
+
         if (
             result.skipped?.length > 0
         ) {
@@ -284,6 +304,190 @@ export async function runPlanDraft(
 
         process.exitCode = 1;
     }
+}
+
+
+// --------------------------------------------------
+// WHAT THE CAP DID
+// --------------------------------------------------
+// One line per feature that was over twenty steps, and one line per
+// summary step whose title had to fall back. Both `plan draft` and
+// `plan summarise` print them, because both run the same pass.
+// --------------------------------------------------
+
+function reportSummaries(
+    report,
+    fallbacks
+) {
+    for (
+        const entry of report || []
+    ) {
+        console.log(
+            entry.line
+        );
+    }
+
+    if (
+        fallbacks?.length > 0
+    ) {
+        console.log(
+            `Summary steps named from their own parts, not the model: ${fallbacks.length}`
+        );
+
+        for (
+            const line of fallbacks
+        ) {
+            console.log(
+                `  ${line}`
+            );
+        }
+    }
+}
+
+
+// --------------------------------------------------
+// PLAN SUMMARISE COMMAND
+// --------------------------------------------------
+// The cap on its own, over a plan that already exists. The draft runs the
+// same pass at the end of its last batch; this is for a plan drafted
+// before the cap existed, or one whose features grew past it since.
+//
+// Running it twice changes nothing the second time: a feature that already
+// fits is left alone, summary steps and all.
+// --------------------------------------------------
+
+export async function runPlanSummarise(
+    projectRoot
+) {
+    if (
+        !projectRoot
+    ) {
+        console.error(
+            "Usage: planmap plan summarise <project>"
+        );
+
+        process.exitCode = 1;
+
+        return;
+    }
+
+    let plan;
+
+    let callGraph;
+
+    try {
+        plan =
+            readPlan(
+                projectRoot
+            );
+
+        callGraph =
+            buildCallGraph(
+                readBaseline(
+                    projectRoot
+                )?.declarations || []
+            );
+    } catch (
+        error
+    ) {
+        console.error(
+            `Plan summarise failed: ${error.message}`
+        );
+
+        process.exitCode = 1;
+
+        return;
+    }
+
+    const {
+        nodes,
+        summaries,
+        report
+    } =
+        summariseFeatures(
+            plan,
+            { callGraph }
+        );
+
+    // Every step keeps its fallback title when there is no model to ask.
+    // That is the point of the fallback: the cap is deterministic, and
+    // only the wording of a summary step ever needs one.
+    const { fallbacks } =
+        await titleSummaries(
+            summaries,
+            { call: callOpenRouter }
+        );
+
+    const nextPlan = {
+        ...plan,
+
+        nodes:
+            linkFeatureSteps(
+                nodes,
+                callGraph
+            )
+    };
+
+    const errors =
+        validatePlan(
+            nextPlan
+        );
+
+    if (
+        errors.length > 0
+    ) {
+        console.error(
+            "Plan summarise failed: the summarised plan is not valid."
+        );
+
+        for (
+            const error of errors
+        ) {
+            console.error(
+                `  - ${error}`
+            );
+        }
+
+        process.exitCode = 1;
+
+        return;
+    }
+
+    try {
+        writePlan(
+            projectRoot,
+            nextPlan
+        );
+    } catch (
+        error
+    ) {
+        console.error(
+            `Plan summarise failed: ${error.message}`
+        );
+
+        process.exitCode = 1;
+
+        return;
+    }
+
+    if (
+        report.length === 0
+    ) {
+        console.log(
+            "Every feature is already inside the step cap."
+        );
+
+        process.exitCode = 0;
+
+        return;
+    }
+
+    reportSummaries(
+        report,
+        fallbacks
+    );
+
+    process.exitCode = 0;
 }
 
 

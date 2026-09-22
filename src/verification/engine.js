@@ -34,6 +34,10 @@ import {
     evaluateClause
 } from "../plan/evaluate.js";
 
+import {
+    nodeIdentities
+} from "../plan/nodes.js";
+
 
 function getDeclarationMap(
     baselineDeclarations,
@@ -182,21 +186,6 @@ function hasIdentity(
 }
 
 
-// Every declaration this node stands for. One for an ordinary node; several
-// where one behaviour is written once per thing it applies to, and the node
-// was allowed to merge them because a single assert holds for all of them.
-function nodeIdentities(
-    node
-) {
-    return Array.isArray(node?.identities) &&
-        node.identities.length > 0
-        ? node.identities
-        : typeof node?.identity === "string"
-            ? [node.identity]
-            : [];
-}
-
-
 function evaluateBehaviourRules(
     node,
     declaration,
@@ -207,6 +196,17 @@ function evaluateBehaviourRules(
 
     const approvedFacts =
         node?.approvedFacts;
+
+    // One snapshot per declaration on a node that stands for several.
+    // "unchanged" asks whether THIS declaration's facts are the ones that
+    // were approved, and measuring the second declaration against the
+    // first one's snapshot answers a different question.
+    const approvedByIdentity =
+        node?.approvedFactsByIdentity &&
+        typeof node.approvedFactsByIdentity === "object" &&
+        !Array.isArray(node.approvedFactsByIdentity)
+            ? node.approvedFactsByIdentity
+            : null;
 
     const identities =
         nodeIdentities(node);
@@ -278,6 +278,21 @@ function evaluateBehaviourRules(
         const facts =
             targeted.properties;
 
+        // The snapshot for this exact declaration when there is one, the
+        // node's own otherwise - and only for the declaration that one
+        // belongs to. A target with neither is the error it has always
+        // been: re-approve to capture facts.
+        const approvedForTarget =
+            approvedByIdentity &&
+            Object.hasOwn(
+                approvedByIdentity,
+                target
+            )
+                ? approvedByIdentity[target]
+                : target === node.identity
+                    ? approvedFacts
+                    : undefined;
+
         for (
             const [
                 field,
@@ -291,7 +306,7 @@ function evaluateBehaviourRules(
                     field,
                     clause,
                     facts,
-                    approvedFacts
+                    approvedForTarget
                 );
 
             if (
@@ -378,6 +393,12 @@ function createResult(
     return {
         identity:
             node?.identity ?? null,
+
+        // Every declaration this result covers. Project Evolution draws a
+        // row per declaration, and a merged node's other declarations had
+        // no result to read at all.
+        identities:
+            nodeIdentities(node),
 
         planNodeId:
             node?.id ??
@@ -501,7 +522,10 @@ export function verifyPlan(
 
         if (
             options.identity &&
-            node.identity !== options.identity
+            node.id !== options.identity &&
+            !nodeIdentities(node).includes(
+                options.identity
+            )
         ) {
             continue;
         }

@@ -12,12 +12,14 @@ import {
     flowEdgePath,
     colorAt,
     constellationEdges,
+    coversBlocks,
     describeHistory,
     describeImpact,
     describeRules,
     describeViolation,
     escapeHtml,
     evidenceLines,
+    isSummary,
     lensColors,
     lensCoverage,
     LENS_QUESTIONS,
@@ -1132,7 +1134,27 @@ function openDetail(viewNode) {
     // first and holding the rest is how an abstraction starts lying.
     const backing = Array.isArray(node.identities) ? node.identities : [];
 
-    const backingBlock = backing.length > 1
+    // A summary step stands for other STEPS, so the panel lists those
+    // rather than a flat run of declarations: each one with its own
+    // functions, its own rules and its own evidence, in the order they
+    // were folded. Flattening them would leave the reader unable to tell
+    // which rule belongs to which of the steps behind the card.
+    const covers = coversBlocks(node, state?.facts ?? {});
+
+    const coversBlock = isSummary(node)
+        ? section(
+            `This step covers · ${covers.length} steps`,
+            covers.map(step => `
+                <div class="rule-block">
+                    <div class="target">${escapeHtml(step.title)}</div>
+                    ${step.names.map(name => `<div class="clause">${escapeHtml(name)}</div>`).join("")}
+                    ${step.rules.flatMap(rule => rule.clauses).map(clause => `<div class="clause">${escapeHtml(clause)}</div>`).join("")}
+                    ${step.evidence.map(line => `<div class="clause reason">${escapeHtml(line)}</div>`).join("")}
+                </div>`).join("")
+        )
+        : "";
+
+    const backingBlock = !isSummary(node) && backing.length > 1
         ? section(
             `What implements this · ${backing.length} declarations`,
             `${node.dimensions?.length ? `<p class="aside-dims">One behaviour, across ${escapeHtml(node.dimensions.join(", "))}.</p>` : ""}`
@@ -1143,8 +1165,11 @@ function openDetail(viewNode) {
     // The full evidence list, not just the card's first couple of lines -
     // one identity when the node is ordinary, every identity it stands for
     // when it is merged. What the title says WHAT; this says what the code
-    // concretely does.
-    const evidenceIdentities = backing.length > 1 ? backing : node.identity ? [node.identity] : [];
+    // concretely does. A summary step already shows its evidence per
+    // covered step above, so it does not repeat the whole list here.
+    const evidenceIdentities = isSummary(node)
+        ? []
+        : backing.length > 1 ? backing : node.identity ? [node.identity] : [];
 
     const evidenceBlock = evidenceIdentities.length
         ? (() => {
@@ -1179,6 +1204,7 @@ function openDetail(viewNode) {
         ${verifyBlock(node, viewNode.status)}
         ${roleBlock}
         ${section("Intent", `<p>${escapeHtml(node.intent)}</p>`)}
+        ${coversBlock}
         ${backingBlock}
         ${evidenceBlock}
         ${section("Rules", rulesBody)}
@@ -1211,13 +1237,14 @@ function verifyBlock(node, status) {
             : "";
     }
 
-    const violations = (result.violations ?? []).map(describeViolation);
+    const violations = (result.violations ?? []).map(
+        violation => describeViolation(violation, node));
     const errors = (result.errors ?? []).map(error => error?.message ?? String(error));
     const unsupported = (result.unsupported ?? []).map(item => item?.reason ?? JSON.stringify(item));
     const impact = (result.impact ?? []).map(describeImpact);
 
     return [
-        violations.length ? section("Why it drifted", violations.map(v => `<div class="rule-block"><div class="target">${escapeHtml(v.field)}</div><div class="clause">expected ${escapeHtml(v.expected)}</div><div class="clause">actual ${escapeHtml(v.actual)}</div>${v.reason ? `<div class="clause reason">${escapeHtml(v.reason)}</div>` : ""}</div>`).join("")) : "",
+        violations.length ? section("Why it drifted", violations.map(v => `<div class="rule-block"><div class="target">${escapeHtml(v.covers ? `${v.covers} · ${v.field}` : v.field)}</div><div class="clause">expected ${escapeHtml(v.expected)}</div><div class="clause">actual ${escapeHtml(v.actual)}</div>${v.reason ? `<div class="clause reason">${escapeHtml(v.reason)}</div>` : ""}</div>`).join("")) : "",
         errors.length ? section("Errors", errors.map(message => `<div class="drift-callout">${escapeHtml(message)}</div>`).join("")) : "",
         unsupported.length ? section("Not checked", unsupported.map(message => `<p>${escapeHtml(message)}</p>`).join("")) : "",
         impact.length ? section("Impact", impact.map(entry => `<div class="file-chip">${escapeHtml(entry.identity)}<span class="range">${escapeHtml(entry.meta)}</span></div>`).join("")) : "",

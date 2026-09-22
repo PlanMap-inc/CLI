@@ -8,6 +8,11 @@
  * - no baseline reads
  */
 
+import {
+    nodeIdentities
+} from "./nodes.js";
+
+
 const APPROVAL_ERROR =
     "Only intended plan nodes can be approved.";
 
@@ -27,7 +32,8 @@ export function approveNode(
     {
         approvedBy,
         approvedAt,
-        facts
+        facts,
+        factsByIdentity
     } = {}
 ) {
     if (
@@ -90,6 +96,17 @@ export function approveNode(
     ) {
         nextNode.approvedFacts =
             facts;
+    }
+
+    // One snapshot per declaration, on a node that stands for more than
+    // one. approvedFacts alone belongs to the first of them, so an
+    // "unchanged" rule on any of the others had nothing to compare
+    // against - or worse, compared against the wrong declaration's facts.
+    if (
+        factsByIdentity !== undefined
+    ) {
+        nextNode.approvedFactsByIdentity =
+            factsByIdentity;
     }
 
     return {
@@ -203,6 +220,7 @@ export function reviseNode(
     delete nextNode.approvedBy;
     delete nextNode.approvedAt;
     delete nextNode.approvedFacts;
+    delete nextNode.approvedFactsByIdentity;
 
     return {
         node: nextNode,
@@ -267,13 +285,15 @@ export function selectNodes(
     }
 
     if (hasIdentity) {
+        // Its id, or ANY declaration it stands for. A merged node was only
+        // reachable by its first declaration, so approving or revising by
+        // one of the others reported "Plan node not found" for code the
+        // plan does hold.
         const matched =
             nodes.filter(
                 node =>
-                    (
-                        node?.identity ===
-                        identity ||
-                        node?.id ===
+                    node?.id === identity ||
+                    nodeIdentities(node).includes(
                         identity
                     )
             );

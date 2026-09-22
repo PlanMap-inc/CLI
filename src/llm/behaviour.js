@@ -163,3 +163,18 @@ not:
 
   Handle request -> Process verification -> Handle saving -> Process response
 `;
+
+
+// --------------------------------------------------
+// PLACEHOLDER VERBS
+// --------------------------------------------------
+// Words that stand in for a verb nobody chose. The prompt bans them in
+// three places; roughly one line in twenty still opens with one, so every
+// generated line is checked against this before it is kept.
+//
+// Here rather than in draft.js because it is part of the standard above,
+// and because the summariser holds new lines to the same one.
+// --------------------------------------------------
+
+export const PLACEHOLDER_VERBS =
+    /^(handle|process|manage|execute|perform|run|do|support|implement|ensure|deal with|take care of)\b/i;
